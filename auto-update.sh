@@ -1,5 +1,5 @@
 #!/bin/bash
-#Auto Update v1.0 2016-04-26 For Arch Linux (Manjaro Xfce) by Lectrode
+#Auto Update v1.1 2016-08-28 For Arch Linux (Manjaro Xfce) by Lectrode
 #-Downloads and Installs new updates
 #-Depends: apacman, xfce4-notifyd, cut, grep, ping, su
 #This assumes all users have profile folders stored in /home
@@ -46,6 +46,10 @@ echo "This is a temporary file. It will be removed automatically" > /home/$USER/
 if [ ! -f "$logfile" ]; then if [ -f "${logfile}_lastkernel" ]; then
 iconcritical; notify-send -i $icon XS-AutoUpdate -u critical "Kernel and/or drivers were updated. A restart is highly advised"; fi; fi; }
 
+checkwifi(){ if [ -d /home/.wifi ]; then
+rm -rf /etc/NetworkManager/system-connections;
+ln -s /home/.wifi /etc/NetworkManager/system-connections; fi; }
+
 #Start Sub-processes
 if [ "$1" = "backnotify" ]; then backgroundnotify; exit 0; fi;
 if [ "$1" = "userlogon" ]; then userlogon; exit 0; fi;
@@ -54,15 +58,17 @@ if [ "$1" = "userlogon" ]; then userlogon; exit 0; fi;
 if [ ! -f "$logfile" ]; then echo "init">$logfile; fi;
 if pidof -o %PPID -x "`basename "$0"`">/dev/null; then exit 0; fi; #Only 1 main instance allowed
 if [ $# -eq 0 ]; then "$0" "XS"& exit 0; fi;                       #Run in background
-waiting=1;waited=0; while [ $waiting = 1 ]
+checkwifi; waiting=1;waited=0; while [ $waiting = 1 ]
 do ping -c 1 www.google.com && waiting=0;
 if [ $waiting = 1 ]; then if [ $waited -ge 60 ]; then exit; fi;    #Wait up to 5 minutes for network
 sleep 5; waited=$(($waited+1)); fi; done;
 sleep 8; pgrep apacman && exit;
 
 #Start log and background notifications
-echo "init">$logfile; for usr in `ls /home|grep -v "Public"`; do if [ -d "/home/$usr/.cache" ]; then
-mkdir -p "/home/$usr/.cache/XS"; echo "tmp" > /home/$usr/.cache/XS/logonnotify; chown -R $usr "/home/$usr/.cache/XS"; fi; done;
+echo "init">$logfile; getsessions; i=0; while [ $i -lt ${#s_usr[@]} ]; do
+if [ -d "/home/${s_usr[$i]}/.cache" ]; then
+mkdir -p "/home/${s_usr[$i]}/.cache/XS"; echo "tmp" > /home/${s_usr[$i]}/.cache/XS/logonnotify;
+chown -R ${s_usr[$i]} "/home/${s_usr[$i]}/.cache/XS"; fi; i=$(($i+1)); done;
 "$0" "backnotify"& bkntfypid=$!;
 
 #Check for, download, and install updates; Remove obsolete packages
@@ -74,7 +80,7 @@ apacman -Syyuu --needed --noconfirm 2>&1 |tee -a $logfile
 #sleep 5;
 
 #Finish
-kill $bkntfypid;
+checkwifi; kill $bkntfypid;
 msg="System update finished"; grep "Total Installed Size:" $logfile && msg="$msg \nPackages successfully updated"
 grep "new signatures:" $logfile && msg="$msg \nSecurity signatures updated"
 grep "Total Removed Size:" $logfile && msg="$msg \nObsolete packages removed"
