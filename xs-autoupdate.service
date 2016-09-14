@@ -1,0 +1,15 @@
+#/etc/systemd/system/xs-autoupdate.service
+#enable with 'systemctl enable xs-autoupdate.service'
+#needs 'systemctl enable NetworkManager-wait-online.service'
+
+[Unit]
+Description=Automatically Update computer
+Before=network.target
+ 
+[Service]
+Type=oneshot
+ExecStart=/usr/share/xs/auto-update.sh
+RemainAfterExit=yes
+ 
+[Install]
+WantedBy=multi-user.target
