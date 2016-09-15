@@ -1,5 +1,5 @@
 #!/bin/bash
-#Auto Update v2.00 2016-09-11 For Manjaro Xfce by Lectrode
+#Auto Update v2.01 2016-09-11 For Manjaro Xfce by Lectrode
 #-Downloads and Installs new updates
 #-Depends: pacman paccache, xfce4-notifyd, cut, grep, ping, su
 #-Optional Depends: apacman
@@ -41,7 +41,7 @@ echo '#bool_detectErrors: Include possible errors in notifications' | sudo tee -
 echo '#bool_updateKeys: this script updates security keys/signatures before checking for package updates' | sudo tee -a "$conf_f"
 echo '#bool_notifyMe: Enable/Disable nofications' | sudo tee -a "$conf_f"
 echo '#str_cleanLevel: high, low, or off. how much cleaning is down before/after update' | sudo tee -a "$conf_f"
-echo '#str_ignorePackages: list of packages to ignore separated by spaces' | sudo tee -a "$conf_f"
+echo '#str_ignorePackages: list of packages to ignore separated by spaces (in addition to pacman.conf)' | sudo tee -a "$conf_f"
 echo '#str_log_d: path to the log directory' | sudo tee -a "$conf_f"
 echo '#' | sudo tee -a "$conf_f"
 echo '#str_sysConnLoc: path to the custom location of system-connections' | sudo tee -a "$conf_f"
@@ -68,7 +68,7 @@ killmsg(){ if [ "${conf_a[bool_notifyMe]}" = "$ctrue" ]; then killall xfce4-noti
 iconnormal(){ icon=ElectrodeXS; }
 iconwarn(){ icon=software-update-urgent-symbolic; }
 iconcritical(){ icon=software-update-urgent; }
-sendmsg(){ if [ "${conf_a[bool_notifyMe]}" = "$ctrue" ]; then DISPLAY=$2 su $1 -c "notify-send -i $icon XS-AutoUpdate -u critical \"$3\""; fi; }
+sendmsg(){ if [ "${conf_a[bool_notifyMe]}" = "$ctrue" ]; then DISPLAY=$2 su $1 -c "dbus-launch notify-send -i $icon XS-AutoUpdate -u critical \"$3\""; fi; }
 sendall(){ if [ "${conf_a[bool_notifyMe]}" = "$ctrue" ]; then getsessions; i=0; while [ $i -lt ${#s_usr[@]} ]; do sendmsg "${s_usr[$i]}" "${s_disp[$i]}" "$1"; i=$(($i+1)); done; unset i; fi; }
 finalmsg_normal(){ killmsg; iconnormal; sendall "$msg"; sleep 20; killmsg; }
 finalmsg_critical(){ killmsg; iconcritical; sendall "Kernel and/or drivers were updated. A restart is highly advised"; mv -f "$log_f" "${log_f}_`date -I`"; log_f=${log_f}_`date -I`; }
