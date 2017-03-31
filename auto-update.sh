@@ -1,25 +1,25 @@
 #!/bin/bash
-#Auto Update v2.01 2016-09-11 For Manjaro Xfce by Lectrode
+#Auto Update v2.02 2017-03-31 For Manjaro Xfce by Lectrode
 #-Downloads and Installs new updates
 #-Depends: pacman paccache, xfce4-notifyd, cut, grep, ping, su
 #-Optional Depends: apacman
 true=0; false=1; ctrue=1; cfalse=0;
 
-debgn=+x; #-x =debugging, +x =no debugging
+debgn=+x; # -x =debugging | +x =no debugging
 set $debgn
 
 #---Load/Generate config---
 conf_f='/etc/xs/auto-update.conf';
 typeset -A conf_a; conf_a=(
     [bool_Downgrades]="$ctrue"
-	[bool_detectErrors]=$ctrue
-	[bool_updateKeys]=$ctrue
-	[bool_notifyMe]=$ctrue
+    [bool_detectErrors]=$ctrue
+    [bool_updateKeys]=$ctrue
+    [bool_notifyMe]=$ctrue
     [str_ignorePackages]=""
-	[str_testSite]="www.google.com"
-	[str_cleanLevel]="high" #high, low, off
+    [str_testSite]="www.google.com"
+    [str_cleanLevel]="high" #high, low, off
     [str_log_d]="/var/log/xs"
-	[str_sysConnLoc]="" )
+    [str_sysConnLoc]="" )
 
 if [ -f $conf_f ]; then while read line; do
     if echo $line | grep -F = &>/dev/null
@@ -58,7 +58,7 @@ done;
 #--------------------------
 
 pacclean(){ 
-[[ "${conf_a[str_cleanLevel]}" = "high" ]] && (paccache -rvk0; pacman -Scc)
+[[ "${conf_a[str_cleanLevel]}" = "high" ]] && (paccache -rvk0;)
 [[ "${conf_a[str_cleanLevel]}" = "low" ]]  && paccache -rvk2;
 [[ "${conf_a[str_cleanLevel]}" = "off" ]]  || (if [ -d /var/cache/apacman/pkg ]; then rm -rf /var/cache/apacman/pkg/*; fi)
 }
@@ -126,6 +126,16 @@ mkdir -p "${s_home[$i]}/.cache/xs"; echo "tmp" > "${s_home[$i]}/.cache/xs/logonn
 chown -R ${s_usr[$i]} "${s_home[$i]}/.cache/xs"; fi; i=$(($i+1)); done;
 "$0" "backnotify"& bkntfypid=$!;
 
+# Workaround apacman script crash ( https://github.com/lectrode/XS_update-manjaro/issues/2 )
+if [ "$pacman" = "apacman" ]; then
+dummystty="/tmp/xs-dummy/stty";
+mkdir `dirname $dummystty`;
+echo "#!/bin/sh" >$dummystty;
+echo "echo 15" >>$dummystty;
+chmod +x $dummystty;
+export PATH=`dirname $dummystty`:$PATH;
+fi;
+
 #Check for, download, and install updates; Remove obsolete packages
 (pacclean; pacman-mirrors -g;)  2>&1 |tee -a $log_f;
 sudo pacman -S --needed --noconfirm archlinux-keyring manjaro-keyring manjaro-system 2>&1 |tee -a $log_f;
@@ -135,6 +145,7 @@ $pacman -Syyu$pacdown --needed --noconfirm $pacignore 2>&1 |tee -a $log_f
 #sleep 5;
 
 #Finish
+if [ -d "`dirname $dummystty`" ]; then rm -rf "`dirname $dummystty`"; fi;
 kill $bkntfypid; checkwifi; exportconf;
 msg="System update finished"; grep "Total Installed Size:" $log_f && msg="$msg \nPackages successfully updated"
 grep "new signatures:" $log_f && msg="$msg \nSecurity signatures updated"
