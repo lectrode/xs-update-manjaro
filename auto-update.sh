@@ -1,5 +1,5 @@
 #!/bin/bash
-#Auto Update v2.02 2017-03-31 For Manjaro Xfce by Lectrode
+#Auto Update v2.03 2017-07-27 For Manjaro Xfce by Lectrode
 #-Downloads and Installs new updates
 #-Depends: pacman paccache, xfce4-notifyd, cut, grep, ping, su
 #-Optional Depends: apacman
@@ -7,6 +7,7 @@ true=0; false=1; ctrue=1; cfalse=0;
 
 debgn=+x; # -x =debugging | +x =no debugging
 set $debgn
+
 
 #---Load/Generate config---
 conf_f='/etc/xs/auto-update.conf';
@@ -18,16 +19,15 @@ typeset -A conf_a; conf_a=(
     [str_ignorePackages]=""
     [str_testSite]="www.google.com"
     [str_cleanLevel]="high" #high, low, off
-    [str_log_d]="/var/log/xs"
-    [str_sysConnLoc]="" )
+    [str_log_d]="/var/log/xs" )
 
 if [ -f $conf_f ]; then while read line; do
     if echo $line | grep -F = &>/dev/null
     then
         varname=$(echo "$line" | cut -d '=' -f 1);
-		line=$(echo "$line" | cut -d '=' -f 2-);
-		line=$(echo "$line" | cut -d ';' -f 1);
-		[[ "$line" = "" ]] || conf_a[$varname]=$line;
+        line=$(echo "$line" | cut -d '=' -f 2-);
+        line=$(echo "$line" | cut -d ';' -f 1);
+        [[ "$line" = "" ]] || conf_a[$varname]=$line;
     fi
 done < "$conf_f"; unset line; unset varname; fi;
 
@@ -43,12 +43,6 @@ echo '#bool_notifyMe: Enable/Disable nofications' | sudo tee -a "$conf_f"
 echo '#str_cleanLevel: high, low, or off. how much cleaning is down before/after update' | sudo tee -a "$conf_f"
 echo '#str_ignorePackages: list of packages to ignore separated by spaces (in addition to pacman.conf)' | sudo tee -a "$conf_f"
 echo '#str_log_d: path to the log directory' | sudo tee -a "$conf_f"
-echo '#' | sudo tee -a "$conf_f"
-echo '#str_sysConnLoc: path to the custom location of system-connections' | sudo tee -a "$conf_f"
-echo '#NOTE: Normally system-connections is under /etc/NetworkManager. If you move it with symlink,' | sudo tee -a "$conf_f"
-echo '#the link can be overwritten when the package updates. This option fixes this before and' | sudo tee -a "$conf_f"
-echo '#after updates so wifi connections remain accessible. Use only if you changed the location' | sudo tee -a "$conf_f"
-echo '#of this folder with a symlink. This is not used/needed by default.' | sudo tee -a "$conf_f"
 echo '#' | sudo tee -a "$conf_f"
 for i in ${!conf_a[*]}; do
 	echo "$i=${conf_a[$i]}" | sudo tee -a "$conf_f"
@@ -66,8 +60,8 @@ pacclean(){
 #Notification Functions
 killmsg(){ if [ "${conf_a[bool_notifyMe]}" = "$ctrue" ]; then killall xfce4-notifyd; fi; }
 iconnormal(){ icon=ElectrodeXS; }
-iconwarn(){ icon=software-update-urgent-symbolic; }
-iconcritical(){ icon=software-update-urgent; }
+iconwarn(){ icon=important; }
+iconcritical(){ icon=system-shutdown; }
 sendmsg(){ if [ "${conf_a[bool_notifyMe]}" = "$ctrue" ]; then DISPLAY=$2 su $1 -c "dbus-launch notify-send -i $icon XS-AutoUpdate -u critical \"$3\""; fi; }
 sendall(){ if [ "${conf_a[bool_notifyMe]}" = "$ctrue" ]; then getsessions; i=0; while [ $i -lt ${#s_usr[@]} ]; do sendmsg "${s_usr[$i]}" "${s_disp[$i]}" "$1"; i=$(($i+1)); done; unset i; fi; }
 finalmsg_normal(){ killmsg; iconnormal; sendall "$msg"; sleep 20; killmsg; }
@@ -95,8 +89,8 @@ echo "This is a temporary file. It will be removed automatically" > "$HOME/.cach
 if [ ! -f "$log_f" ]; then if [ -f "${log_f}_lastkernel" ]; then
 iconcritical; notify-send -i $icon XS-AutoUpdate -u critical "Kernel and/or drivers were updated. A restart is highly advised"; fi; fi; }
 
-checkwifi(){ [[ "${conf_a[str_sysConnLoc]}" = "" ]] || ( if [ -d "${conf_a[str_sysConnLoc]}" ]; then
-rm -rf /etc/NetworkManager/system-connections; ln -s "${conf_a[str_sysConnLoc]}" /etc/NetworkManager/system-connections; fi; ) }
+
+#---Init Main---
 
 #Define Log file
 [[ "${conf_a[str_log_d]}" = "" ]] && conf_a[str_log_d]="/var/log/xs";
@@ -106,16 +100,29 @@ log_d="${conf_a[str_log_d]}"; log_f="${log_d}/auto-update.log";
 if [ "$1" = "backnotify" ]; then backgroundnotify; exit 0; fi;
 if [ "$1" = "userlogon" ]; then userlogon; exit 0; fi;
 
-#Network and misc checks
+#Init log dir, check for other running instances, start notifier
 mkdir -p "$log_d"; if [ ! -f "$log_f" ]; then echo "init">$log_f; fi;
 if pidof -o %PPID -x "`basename "$0"`">/dev/null; then exit 0; fi; #Only 1 main instance allowed
 if [ $# -eq 0 ]; then "$0" "XS"& exit 0; fi;                       #Run in background
-checkwifi; waiting=1;waited=0; while [ $waiting = 1 ]
+
+#Wait up to 5 minutes for network
+waiting=1;waited=0; while [ $waiting = 1 ]
 do ping -c 1 "${conf_a[str_testSite]}" && waiting=0;
-if [ $waiting = 1 ]; then if [ $waited -ge 60 ]; then exit; fi;    #Wait up to 5 minutes for network
-sleep 5; waited=$(($waited+1)); fi; done;
+if [ $waiting = 1 ]; then if [ $waited -ge 60 ]; then exit; fi;
+sleep 5; waited=$(($waited+1)); fi; done; unset waiting; unset waited;
+
+#use apacman if available
 sleep 8; pacman=apacman; type apacman || pacman=pacman;
-pgrep $pacman && exit;
+
+#wait up to 5 minutes for running instances of pacman/apacman
+waiting=1;waited=0; while [ $waiting = 1 ]
+do isRunning=0; pgrep pacman && isRunning=1;
+pgrep apacman && isRunning=1; [[ $isRunning = 1 ]] || waiting=0;
+if [ $waiting = 1 ]; then if [ $waited -ge 60 ]; then exit; fi;
+sleep 5; waited=$(($waited+1)); fi; done;  unset waiting; unset waited; unset isRunning;
+
+#remove .lck file (pacman is not running at this point)
+if [ -f /var/lib/pacman/db.lck ]; then rm -f /var/lib/pacman/db.lck; fi;
 
 #init main script and background notifications
 [[ "${conf_a[str_ignorePackages]}" = "" ]] || pacignore="--ignore ${conf_a[str_ignorePackages]}";
@@ -126,11 +133,11 @@ mkdir -p "${s_home[$i]}/.cache/xs"; echo "tmp" > "${s_home[$i]}/.cache/xs/logonn
 chown -R ${s_usr[$i]} "${s_home[$i]}/.cache/xs"; fi; i=$(($i+1)); done;
 "$0" "backnotify"& bkntfypid=$!;
 
-# Workaround apacman script crash ( https://github.com/lectrode/XS_update-manjaro/issues/2 )
+# Workaround apacman script crash ( https://github.com/lectrode/xs-update-manjaro/issues/2 )
 if [ "$pacman" = "apacman" ]; then
 dummystty="/tmp/xs-dummy/stty";
 mkdir `dirname $dummystty`;
-echo "#!/bin/sh" >$dummystty;
+echo '#!/bin/sh' >$dummystty;
 echo "echo 15" >>$dummystty;
 chmod +x $dummystty;
 export PATH=`dirname $dummystty`:$PATH;
@@ -146,13 +153,13 @@ $pacman -Syyu$pacdown --needed --noconfirm $pacignore 2>&1 |tee -a $log_f
 
 #Finish
 if [ -d "`dirname $dummystty`" ]; then rm -rf "`dirname $dummystty`"; fi;
-kill $bkntfypid; checkwifi; exportconf;
+kill $bkntfypid; exportconf;
 msg="System update finished"; grep "Total Installed Size:" $log_f && msg="$msg \nPackages successfully updated"
 grep "new signatures:" $log_f && msg="$msg \nSecurity signatures updated"
 grep "Total Removed Size:" $log_f && msg="$msg \nObsolete packages removed"
 if [ "${conf_a[bool_detectErrors]}" = "$ctrue" ]; then grep "error: failed " $log_f && msg="$msg \nSome packages encountered errors"; fi;
 if [ ! "$msg" = "System update finished" ]; then msg="$msg \nDetails: $log_f"; fi;
 if [ "$msg" = "System update finished" ]; then msg="System up-to-date, no changes made"; fi;
-normcrit=norm; grep -v "warning" $log_f |grep -v "removed"|grep -v "tor-browser"|grep -E "linux[0-9]{2,3}" && normcrit=crit
+normcrit=norm; grep -v "warning" $log_f |grep -v "removed"|grep -v "tor-browser"|grep -v "copying"|grep -E "linux[0-9]{2,3}" && normcrit=crit
 [[ "$normcrit" = "norm" ]] && finalmsg_normal; [[ "$normcrit" = "crit" ]] && finalmsg_critical;
 echo "XS-done">>$log_f; exit 0;
