@@ -1,7 +1,7 @@
 #!/bin/bash
-#Auto Update v2.03 2017-07-27 For Manjaro Xfce by Lectrode
+#Auto Update v2.04 2017-08-02 For Manjaro Xfce by Lectrode
 #-Downloads and Installs new updates
-#-Depends: pacman paccache, xfce4-notifyd, cut, grep, ping, su
+#-Depends: pacman, paccache, xfce4-notifyd, cut, grep, ping, su
 #-Optional Depends: apacman
 true=0; false=1; ctrue=1; cfalse=0;
 
@@ -52,8 +52,8 @@ done;
 #--------------------------
 
 pacclean(){ 
-[[ "${conf_a[str_cleanLevel]}" = "high" ]] && (paccache -rvk0;)
-[[ "${conf_a[str_cleanLevel]}" = "low" ]]  && paccache -rvk2;
+[[ "${conf_a[str_cleanLevel]}" = "high" ]] && paccache -rvk0
+[[ "${conf_a[str_cleanLevel]}" = "low" ]]  && paccache -rvk2
 [[ "${conf_a[str_cleanLevel]}" = "off" ]]  || (if [ -d /var/cache/apacman/pkg ]; then rm -rf /var/cache/apacman/pkg/*; fi)
 }
 
@@ -145,7 +145,7 @@ fi;
 
 #Check for, download, and install updates; Remove obsolete packages
 (pacclean; pacman-mirrors -g;)  2>&1 |tee -a $log_f;
-sudo pacman -S --needed --noconfirm archlinux-keyring manjaro-keyring manjaro-system 2>&1 |tee -a $log_f;
+pacman -S --needed --noconfirm archlinux-keyring manjaro-keyring manjaro-system 2>&1 |tee -a $log_f;
 [[ "${conf_a[bool_updateKeys]}" = "$ctrue" ]] && (pacman-key --refresh-keys; pacman-optimize; sync;)  2>&1 |tee -a $log_f;
 $pacman -Syyu$pacdown --needed --noconfirm $pacignore 2>&1 |tee -a $log_f
 (pacman -Rnsc $(pacman -Qtdq) --noconfirm; pacclean;)  2>&1 |tee -a $log_f
@@ -160,6 +160,6 @@ grep "Total Removed Size:" $log_f && msg="$msg \nObsolete packages removed"
 if [ "${conf_a[bool_detectErrors]}" = "$ctrue" ]; then grep "error: failed " $log_f && msg="$msg \nSome packages encountered errors"; fi;
 if [ ! "$msg" = "System update finished" ]; then msg="$msg \nDetails: $log_f"; fi;
 if [ "$msg" = "System update finished" ]; then msg="System up-to-date, no changes made"; fi;
-normcrit=norm; grep -v "warning" $log_f |grep -v "removed"|grep -v "tor-browser"|grep -v "copying"|grep -E "linux[0-9]{2,3}" && normcrit=crit
+normcrit=norm; grep -v "warning" $log_f |grep -v "removed"|grep -v "copying"|grep -v "tor-browser"|grep -E "linux[0-9]{2,3}" && normcrit=crit
 [[ "$normcrit" = "norm" ]] && finalmsg_normal; [[ "$normcrit" = "crit" ]] && finalmsg_critical;
 echo "XS-done">>$log_f; exit 0;

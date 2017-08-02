@@ -58,7 +58,7 @@ pacman -Rnsc $(pacman -Qtdq) --noconfirm # Removes orphan packages no longer req
 * Script checks if there is internet access by attempting to ping this site
 
 ### str_cleanLevel
-* Default: "high"
+* Default: `high`
 * high: runs `paccache -rvk0` and empties /var/cache/apacman/pkg
 * low: runs `paccache -rvk2` and empties /var/cache/apacman/pkg
 * off: Takes no action
