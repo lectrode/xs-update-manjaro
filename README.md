@@ -45,6 +45,10 @@ pacman -Rnsc $(pacman -Qtdq) --noconfirm # Removes orphan packages no longer req
 * Default: True
 * If true, runs `pacman-key --refresh-keys` before checking for package updates
 
+### bool_updateFlatpak
+ * Default: True
+ * Check for Flatpak package updates
+
 ### bool_notifyMe
 * Default: True
 * If true, enables status notifications via `notify-send` to active users
@@ -52,6 +56,11 @@ pacman -Rnsc $(pacman -Qtdq) --noconfirm # Removes orphan packages no longer req
 ### str_ignorePackages
 * Default: (blank)
 * Packages (if any) to ignore, separated by spaces (these are in addition to those stored in pacman.conf)
+
+### str_mirrorCountry
+ * Default: (blank)
+ * If blank, `pacman-mirrors --geoip` is used
+ * Countries separated by commas from which to pull updates
 
 ### str_testSite
 * Default: `www.google.com`
@@ -74,8 +83,10 @@ pacman -Rnsc $(pacman -Qtdq) --noconfirm # Removes orphan packages no longer req
 bool_Downgrades=1
 bool_detectErrors=1
 bool_updateKeys=1
+bool_updateFlatpak=1
 bool_notifyMe=1
 str_ignorePackages=
+str_mirrorCountry=
 str_testSite=www.google.com
 str_cleanLevel=high
 str_log_d=/var/log/xs
