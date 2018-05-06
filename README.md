@@ -16,7 +16,7 @@ This script requires root access and is made to run automatically at startup, al
 
 After performing a number of "checks" (make sure script isn't already running, check for internet connection, check for running instances of pacman/apacman, remove db.lck if it exists and nothing is updating, etc), this script primarily runs the following commands (in this order) to update the computer:
 ````
-pacman-mirrors -g # Update mirrors
+pacman-mirrors [--geoip || -c $str_mirrorCountry] # Update mirrors
 pacman -S --needed --noconfirm archlinux-keyring manjaro-keyring manjaro-system # Update system packages
 pacman-key --refresh-keys
 pacman-optimize
