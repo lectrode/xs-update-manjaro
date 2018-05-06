@@ -1,5 +1,5 @@
 #!/bin/bash
-#Auto Update v2.05 2017-11-16 For Manjaro Xfce by Lectrode
+#Auto Update v2.05 2018-05-05 For Manjaro Xfce by Lectrode
 #-Downloads and Installs new updates
 #-Depends: pacman, paccache, xfce4-notifyd, cut, grep, ping, su
 #-Optional Depends: apacman
@@ -70,7 +70,7 @@ iconcritical(){ icon=system-shutdown; }
 sendmsg(){ if [ "${conf_a[bool_notifyMe]}" = "$ctrue" ]; then DISPLAY=$2 su $1 -c "dbus-launch notify-send -i $icon XS-AutoUpdate -u critical \"$3\""; fi; }
 sendall(){ if [ "${conf_a[bool_notifyMe]}" = "$ctrue" ]; then getsessions; i=0; while [ $i -lt ${#s_usr[@]} ]; do sendmsg "${s_usr[$i]}" "${s_disp[$i]}" "$1"; i=$(($i+1)); done; unset i; fi; }
 finalmsg_normal(){ killmsg; iconnormal; sendall "$msg"; sleep 20; killmsg; }
-finalmsg_critical(){ killmsg; iconcritical; sendall "Kernel and/or drivers were updated. A restart is highly advised"; mv -f "$log_f" "${log_f}_`date -I`"; log_f=${log_f}_`date -I`; }
+finalmsg_critical(){ killmsg; iconcritical; sendall "Kernel and/or drivers were updated. Please restart your computer to finish"; mv -f "$log_f" "${log_f}_`date -I`"; log_f=${log_f}_`date -I`; }
 
 getsessions(){ DEFAULTIFS=$IFS; CUSTOMIFS=$(echo -en "\n\b"); IFS=$CUSTOMIFS
 i=0; while [ $i -lt ${#s_usr[@]} ]; do unset s_usr[$i]; unset s_disp[$i]; unset s_home[$i]; i=$(($i+1)); done
@@ -92,7 +92,7 @@ rm -f "${s_home[$i]}/.cache/xs/logonnotify"; fi; i=$(($i+1)); sleep 2; done; don
 userlogon(){ if [ ! -d "$HOME/.cache/xs" ]; then mkdir -p "$HOME/.cache/xs"; fi
 echo "This is a temporary file. It will be removed automatically" > "$HOME/.cache/xs/logonnotify"
 if [ ! -f "$log_f" ]; then if [ -f "${log_f}_lastkernel" ]; then
-iconcritical; notify-send -i $icon XS-AutoUpdate -u critical "Kernel and/or drivers were updated. A restart is highly advised"; fi; fi; }
+iconcritical; notify-send -i $icon XS-AutoUpdate -u critical "Kernel and/or drivers were updated. Please restart to avoid issues."; fi; fi; }
 
 
 #---Init Main---
@@ -115,9 +115,7 @@ waiting=1;waited=0; while [ $waiting = 1 ]
 do ping -c 1 "${conf_a[str_testSite]}" && waiting=0
 if [ $waiting = 1 ]; then if [ $waited -ge 60 ]; then exit; fi
 sleep 5; waited=$(($waited+1)); fi; done; unset waiting; unset waited
-
-#use apacman if available
-sleep 8; pacman=apacman; type apacman || pacman=pacman
+sleep 8;
 
 #wait up to 5 minutes for running instances of pacman/apacman
 waiting=1;waited=0; while [ $waiting = 1 ]
@@ -134,7 +132,7 @@ pacmirArgs="--geoip"
 [[ "${conf_a[str_mirrorCountry]}" = "" ]] || pacmirArgs="-c ${conf_a[str_mirrorCountry]}"
 [[ "${conf_a[str_ignorePackages]}" = "" ]] || pacignore="--ignore ${conf_a[str_ignorePackages]}"
 [[ "${conf_a[bool_Downgrades]}" = "$ctrue" ]] && pacdown=u
-echo "init">$log_f; getsessions; i=0; while [ $i -lt ${#s_usr[@]} ]; do
+echo "XS-Update started `date`">$log_f; getsessions; i=0; while [ $i -lt ${#s_usr[@]} ]; do
 if [ -d "${s_home[$i]}/.cache" ]; then
 mkdir -p "${s_home[$i]}/.cache/xs"; echo "tmp" > "${s_home[$i]}/.cache/xs/logonnotify"
 chown -R ${s_usr[$i]} "${s_home[$i]}/.cache/xs"; fi; i=$(($i+1)); done
@@ -154,7 +152,8 @@ fi
 (pacclean; pacman-mirrors $pacmirArgs)  2>&1 |tee -a $log_f
 pacman -S --needed --noconfirm archlinux-keyring manjaro-keyring manjaro-system 2>&1 |tee -a $log_f
 [[ "${conf_a[bool_updateKeys]}" = "$ctrue" ]] && (pacman-key --refresh-keys; pacman-optimize; sync;)  2>&1 |tee -a $log_f
-$pacman -Syyu$pacdown --needed --noconfirm $pacignore 2>&1 |tee -a $log_f
+pacman -Syyu$pacdown --needed --noconfirm $pacignore 2>&1 |tee -a $log_f
+type apacman && apacman -Su$pacdown --needed --noconfirm $pacignore 2>&1 |tee -a $log_f
 (pacman -Rnsc $(pacman -Qtdq) --noconfirm; pacclean;)  2>&1 |tee -a $log_f
 [[ "${conf_a[bool_updateFlatpak]}" = "$ctrue" ]] && (type flatpak && flatpak update)  2>&1 |tee -a $log_f
 #sleep 5;
@@ -170,4 +169,4 @@ if [ ! "$msg" = "System update finished" ]; then msg="$msg \nDetails: $log_f"; f
 if [ "$msg" = "System update finished" ]; then msg="System up-to-date, no changes made"; fi
 normcrit=norm; grep -v "warning" $log_f |grep -v "removed"|grep -v "copying"|grep -v "Unresolvable"|grep -v "tor-browser"|grep -E "linux[0-9]{2,3}" && normcrit=crit
 [[ "$normcrit" = "norm" ]] && finalmsg_normal; [[ "$normcrit" = "crit" ]] && finalmsg_critical
-echo "XS-done">>$log_f; exit 0
+echo "XS-done">>$log_f; disown -a; sleep 5; systemctl stop xs-autoupdate.service; exit 0
