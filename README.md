@@ -21,11 +21,24 @@ pacman -S --needed --noconfirm archlinux-keyring manjaro-keyring manjaro-system 
 pacman-key --refresh-keys
 pacman-optimize
 sync
-[pacman||apacman] -Syyu[u] --needed --noconfirm [ignored packages] # Uses pacman or apacman to update packages on system
+pacman -Syyu[u] --needed --noconfirm [ignored packages] # Uses pacman to update packages on system
+apacman -Su[u] --needed --noconfirm [ignored packages] # Uses apacman to update packages from the AUR
 pacman -Rnsc $(pacman -Qtdq) --noconfirm # Removes orphan packages no longer required
 ````
 
 ## Installation:
+
+This has an optional dependency on `apacman`. If you want the script to automatically update packages from the AUR, it will need `apacman`. You can install it with the following:
+````
+git clone https://aur.archlinux.org/apacman.git
+pushd apacman
+makepkg -si --noconfirm
+popd
+rm -rf apacman
+#Replace old apacman with my fork with fixes
+sudo wget "https://raw.githubusercontent.com/lectrode/apacman/master/apacman" -O "/usr/bin/apacman"
+sudo chmod +x "/usr/bin/apacman"
+````
 
 (Only required if you intend to have the script run at startup)
 
