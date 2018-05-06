@@ -25,6 +25,21 @@ sync
 pacman -Rnsc $(pacman -Qtdq) --noconfirm # Removes orphan packages no longer required
 ````
 
+## Installation:
+
+(Only required if you intend to have the script run at startup)
+
+Move the files to the proper locations:
+````
+ElectrodeXS.png         -> /usr/share/pixmaps/
+auto-update.sh          -> /usr/share/xs/
+xs-autoupdate.service   -> /etc/systemd/system/
+xs-updatehelper.desktop -> /etc/xdg/autostart/
+````
+
+Make sure auto-update.sh is allowed to execute as a program
+Lastly, run this to enable the auto-update startup service:
+````systemctl enable xs-autoupdate````
 
 
 ## Configuration:
