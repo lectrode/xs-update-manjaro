@@ -1,5 +1,5 @@
 #!/bin/bash
-#Auto Update v2.05 2018-05-05 For Manjaro Xfce by Lectrode
+#Auto Update v2.07 2018-08-25 For Manjaro Xfce by Lectrode
 #-Downloads and Installs new updates
 #-Depends: pacman, paccache, xfce4-notifyd, cut, grep, ping, su
 #-Optional Depends: apacman
@@ -86,7 +86,7 @@ IFS=$DEFAULTIFS; unset i; unset usr; unset disp; unset usrhome; unset actv; unse
 
 backgroundnotify(){ while : ; do getsessions;
 i=0; while [ $i -lt ${#s_usr[@]} ]; do if [ -f "${s_home[$i]}/.cache/xs/logonnotify" ]; then
-iconwarn; sendmsg "${s_usr[$i]}" "${s_disp[$i]}" "System is updating (please do not turn off the computer)\nDetails: $log_f"
+iconwarn; sleep 5; sendmsg "${s_usr[$i]}" "${s_disp[$i]}" "System is updating (please do not turn off the computer)\nDetails: $log_f"
 rm -f "${s_home[$i]}/.cache/xs/logonnotify"; fi; i=$(($i+1)); sleep 2; done; done; }
 
 userlogon(){ if [ ! -d "$HOME/.cache/xs" ]; then mkdir -p "$HOME/.cache/xs"; fi
@@ -139,7 +139,7 @@ chown -R ${s_usr[$i]} "${s_home[$i]}/.cache/xs"; fi; i=$(($i+1)); done
 "$0" "backnotify"& bkntfypid=$!
 
 # Workaround apacman script crash ( https://github.com/lectrode/xs-update-manjaro/issues/2 )
-if [ "$pacman" = "apacman" ]; then
+if type apacman; then
 dummystty="/tmp/xs-dummy/stty"
 mkdir `dirname $dummystty`
 echo '#!/bin/sh' >$dummystty
@@ -151,12 +151,11 @@ fi
 #Check for, download, and install updates; Remove obsolete packages
 (pacclean; pacman-mirrors $pacmirArgs)  2>&1 |tee -a $log_f
 pacman -S --needed --noconfirm archlinux-keyring manjaro-keyring manjaro-system 2>&1 |tee -a $log_f
-[[ "${conf_a[bool_updateKeys]}" = "$ctrue" ]] && (pacman-key --refresh-keys; pacman-optimize; sync;)  2>&1 |tee -a $log_f
+[[ "${conf_a[bool_updateKeys]}" = "$ctrue" ]] && (pacman-key --refresh-keys; sync;)  2>&1 |tee -a $log_f
 pacman -Syyu$pacdown --needed --noconfirm $pacignore 2>&1 |tee -a $log_f
-type apacman && apacman -Su$pacdown --needed --noconfirm $pacignore 2>&1 |tee -a $log_f
+type apacman && apacman -Su$pacdown --auronly --needed --noconfirm $pacignore 2>&1 |tee -a $log_f
 (pacman -Rnsc $(pacman -Qtdq) --noconfirm; pacclean;)  2>&1 |tee -a $log_f
-[[ "${conf_a[bool_updateFlatpak]}" = "$ctrue" ]] && (type flatpak && flatpak update)  2>&1 |tee -a $log_f
-#sleep 5;
+[[ "${conf_a[bool_updateFlatpak]}" = "$ctrue" ]] && (type flatpak && flatpak update -y)  2>&1 |tee -a $log_f
 
 #Finish
 if [ -d "`dirname $dummystty`" ]; then rm -rf "`dirname $dummystty`"; fi
@@ -170,3 +169,4 @@ if [ "$msg" = "System update finished" ]; then msg="System up-to-date, no change
 normcrit=norm; grep -v "warning" $log_f |grep -v "removed"|grep -v "copying"|grep -v "Unresolvable"|grep -v "tor-browser"|grep -E "linux[0-9]{2,3}" && normcrit=crit
 [[ "$normcrit" = "norm" ]] && finalmsg_normal; [[ "$normcrit" = "crit" ]] && finalmsg_critical
 echo "XS-done">>$log_f; disown -a; sleep 5; systemctl stop xs-autoupdate.service; exit 0
+

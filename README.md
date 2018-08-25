@@ -7,7 +7,7 @@ Update script for Manjaro
 This performs a full and automatic update of all packages using `pacman`. If `apacman` is installed, this will also update all AUR packages. On systems with `notify-send` available, status notifications are sent to any active users.
 
 ## Suggested usage / Disclaimer:
-This is not a replacement for manually updating/maintaining your own computer, but a supplement. This script automates what it can, but updates needing manual steps (for example, confirming the replacement of packages) will still need those. If not used properly, this script may "break" your system. For example, if the computer is restarted while the script is updating core components, the computer may no longer be able to boot. No warranty or guarantee is included or implied. **Use at your own risk**. 
+This is not a replacement for manually updating/maintaining your own computer, but a supplement. This script automates what it can, but updates needing manual steps (for example, merging .pacnew files) will still need those. If not used properly, this script may "break" your system. For example, if the computer is restarted while the script is updating core components, the computer may no longer be able to boot. No warranty or guarantee is included or implied. **Use at your own risk**. 
 
 Personally, I use this script to update my personal computer, as well as help manage remote computers. I frequently update an identical machine, and if manual steps are required, I'll take care of those manually on the remote computers. Otherwise (as is usually the case), this script will keep those updated just like I keep the clone updated.
 
@@ -19,10 +19,9 @@ After performing a number of "checks" (make sure script isn't already running, c
 pacman-mirrors [--geoip || -c $str_mirrorCountry] # Update mirrors
 pacman -S --needed --noconfirm archlinux-keyring manjaro-keyring manjaro-system # Update system packages
 pacman-key --refresh-keys
-pacman-optimize
 sync
 pacman -Syyu[u] --needed --noconfirm [ignored packages] # Uses pacman to update packages on system
-apacman -Su[u] --needed --noconfirm [ignored packages] # Uses apacman to update packages from the AUR
+apacman -Su[u] --auronly --needed --noconfirm [ignored packages] # If apacman exists, updates packages from the AUR
 pacman -Rnsc $(pacman -Qtdq) --noconfirm # Removes orphan packages no longer required
 ````
 
@@ -107,6 +106,7 @@ Lastly, run this to enable the auto-update startup service:
 
 
 ## Sample configuration file (/etc/xs/auto-update.conf)
+NOTE: Blank line at end is required for last line to be parsed
 ````
 bool_Downgrades=1
 bool_detectErrors=1
@@ -118,4 +118,5 @@ str_mirrorCountry=
 str_testSite=www.google.com
 str_cleanLevel=high
 str_log_d=/var/log/xs
+
 ````
