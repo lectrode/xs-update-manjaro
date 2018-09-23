@@ -1,6 +1,6 @@
 #!/bin/bash
 #Auto Update For Manjaro Xfce by Lectrode
-vsn="v3.0.2-rc1"; vsndsp="$vsn 2018-09-22"
+vsn="v3.0.3"; vsndsp="$vsn 2018-09-23"
 #-Downloads and Installs new updates
 #-Depends: pacman, paccache, xfce4-notifyd, grep, ping
 #-Optional Depends: pikaur, apacman (deprecated)
@@ -414,7 +414,7 @@ if [[ "$use_apacman" = "1" ]]; then
 
     trouble "Updating AUR packages [apacman]..."
     apacman -Su$pacdown --auronly --needed --noconfirm $pacignore 2>&1 |\
-        sed 's/\x1B\[[0-9;]\+[A-Za-z]//g' |tr -cd '\11\12\15\40-\176' |grep -v -F "%" |tee -a $log_f
+        sed 's/\x1B\[[0-9;]\+[A-Za-z]//g' |tr -cd '\11\12\15\40-\176' |grep -Fv "%" |tee -a $log_f
     if [ -d "`dirname $dummystty`" ]; then rm -rf "`dirname $dummystty`"; fi
 fi
 
@@ -430,7 +430,7 @@ pacclean
 #Update Flatpak
 if [[ "${conf_a[flatpak_1enable_bool]}" = "$ctrue" ]]; then if type flatpak >/dev/null 2>&1; then
     trouble "Updating flatpak..."
-    flatpak update -y  2>&1 |tee -a $log_f
+    flatpak update -y | grep -Fv "[" 2>&1 |tee -a $log_f
 fi; fi
 
 #Finish
