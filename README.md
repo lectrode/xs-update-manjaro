@@ -10,24 +10,28 @@
 * [Configuration](#configuration "")
   * [aur_1helper_str](#aur_1helper_str "")
   * [aur_devel_bool](#aur_devel_bool "")
+  * [cln_1enable_bool](#cln_1enable_bool "")
+  * [cln_aurpkg_bool](#cln_aurpkg_bool "")
+  * [cln_aurbuild_bool](#cln_aurbuild_bool "")
+  * [cln_orphan_bool](#cln_orphan_bool "")
+  * [cln_paccache_num](#cln_paccache_num "")
+  * [flatpak_1enable_bool](#flatpak_1enable_bool "")
+  * [notify_1enable_bool](#notify_1enable_bool "")
   * [notify_lastmsg_num](#notify_lastmsg_num "")
-  * [bool_detectErrors](#bool_detecterrors "")
-  * [bool_Downgrades](#bool_downgrades "")
-  * [bool_notifyMe](#bool_notifyme "")
-  * [bool_updateFlatpak](#bool_updateflatpak "")
-  * [bool_updateKeys](#bool_updatekeys "")
-  * [str_cleanLevel](#str_cleanlevel "")
-  * [str_ignorePackages](#str_ignorepackages "")
-  * [str_log_d](#str_log_d "")
-  * [str_mirrorCountry](#str_mirrorcountry "")
-  * [str_testSite](#str_testsite "")
+  * [notify_errors_bool](#notify_errors_bool "")
+  * [main_ignorepkgs_str](#main_ignorepkgs_str "")
+  * [main_logdir_str](#main_logdir_str "")
+  * [main_country_str](#main_country_str "")
+  * [main_testsite_str](#main_testsite_str "")
+  * [update_downgrades_bool](#update_downgrades_bool "")
+  * [update_keys_bool](#update_keys_bool "")
 * [Custom makepkg flags for specific AUR packages](#custom-makepkg-flags-for-specific-aur-packages "")
 * [Sample configuration file](#sample-configuration-file "")
 
 ### Warning: this script is intended for use by advanced users only
 
 ## Summary
-This performs a full and automatic update of all packages using `pacman`. If a supported [AUR helper](#supported-aur-helpers "") is installed and enabled, this will also update all AUR packages. If [notifications](#bool_notifyme "") are enabled, status notifications are sent to any active users. 
+This performs a full and automatic update of all packages using `pacman`. If a supported [AUR helper](#supported-aur-helpers "") is installed and enabled, this will also update all AUR packages. If [notifications](#notify_1enable_bool "") are enabled, status notifications are sent to any active users. 
 
 ## Suggested Usage and Disclaimer:
 This is not a replacement for manually updating/maintaining your own computer, but a supplement. This script automates what it can, but updates needing manual steps (for example, merging .pacnew files) will still need those. If not used properly, this script may "break" your system. For example, if the computer is restarted while the script is updating core components, the computer may no longer be able to boot. No warranty or guarantee is included or implied. **Use at your own risk**. 
@@ -35,18 +39,18 @@ This is not a replacement for manually updating/maintaining your own computer, b
 Personally, I use this script to update my personal computer, as well as help manage remote computers. If manual steps are required, I'll take care of those manually on the computers. Otherwise (as is usually the case), this script will keep those updated.
 
 ## Detailed Description
-This script requires root access and is made to run automatically at startup, although it can be run manually or on a schedule as well. It logs everything it does in [`$str_log_d`](#str_log_d "")`/auto-update.log`. If it detects that kernel or driver packages were updated (any package with `linux[0-9]{2,3}` in the name, with some exceptions), it will include the date in the log name to keep it for future reference, as well as notify the user that a restart is needed (it will not automatically restart the computer!). If a restart is needed, waiting to restart may cause some applications to have issues.
+This script requires root access and is made to run automatically at startup, although it can be run manually or on a schedule as well. It logs everything it does in [`$main_logdir_str`](#main_logdir_str "")`/auto-update.log`. If it detects that kernel or driver packages were updated (any package with `linux[0-9]{2,3}` in the name, with some exceptions), it will include the date in the log name to keep it for future reference, as well as notify the user that a restart is needed (it will not automatically restart the computer!). If a restart is needed, waiting to restart may cause some applications to have issues.
 
-After performing a number of "checks" (make sure script isn't already running, check for internet connection, check for running instances of pacman/apacman, remove db.lck if it exists and nothing is updating, etc), this script primarily runs the following commands (in this order) to update the computer:
+After performing a number of "checks" (make sure script isn't already running, check for internet connection, check for running instances of pacman/apacman, remove db.lck if it exists and nothing is updating, etc), this script primarily runs the following commands (if they are enabled) to update the computer:
 ````
 pacman-mirrors [--geoip || -c $str_mirrorCountry] # Update mirrors
 pacman -S --needed --noconfirm archlinux-keyring manjaro-keyring manjaro-system # Update system packages
 pacman-key --refresh-keys # Can be disabled via bool_updateKeys
 sync
-pacman -Syyu[u] --needed --noconfirm [ignored packages]
+pacman -Syyu[u] --needed --noconfirm [ignored packages] # Update packages from official repos
 
-pikaur -Sau[u] [--devel] --needed --noconfirm --noprogressbar [ignored packages] # Can be disabled via aur_1helper_str
-apacman -Su[u] --auronly --needed --noconfirm [ignored packages] # Can be disabled via aur_1helper_str
+pikaur -Sau[u] [--devel] --needed --noconfirm --noprogressbar [ignored packages] # Update AUR packages
+apacman -Su[u] --auronly --needed --noconfirm [ignored packages] # Update AUR packages
 
 pacman -Rnsc $(pacman -Qtdq) --noconfirm # Removes orphan packages no longer required
 ````
@@ -119,7 +123,6 @@ Drawbacks:
 * Does not support newer AUR packages
 * Cannot pass custom makepkg flags
 
-
 ## Configuration:
 
 * Settings stored in /etc/xs/auto-update.conf
@@ -135,59 +138,75 @@ Drawbacks:
 * `all` will run every supported AUR helper found in this order: pikaur, apacman
 * `none` will not use any AUR helper
 
+### aur_devel_bool
+* Default: True
+* If true, updates "devel" AUR packages (any package that ends in -git, -svn, etc)
+
+### cln_1enable_bool
+* Default: True
+* If set to false, disables all cleanup steps
+
+### cln_aurpkg_bool
+* Default: True
+* If this is True, all packages built from the AUR will be deleted when finished
+
+### cln_aurbuild_bool
+* Default: True
+* If this is True, all AUR package build folders will be deleted when finished
+
+### cln_orphan_bool
+* Default: True
+* If this is True, obsolete dependencies will be uninstalled when finished
+
+### cln_paccache_num
+* Default: 0
+* Specifies the number of official built packages to keep in cache
+* If set to "-1" all official packages will be kept (cache is usually `/var/cache/pacman/pkg`)
+
+### flatpak_1enable_bool
+ * Default: True
+ * If true, checks for Flatpak package updates
+ 
+ ### notify_1enable_bool
+* Default: True
+* If true, enables status notifications via `notify-send` to active users
+
 ### notify_lastmsg_num
 * Default: 20
 * Specifies how long (in seconds) the final "System update finished" notification is visible before it expires.
 * The "Kernel and/or drivers were updated" message does not expire, regardless of this setting
-* Requires `bool_notifyMe` to be True
+* Requires `notify_1enable_bool` to be True
 
-### aur_devel_bool
-* Default: True
-* If true, updates "devel" AUR packages (any package that ends in -git, -svn, etc)
-* You may want to disable this and 
-
-### bool_detectErrors
+### notify_errors_bool
 * Default: True
 * If true, script attempts to detect errors. If any, includes message "Some packages encountered errors" in notification
 
-### bool_Downgrades
-* Default: True
-* If true, allows pacman to downgrade packages if remote packages are a lesser version than installed
-
-### bool_notifyMe
-* Default: True
-* If true, enables status notifications via `notify-send` to active users
-
-### bool_updateFlatpak
- * Default: True
- * Check for Flatpak package updates
-
-### bool_updateKeys
-* Default: True
-* If true, runs `pacman-key --refresh-keys` before checking for package updates
-
-### str_cleanLevel
-* Default: `high`
-* high: runs `paccache -rvk0` and empties AUR Helper cache
-* low: runs `paccache -rvk2` and empties AUR Helper cache
-* off: Takes no action
-
-### str_ignorePackages
+### main_ignorepkgs_str
 * Default: (blank)
 * Packages (if any) to ignore, separated by spaces (these are in addition to those stored in pacman.conf)
 
-### str_log_d
+### main_logdir_str
 * Default: "/var/log/xs"
 * Defines the directory where the log will be output
 
-### str_mirrorCountry
+### main_country_str
  * Default: (blank)
  * If blank, `pacman-mirrors --geoip` is used
  * Countries separated by commas from which to pull updates
+ * See output of `pacman-mirrors -l` for supported values
 
-### str_testSite
+### main_testsite_str
 * Default: `www.google.com`
-* Script checks if there is internet access by attempting to ping this site
+* Script checks if there is internet access by attempting to ping this address
+* Can also be an IP address
+
+### update_downgrades_bool
+* Default: True
+* If true, allows pacman to downgrade packages if remote packages are a lesser version than installed
+
+### update_keys_bool
+* Default: True
+* If true, runs `pacman-key --refresh-keys` before checking for package updates
 
 
 ## Custom makepkg flags for specific AUR packages
@@ -198,22 +217,26 @@ Drawbacks:
 
 
 ## Sample configuration file
-NOTE: Needs to be placed at /etc/xs/auto-update.conf
-NOTE: Blank line at end is required for last line to be parsed
+### NOTE: Needs to be placed at /etc/xs/auto-update.conf
+### NOTE: Blank line at end is required for last line to be parsed
 ````
-bool_detectErrors=1
-bool_Downgrades=1
-bool_notifyMe=1
-aur_devel_bool=1
-bool_updateFlatpak=1
-bool_updateKeys=1
-notify_lastmsg_num=20
 aur_1helper_str=auto
-str_cleanLevel=high
-str_ignorePackages=
-str_log_d=/var/log/xs
-str_mirrorCountry=
-str_testSite=www.google.com
+aur_devel_bool=1
+cln_1enable_bool=1
+cln_aurbuild_bool=1
+cln_aurpkg_bool=1
+cln_orphan_bool=1
+cln_paccache_num=0
+flatpak_1enable_bool=1
+main_ignorePackages_str=
+main_logdir_str=/var/log/xs
+main_mirrorCountry_str=
+main_testSite_str=www.google.com
+notify_1enable_bool=1
+notify_lastmsg_num=20
+notify_errors_bool=1
+update_downgrades_bool=1
+update_keys_bool=1
 zflag:libc++abi,libc++=--skippgpcheck,--nocheck
 zflag:tor-browser-en=--skippgpcheck
 
