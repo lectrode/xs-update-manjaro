@@ -1,6 +1,6 @@
 #!/bin/bash
 #Auto Update For Manjaro Xfce by Lectrode
-vsn="v3.0.2-rc2"; vsndsp="$vsn 2018-09-23"
+vsn="v3.0.2-rc3"; vsndsp="$vsn 2018-09-23"
 #-Downloads and Installs new updates
 #-Depends: pacman, paccache, xfce4-notifyd, grep, ping
 #-Optional Depends: pikaur, apacman (deprecated)
@@ -392,7 +392,7 @@ if echo "${conf_a[aur_1helper_str]}" | grep 'auto' >/dev/null; then
 #Update AUR packages
 
 if [[ "$use_pikaur" = "1" ]]; then
-    if [[ ! "${#flag_a}" = "0" ]]; then
+    if [[ ! "${#flag_a[@]}" = "0" ]]; then
         trouble "Updating AUR packages with custom flags [pikaur]..."
         for i in ${!flag_a[*]}; do
             pacman -Q $(echo "$i" | tr ',' ' ') && \
