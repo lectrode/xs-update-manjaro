@@ -33,7 +33,7 @@
 ### Warning: this script is intended for use by advanced users only
 
 ## Summary
-This performs a full and automatic update of all packages using `pacman`. If a supported [AUR helper](#supported-aur-helpers "") is installed and enabled, this will also update all AUR packages. If [notifications](#notify_1enable_bool "") are enabled, status notifications are sent to any active users. 
+This performs a full and automatic update of all packages using `pacman`. If a supported [AUR helper](#supported-aur-helpers "") is installed and [enabled](#aur_1helper_str ""), this will also update all AUR packages. If flatpak is installed and [enabled](#flatpak_1enable_bool ""), this will also update flatpak packages. If notifications are [enabled](#notify_1enable_bool ""), status notifications are sent to any active users.  
 
 ## Suggested Usage and Disclaimer:
 This is not a replacement for manually updating/maintaining your own computer, but a supplement. This script automates what it can, but updates needing manual steps (for example, merging .pacnew files) will still need those. If not used properly, this script may "break" your system. For example, if the computer is restarted while the script is updating core components, the computer may no longer be able to boot. No warranty or guarantee is included or implied. **Use at your own risk**. 
