@@ -77,7 +77,7 @@ Lastly, run this to enable the auto-update startup service:
 ## Dependencies:
 
 This script requires these external tools/commands:
-pacman, paccache, xfce4-notifyd, grep, ping
+coreutils, pacman, paccache, xfce4-notifyd, grep, ping
 
 
 ## Supported AUR Helpers:
@@ -140,7 +140,7 @@ Drawbacks:
 ### aur_1helper_str
 * Default: `auto`
 * Specifies which AUR helper to use to update AUR packages
-* Current valid values are: auto,none,all,pikaur,apacman
+* Current valid values are: `auto`,`none`,`all`,`pikaur`,`apacman`
 * `auto` will use an available AUR helper with the following preference: pikaur > apacman
 * `all` will run every supported AUR helper found in this order: pikaur, apacman
 * `none` will not use any AUR helper

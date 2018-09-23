@@ -1,6 +1,6 @@
 #!/bin/bash
 #Auto Update For Manjaro Xfce by Lectrode
-vsn="v3.0.2-rc3"; vsndsp="$vsn 2018-09-23"
+vsn="v3.0.3"; vsndsp="$vsn 2018-09-23"
 #-Downloads and Installs new updates
 #-Depends: pacman, paccache, xfce4-notifyd, grep, ping
 #-Optional Depends: pikaur, apacman (deprecated)
