@@ -209,7 +209,7 @@ Drawbacks:
 ### self_branch_str
 * Default: stable
 * Script update branch (requires `self_1enable_bool` be True)
-* Current valid values are: stable, beta
+* Current valid values are: `stable`, `beta`
 
 ### main_testsite_str
 * Default: `www.google.com`
@@ -251,7 +251,7 @@ notify_1enable_bool=1
 notify_lastmsg_num=20
 notify_errors_bool=1
 self_1enable_bool=1
-self_branch_str=1
+self_branch_str=stable
 update_downgrades_bool=1
 update_keys_bool=1
 zflag:libc++abi,libc++=--skippgpcheck,--nocheck
