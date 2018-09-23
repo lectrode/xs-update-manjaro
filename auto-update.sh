@@ -1,17 +1,15 @@
 #!/bin/bash
 #Auto Update For Manjaro Xfce by Lectrode
-vsn="v3.0.1-dev"; vsndsp="$vsn 2018-09-13"
+vsn="v3.0.2-rc1"; vsndsp="$vsn 2018-09-22"
 #-Downloads and Installs new updates
 #-Depends: pacman, paccache, xfce4-notifyd, grep, ping
 #-Optional Depends: pikaur, apacman (deprecated)
 true=0; false=1; ctrue=1; cfalse=0;
 
 
-conf_f='/etc/xs/auto-update.conf'
+[[ "$xs_autoupdate_conf" = "" ]] && xs_autoupdate_conf='/etc/xs/auto-update.conf'
 debgn=+x; # -x =debugging | +x =no debugging
 set $debgn
-
-
 
 #---Define Functions---
 
@@ -42,45 +40,49 @@ fi
 }
 
 exportconf(){
-if [ ! -d `dirname $conf_f` ]; then mkdir `dirname $conf_f`; fi
-echo '#Config for XS-AutoUpdate' > "$conf_f"
-echo '#' >> "$conf_f"
-echo '# AUR Settings #' >> "$conf_f"
-echo '#aur_1helper_str: Valid options are auto,none,all,pikaur,apacman' >> "$conf_f"
-echo '#aur_devel_bool:  If enabled, directs pikaur to update -git and -svn packages' >> "$conf_f"
-echo '#' >> "$conf_f"
-echo '# Cleanup Settings #' >> "$conf_f"
-echo '#cln_1enable_bool:  Enables/disables all package cleanup' >> "$conf_f"
-echo '#cln_aurpkg_bool:   Enables/disables AUR package cleanup' >> "$conf_f"
-echo '#cln_aurbuild_bool: Enables/disables AUR build cleanup' >> "$conf_f"
-echo '#cln_orphan_bool:   Enables/disables uninstall of uneeded packages' >> "$conf_f"
-echo '#cln_paccache_num:  Number of official packages to keep (-1 to keep all)' >> "$conf_f"
-echo '#' >> "$conf_f"
-echo '# Flatpak Settings #' >> "$conf_f"
-echo '#flatpak_1enable_bool: Check for Flatpak package updates' >> "$conf_f"
-echo '#' >> "$conf_f"
-echo '# Notification Settings #' >> "$conf_f"
-echo '#notify_1enable_bool: Enable/Disable nofications' >> "$conf_f"
-echo '#notify_lastmsg_num: Seconds before final normal notification expires (0=never)' >> "$conf_f"
-echo '#notify_errors_bool: Include possible errors in notifications' >> "$conf_f"
-echo '#' >> "$conf_f"
-echo '# Main Settings #' >> "$conf_f"
-echo '#main_ignorePackages_str: list of packages to ignore separated by spaces (in addition to pacman.conf)' >> "$conf_f"
-echo '#main_logdir_str: path to the log directory' >> "$conf_f"
-echo '#main_mirrorCountry_str: Countries separated by commas from which to pull updates. Default is automatic (geoip)' >> "$conf_f"
-echo '#main_testSite_str: url (without protocol) used to test internet connection' >> "$conf_f"
-echo '#' >> "$conf_f"
-echo '# Update Settings #' >> "$conf_f"
-echo '#update_downgrades_bool: Directs pacman to downgrade package if remote is older than local' >> "$conf_f"
-echo '#update_keys_bool: Check for security signature/key updates' >> "$conf_f"
-echo '#' >> "$conf_f"
-echo '# Custom Makepkg Flags for AUR packages (requires pikaur)' >> "$conf_f"
-echo '#zflag:packagename1,packagename2=--flag1,--flag2,--flag3' >> "$conf_f"
-echo '#' >> "$conf_f"
-echo '#' >> "$conf_f"
+if [ ! -d `dirname $xs_autoupdate_conf` ]; then mkdir `dirname $xs_autoupdate_conf`; fi
+echo '#Config for XS-AutoUpdate' > "$xs_autoupdate_conf"
+echo '#' >> "$xs_autoupdate_conf"
+echo '# AUR Settings #' >> "$xs_autoupdate_conf"
+echo '#aur_1helper_str: Valid options are auto,none,all,pikaur,apacman' >> "$xs_autoupdate_conf"
+echo '#aur_devel_bool:  If enabled, directs pikaur to update -git and -svn packages' >> "$xs_autoupdate_conf"
+echo '#' >> "$xs_autoupdate_conf"
+echo '# Cleanup Settings #' >> "$xs_autoupdate_conf"
+echo '#cln_1enable_bool:  Enables/disables all package cleanup' >> "$xs_autoupdate_conf"
+echo '#cln_aurpkg_bool:   Enables/disables AUR package cleanup' >> "$xs_autoupdate_conf"
+echo '#cln_aurbuild_bool: Enables/disables AUR build cleanup' >> "$xs_autoupdate_conf"
+echo '#cln_orphan_bool:   Enables/disables uninstall of uneeded packages' >> "$xs_autoupdate_conf"
+echo '#cln_paccache_num:  Number of official packages to keep (-1 to keep all)' >> "$xs_autoupdate_conf"
+echo '#' >> "$xs_autoupdate_conf"
+echo '# Flatpak Settings #' >> "$xs_autoupdate_conf"
+echo '#flatpak_1enable_bool: Check for Flatpak package updates' >> "$xs_autoupdate_conf"
+echo '#' >> "$xs_autoupdate_conf"
+echo '# Notification Settings #' >> "$xs_autoupdate_conf"
+echo '#notify_1enable_bool: Enable/Disable nofications' >> "$xs_autoupdate_conf"
+echo '#notify_lastmsg_num: Seconds before final normal notification expires (0=never)' >> "$xs_autoupdate_conf"
+echo '#notify_errors_bool: Include possible errors in notifications' >> "$xs_autoupdate_conf"
+echo '#' >> "$xs_autoupdate_conf"
+echo '# Main Settings #' >> "$xs_autoupdate_conf"
+echo '#main_ignorepkgs_str: list of packages to ignore separated by spaces (in addition to pacman.conf)' >> "$xs_autoupdate_conf"
+echo '#main_logdir_str: path to the log directory' >> "$xs_autoupdate_conf"
+echo '#main_country_str: Countries separated by commas from which to pull updates. Default is automatic (geoip)' >> "$xs_autoupdate_conf"
+echo '#main_testsite_str: url (without protocol) used to test internet connection' >> "$xs_autoupdate_conf"
+echo '#' >> "$xs_autoupdate_conf"
+echo '# Self-update Settings #' >> "$xs_autoupdate_conf"
+echo '#self_1enable_bool: Enable/Disable updating self (this script)' >> "$xs_autoupdate_conf"
+echo '#self_branch_str: Update branch (this script only): stable, beta' >> "$xs_autoupdate_conf"
+echo '#' >> "$xs_autoupdate_conf"
+echo '# Update Settings #' >> "$xs_autoupdate_conf"
+echo '#update_downgrades_bool: Directs pacman to downgrade package if remote is older than local' >> "$xs_autoupdate_conf"
+echo '#update_keys_bool: Check for security signature/key updates' >> "$xs_autoupdate_conf"
+echo '#' >> "$xs_autoupdate_conf"
+echo '# Custom Makepkg Flags for AUR packages (requires pikaur)' >> "$xs_autoupdate_conf"
+echo '#zflag:packagename1,packagename2=--flag1,--flag2,--flag3' >> "$xs_autoupdate_conf"
+echo '#' >> "$xs_autoupdate_conf"
+echo '#' >> "$xs_autoupdate_conf"
 DEFAULTIFS=$IFS; IFS=$'\n'
 for i in $(sort <<< "${!conf_a[*]}"); do
-	echo "$i=${conf_a[$i]}" >> "$conf_f"
+	echo "$i=${conf_a[$i]}" >> "$xs_autoupdate_conf"
 done; IFS=$DEFAULTIFS
 }
 
@@ -172,6 +174,8 @@ typeset -A conf_a; conf_a=(
     [main_logdir_str]="/var/log/xs"
     [main_country_str]=""
     [main_testsite_str]="www.google.com"
+    [self_1enable_bool]=$ctrue
+    [self_branch_str]="stable"
     [update_downgrades_bool]=$ctrue
     [update_keys_bool]=$ctrue
     #legacy
@@ -197,7 +201,7 @@ conf_legacy="bool_detectErrors bool_Downgrades bool_notifyMe bool_updateFlatpak 
 #Load external config
 #Basic config validation
 
-if [ -f $conf_f ]; then
+if [ -f $xs_autoupdate_conf ]; then
     while read line; do
         line=$(echo "$line" | cut -d ';' -f 1 | cut -d '#' -f 1)
         if echo "$line" | grep -F '=' &>/dev/null; then
@@ -226,6 +230,11 @@ if [ -f $conf_f ]; then
                         auto|none|all|pikaur|apacman) ;;
                         *) continue
                 esac; fi
+                #validate self_branch_str
+                if [[ "$varname" = "self_branch_str" ]]; then case "$line" in
+                        stable|beta) ;;
+                        *) continue
+                esac; fi
 
                 conf_a[$varname]=$line
                 echo "$varname" | grep -F "zflag:" >/dev/null && \
@@ -233,7 +242,7 @@ if [ -f $conf_f ]; then
 
             fi
         fi
-    done < "$conf_f"; unset line; unset varname
+    done < "$xs_autoupdate_conf"; unset line; unset varname
 fi
 unset validconf; shopt -u extglob
 
@@ -278,7 +287,11 @@ mkdir -p "${conf_a[main_logdir_str]}"; if [ ! -d "${conf_a[main_logdir_str]}" ];
 if [ ! -f "$log_f" ]; then echo "init">$log_f; fi
 if pidof -o %PPID -x "`basename "$0"`">/dev/null; then exit 0; fi #Only 1 main instance allowed
 exportconf
-if [ $# -eq 0 ]; then echo "`date` - XS-Update $vsndsp starting..." |tee $log_f; "$0" "XS"& exit 0; fi #Run in background
+if [ $# -eq 0 ]; then
+    echo "`date` - XS-Update $vsndsp starting..." |tee $log_f
+    troublem "Config file: $xs_autoupdate_conf"
+    "$0" "XS"& exit 0
+fi
 
 #Wait up to 5 minutes for network
 trouble "Waiting for network..."
@@ -290,8 +303,25 @@ waiting=1;waited=0; while [ $waiting = 1 ]; do
     fi
 done; unset waiting; unset waited
 
-
 sleep 8 # In case connection just established
+
+#Check for updates for self
+if [[ "${conf_a[self_1enable_bool]}" = "$ctrue" ]]; then
+    trouble "Checking for self-updates..."
+    vsn_new=""; hash_new=""
+    vsn_new="$(curl "https://raw.githubusercontent.com/lectrode/xs-update-manjaro/master/vsn_${conf_a[self_branch_str]}" | tr -cd '[:alnum:]+-.')"
+    if [[ ! "$(echo $vsn_new | cut -d '+' -f 1)" = "`printf "$(echo $vsn_new | cut -d '+' -f 1)\n$vsn" | sort -V | head -n1`" ]]; then
+        hash_new=$(curl "https://raw.githubusercontent.com/lectrode/xs-update-manjaro/${vsn_new}/hash_auto-update-sh" |tr -cd [:alnum:])
+        if [ "${#hash_new}" = "64" ]; then
+            wget "https://raw.githubusercontent.com/lectrode/xs-update-manjaro/${vsn_new}/auto-update.sh" -O "/tmp/xs-auto-update.sh"
+            if [[ "$(sha256sum '/tmp/xs-auto-update.sh' |cut -d ' ' -f 1 |tr -cd [:alnum:])" = "$hash_new" ]]; then
+                troublem "Updating script to $vsn_new..."
+                mv -f '/tmp/xs-auto-update.sh' "$0"
+                chmod +x "$0"; "$0" "XS"& exit 0
+            fi; [[ -f "/tmp/xs-auto-update.sh" ]] && rm -f "/tmp/xs-auto-update.sh"
+        fi;
+    fi; unset vsn_new; unset hash_new
+fi
 
 #wait up to 5 minutes for running instances of pacman/apacman/pikaur
 trouble "Waiting for pacman/apacman/pikaur..."

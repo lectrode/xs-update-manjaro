@@ -23,6 +23,8 @@
   * [main_logdir_str](#main_logdir_str "")
   * [main_country_str](#main_country_str "")
   * [main_testsite_str](#main_testsite_str "")
+  * [self_1enable_bool](#self_1enable_bool "")
+  * [self_branch_str](#self_1enable_bool "")
   * [update_downgrades_bool](#update_downgrades_bool "")
   * [update_keys_bool](#update_keys_bool "")
 * [Custom makepkg flags for specific AUR packages](#custom-makepkg-flags-for-specific-aur-packages "")
@@ -125,10 +127,14 @@ Drawbacks:
 
 ## Configuration:
 
-* Settings stored in /etc/xs/auto-update.conf
-* Settings file is generated automatically on first run
+* By default settings are located at /etc/xs/auto-update.conf
+* Settings file is (re)generated on every run
 * Defaults are recommended for general use
 * True and False are 1 and 0 respectively
+
+* Settings location can be changed by exporting `xs_autoupdate_conf` environment variable
+   * This needs absolute path and filename
+* Warning: Whichever file is specified will be overwritten whenever the script runs
 
 ### aur_1helper_str
 * Default: `auto`
@@ -167,7 +173,7 @@ Drawbacks:
  * Default: True
  * If true, checks for Flatpak package updates
  
- ### notify_1enable_bool
+### notify_1enable_bool
 * Default: True
 * If true, enables status notifications via `notify-send` to active users
 
@@ -190,10 +196,19 @@ Drawbacks:
 * Defines the directory where the log will be output
 
 ### main_country_str
- * Default: (blank)
- * If blank, `pacman-mirrors --geoip` is used
- * Countries separated by commas from which to pull updates
- * See output of `pacman-mirrors -l` for supported values
+* Default: (blank)
+* If blank, `pacman-mirrors --geoip` is used
+* Countries separated by commas from which to pull updates
+* See output of `pacman-mirrors -l` for supported values
+
+### self_1enable_bool
+* Default: True
+* If true, script checks for updates for itself ("self-updates")
+
+### self_branch_str
+* Default: stable
+* Script update branch (requires `self_1enable_bool` be True)
+* Current valid values are: stable, beta
 
 ### main_testsite_str
 * Default: `www.google.com`
@@ -217,8 +232,7 @@ Drawbacks:
 
 
 ## Sample configuration file
-### NOTE: Needs to be placed at /etc/xs/auto-update.conf
-### NOTE: Blank line at end is required for last line to be parsed
+* NOTE: Blank line at end is required for last line to be parsed
 ````
 aur_1helper_str=auto
 aur_devel_bool=1
@@ -235,6 +249,8 @@ main_testSite_str=www.google.com
 notify_1enable_bool=1
 notify_lastmsg_num=20
 notify_errors_bool=1
+self_1enable_bool=1
+self_branch_str=1
 update_downgrades_bool=1
 update_keys_bool=1
 zflag:libc++abi,libc++=--skippgpcheck,--nocheck
