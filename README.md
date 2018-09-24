@@ -45,7 +45,7 @@ This script requires root access and is made to run automatically at startup, al
 
 After performing a number of "checks" (make sure script isn't already running, check for internet connection, check for running instances of pacman/apacman, remove db.lck if it exists and nothing is updating, etc), this script primarily runs the following commands (if they are enabled) to update the computer:
 ````
-pacman-mirrors [--geoip || -c $str_mirrorCountry] # Update mirrors
+pacman-mirrors [--geoip || -c $main_country_str] # Update mirrors
 pacman -S --needed --noconfirm archlinux-keyring manjaro-keyring manjaro-system # Update system packages
 pacman-key --refresh-keys # Can be disabled via bool_updateKeys
 sync
@@ -130,12 +130,11 @@ Drawbacks:
 * By default settings are located at /etc/xs/auto-update.conf
 * Settings file is (re)generated on every run
 * Older settings will be converted to preserve preferences
-* Defaults are recommended for general use
 * True and False are 1 and 0 respectively
 
 * Settings location can be changed by exporting `xs_autoupdate_conf` environment variable
    * This needs absolute path and filename
-* Warning: whichever file is specified will be overwritten whenever the script runs
+   * Warning: whichever file is specified will be overwritten whenever the script runs
 
 ### aur_1helper_str
 * Default: `auto`
@@ -245,7 +244,7 @@ cln_paccache_num=0
 flatpak_1enable_bool=1
 main_ignorePackages_str=
 main_logdir_str=/var/log/xs
-main_mirrorCountry_str=
+main_country_str=
 main_testSite_str=www.google.com
 notify_1enable_bool=1
 notify_lastmsg_num=20
