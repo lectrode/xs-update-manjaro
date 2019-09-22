@@ -1,6 +1,6 @@
 #!/bin/bash
 #Auto Update For Manjaro Xfce by Lectrode
-vsn="v3.0.3"; vsndsp="$vsn 2018-09-23"
+vsn="v3.1.0-rc1"; vsndsp="$vsn 2019-09-21"
 #-Downloads and Installs new updates
 #-Depends: pacman, paccache, xfce4-notifyd, grep, ping
 #-Optional Depends: pikaur, apacman (deprecated)
@@ -44,37 +44,44 @@ if [ ! -d `dirname $xs_autoupdate_conf` ]; then mkdir `dirname $xs_autoupdate_co
 echo '#Config for XS-AutoUpdate' > "$xs_autoupdate_conf"
 echo '#' >> "$xs_autoupdate_conf"
 echo '# AUR Settings #' >> "$xs_autoupdate_conf"
-echo '#aur_1helper_str: Valid options are auto,none,all,pikaur,apacman' >> "$xs_autoupdate_conf"
-echo '#aur_devel_bool:  If enabled, directs pikaur to update -git and -svn packages' >> "$xs_autoupdate_conf"
+echo '#aur_1helper_str:          Valid options are auto,none,all,pikaur,apacman' >> "$xs_autoupdate_conf"
+echo '#aur_devel_bool:           If enabled, directs pikaur to update -git and -svn packages' >> "$xs_autoupdate_conf"
 echo '#' >> "$xs_autoupdate_conf"
 echo '# Cleanup Settings #' >> "$xs_autoupdate_conf"
-echo '#cln_1enable_bool:  Enables/disables all package cleanup' >> "$xs_autoupdate_conf"
-echo '#cln_aurpkg_bool:   Enables/disables AUR package cleanup' >> "$xs_autoupdate_conf"
-echo '#cln_aurbuild_bool: Enables/disables AUR build cleanup' >> "$xs_autoupdate_conf"
-echo '#cln_orphan_bool:   Enables/disables uninstall of uneeded packages' >> "$xs_autoupdate_conf"
-echo '#cln_paccache_num:  Number of official packages to keep (-1 to keep all)' >> "$xs_autoupdate_conf"
+echo '#cln_1enable_bool:         Enables/disables all package cleanup' >> "$xs_autoupdate_conf"
+echo '#cln_aurpkg_bool:          Enables/disables AUR package cleanup' >> "$xs_autoupdate_conf"
+echo '#cln_aurbuild_bool:        Enables/disables AUR build cleanup' >> "$xs_autoupdate_conf"
+echo '#cln_orphan_bool:          Enables/disables uninstall of uneeded packages' >> "$xs_autoupdate_conf"
+echo '#cln_paccache_num:         Number of official packages to keep (-1 to keep all)' >> "$xs_autoupdate_conf"
 echo '#' >> "$xs_autoupdate_conf"
 echo '# Flatpak Settings #' >> "$xs_autoupdate_conf"
-echo '#flatpak_1enable_bool: Check for Flatpak package updates' >> "$xs_autoupdate_conf"
+echo '#flatpak_1enable_bool:     Enables/Disables checking for Flatpak package updates' >> "$xs_autoupdate_conf"
 echo '#' >> "$xs_autoupdate_conf"
 echo '# Notification Settings #' >> "$xs_autoupdate_conf"
-echo '#notify_1enable_bool: Enable/Disable nofications' >> "$xs_autoupdate_conf"
-echo '#notify_lastmsg_num: Seconds before final normal notification expires (0=never)' >> "$xs_autoupdate_conf"
-echo '#notify_errors_bool: Include possible errors in notifications' >> "$xs_autoupdate_conf"
+echo '#notify_1enable_bool:      Enable/Disable nofications' >> "$xs_autoupdate_conf"
+echo '#notify_lastmsg_num:       Seconds before final normal notification expires (0=never)' >> "$xs_autoupdate_conf"
+echo '#notify_errors_bool:       Include possible errors in notifications' >> "$xs_autoupdate_conf"
 echo '#' >> "$xs_autoupdate_conf"
 echo '# Main Settings #' >> "$xs_autoupdate_conf"
-echo '#main_ignorepkgs_str: list of packages to ignore separated by spaces (in addition to pacman.conf)' >> "$xs_autoupdate_conf"
-echo '#main_logdir_str: path to the log directory' >> "$xs_autoupdate_conf"
-echo '#main_country_str: Countries separated by commas from which to pull updates. Default is automatic (geoip)' >> "$xs_autoupdate_conf"
-echo '#main_testsite_str: url (without protocol) used to test internet connection' >> "$xs_autoupdate_conf"
+echo '#main_ignorepkgs_str:      List of packages to ignore separated by spaces (in addition to pacman.conf)' >> "$xs_autoupdate_conf"
+echo '#main_logdir_str:          Path to the log directory' >> "$xs_autoupdate_conf"
+echo '#main_country_str:         Countries separated by commas from which to pull updates. Default is automatic (geoip)' >> "$xs_autoupdate_conf"
+echo '#main_testsite_str:        URL (without protocol) used to test internet connection' >> "$xs_autoupdate_conf"
+echo '#' >> "$xs_autoupdate_conf"
+echo '# Reboot Settings #' >> "$xs_autoupdate_conf"
+echo '#reboot_1enable_bool:      Enables/Disables automatic reboot after critical updates' >> "$xs_autoupdate_conf"
+echo '#reboot_delayiflogin_bool: Only delay rebooting computer if users are logged in' >> "$xs_autoupdate_conf"
+echo '#reboot_delay_num:         Delay in seconds to wait before rebooting the computer' >> "$xs_autoupdate_conf"
+echo '#reboot_notifyrep_num:     Reboot notification is updated every X seconds. Best if reboot_delay_num is evenly divisible by this' >> "$xs_autoupdate_conf"
+echo '#reboot_ignoreusers_str:   Ignore these users even if logged on. List users separated by spaces' >> "$xs_autoupdate_conf"
 echo '#' >> "$xs_autoupdate_conf"
 echo '# Self-update Settings #' >> "$xs_autoupdate_conf"
-echo '#self_1enable_bool: Enable/Disable updating self (this script)' >> "$xs_autoupdate_conf"
-echo '#self_branch_str: Update branch (this script only): stable, beta' >> "$xs_autoupdate_conf"
+echo '#self_1enable_bool:        Enable/Disable updating self (this script)' >> "$xs_autoupdate_conf"
+echo '#self_branch_str:          Update branch (this script only): stable, beta' >> "$xs_autoupdate_conf"
 echo '#' >> "$xs_autoupdate_conf"
 echo '# Update Settings #' >> "$xs_autoupdate_conf"
-echo '#update_downgrades_bool: Directs pacman to downgrade package if remote is older than local' >> "$xs_autoupdate_conf"
-echo '#update_keys_bool: Check for security signature/key updates' >> "$xs_autoupdate_conf"
+echo '#update_downgrades_bool:   Directs pacman to downgrade package if remote is older than local' >> "$xs_autoupdate_conf"
+echo '#update_keys_bool:         Enables/Disables checking for security signature/key updates' >> "$xs_autoupdate_conf"
 echo '#' >> "$xs_autoupdate_conf"
 echo '# Custom Makepkg Flags for AUR packages (requires pikaur)' >> "$xs_autoupdate_conf"
 echo '#zflag:packagename1,packagename2=--flag1,--flag2,--flag3' >> "$xs_autoupdate_conf"
@@ -88,7 +95,7 @@ done; IFS=$DEFAULTIFS
 
 #Notification Functions
 
-killmsg(){ if [ "${conf_a[notify_1enable_bool]}" = "$ctrue" ]; then killall xfce4-notifyd; fi; }
+killmsg(){ if [ "${conf_a[notify_1enable_bool]}" = "$ctrue" ]; then killall xfce4-notifyd 2>/dev/null; fi; }
 iconnormal(){ icon=ElectrodeXS; }
 iconwarn(){ icon=important; }
 iconcritical(){ icon=system-shutdown; }
@@ -112,8 +119,32 @@ finalmsg_normal(){
 }
 
 finalmsg_critical(){
-    killmsg; iconcritical; sendall "Kernel and/or drivers were updated. Please restart your computer to finish"
+    killmsg; iconcritical
+    
+    orig_log="$log_f"
     mv -f "$log_f" "${log_f}_`date -I`"; log_f=${log_f}_`date -I`
+    
+    if [ "${conf_a[reboot_1enable_bool]}" = "$ctrue" ]; then
+    
+        trouble "XS-done"
+        secremain=${conf_a[reboot_delay_num]}
+        echo "init">$orig_log
+        ignoreusers=`echo "${conf_a[reboot_ignoreusers_str]}" |sed 's/ /\\\|/g'`
+        while [ $secremain -gt 0 ]; do
+            usersexist=$false; loginctl list-sessions --no-legend |grep -v "$ignoreusers" |grep "seat\|pts" >/dev/null && usersexist=$true
+            
+            if [ "${conf_a[reboot_delayiflogin_bool]}" = "$ctrue" ]; then
+                if [ "$usersexist" = "$false" ]; then troublem "No logged-in users detected, rebooting now"; secremain=0; sleep 1; continue; fi; fi
+            
+            if [[ "$usersexist" = "$true" ]]; then killmsg; sendall "Kernel and/or drivers were updated.\nYour computer will automatically restart in \n$secremain seconds..."; fi
+            sleep ${conf_a[reboot_notifyrep_num]}
+            let secremain-=${conf_a[reboot_notifyrep_num]}
+        done
+
+        reboot
+    else
+        sendall "Kernel and/or drivers were updated. Please restart your computer to finish"
+    fi
 }
 
 getsessions(){
@@ -178,6 +209,11 @@ typeset -A conf_a; conf_a=(
     [self_branch_str]="stable"
     [update_downgrades_bool]=$ctrue
     [update_keys_bool]=$ctrue
+    [reboot_1enable_bool]=$cfalse
+    [reboot_delayiflogin_bool]=$ctrue
+    [reboot_delay_num]=120
+    [reboot_notifyrep_num]=10
+    [reboot_ignoreusers_str]="nobody lightdm sddm gdm"
     #legacy
     [bool_detectErrors]=""
     [bool_Downgrades]=""
@@ -194,7 +230,7 @@ typeset -A conf_a; conf_a=(
 shopt -s extglob # needed for validconf
 validconf=@($(echo "${!conf_a[*]}"|sed "s/ /|/g"))
 
-conf_int0="notify_lastmsg_num"
+conf_int0="notify_lastmsg_num reboot_delay_num reboot_notifyrep_num"
 conf_intn1="cln_paccache_num"
 conf_legacy="bool_detectErrors bool_Downgrades bool_notifyMe bool_updateFlatpak bool_updateKeys str_cleanLevel str_ignorePackages str_log_d str_mirrorCountry str_testSite"
 
@@ -225,6 +261,13 @@ if [ -f $xs_autoupdate_conf ]; then
                 #validate integers -1+
                 if echo "$conf_intn1" | grep "$varname" >/dev/null; then 
                     if [[ "$line" -lt "-1" ]]; then continue; fi; fi
+                #validate reboot_notifyrep_num
+                if [[ "$varname" = "reboot_notifyrep_num" ]]; then
+                    if [[ "$line" -gt "${conf_a[reboot_delay_num]}" ]]; then
+                        line=${conf_a[reboot_delay_num]}; fi
+                    if [[ "$line" = "0" ]]; then
+                        line=1; fi
+                fi
                 #validate aur_helper_str
                 if [[ "$varname" = "aur_helper_str" ]]; then case "$line" in
                         auto|none|all|pikaur|apacman) ;;
@@ -395,7 +438,7 @@ if [[ "$use_pikaur" = "1" ]]; then
     if [[ ! "${#flag_a[@]}" = "0" ]]; then
         trouble "Updating AUR packages with custom flags [pikaur]..."
         for i in ${!flag_a[*]}; do
-            pacman -Q $(echo "$i" | tr ',' ' ') && \
+            pacman -Q $(echo "$i" | tr ',' ' ') >/dev/null 2>&1 && \
                 pikaur -S --needed --noconfirm --noprogressbar --mflags=${flag_a[$i]} $(echo "$i" | tr ',' ' ') 2>&1 |tee -a $log_f
         done
     fi
@@ -442,7 +485,7 @@ grep "Total Removed Size:" $log_f >/dev/null && msg="$msg \nObsolete packages re
 if [ "${conf_a[notify_errors_bool]}" = "$ctrue" ]; then grep "error: failed " $log_f >/dev/null && msg="$msg \nSome packages encountered errors"; fi
 if [ ! "$msg" = "System update finished" ]; then msg="$msg \nDetails: $log_f"; fi
 if [ "$msg" = "System update finished" ]; then msg="System up-to-date, no changes made"; fi
-normcrit=norm; grep "upgrading " $log_f |grep -v "tor-browser"|grep -E "linux[0-9]{2,3}" >/dev/null && normcrit=crit
+normcrit=norm; grep "upgrading\|Updating" $log_f |grep -v "tor-browser"|grep -E "linux[0-9]{2,3}|systemd" >/dev/null && normcrit=crit
 [[ "$normcrit" = "norm" ]] && finalmsg_normal; [[ "$normcrit" = "crit" ]] && finalmsg_critical
 trouble "XS-done"; sleep 2; disown -a; sleep 2; systemctl stop xs-autoupdate.service >/dev/null 2>&1; exit 0
 
