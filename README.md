@@ -23,6 +23,11 @@
   * [main_logdir_str](#main_logdir_str "")
   * [main_country_str](#main_country_str "")
   * [main_testsite_str](#main_testsite_str "")
+  * [reboot_1enable_bool](#reboot_1enable_bool "")
+  * [reboot_delayiflogin_bool](#reboot_delayiflogin_bool "")
+  * [reboot_delay_num](#reboot_delay_num "")
+  * [reboot_notifyrep_num](#reboot_notifyrep_num "")
+  * [reboot_ignoreusers_str](#reboot_ignoreusers_str "")
   * [self_1enable_bool](#self_1enable_bool "")
   * [self_branch_str](#self_1enable_bool "")
   * [update_downgrades_bool](#update_downgrades_bool "")
@@ -41,14 +46,13 @@ This is not a replacement for manually updating/maintaining your own computer, b
 Personally, I use this script to update my personal computer, as well as help manage remote computers. If manual steps are required, I'll take care of those manually on the computers. Otherwise (as is usually the case), this script will keep those updated.
 
 ## Detailed Description
-This script requires root access and is made to run automatically at startup, although it can be run manually or on a schedule as well. It logs everything it does in [`$main_logdir_str`](#main_logdir_str "")`/auto-update.log`. If it detects that kernel or driver packages were updated (any package with `linux[0-9]{2,3}` in the name, with some exceptions), it will include the date in the log name to keep it for future reference, as well as notify the user that a restart is needed (it will not automatically restart the computer!). If a restart is needed, waiting to restart may cause some applications to have issues.
+This script requires root access and is made to run automatically at startup, although it can be run manually or on a schedule as well. It logs everything it does in [`$main_logdir_str`](#main_logdir_str "")`/auto-update.log`. If it detects that kernel or systemd packages were updated, it will include the date in the log name to keep it for future reference, as well as notify the user that a restart is needed. If automatic reboot is [enabled](#reboot_1enable_bool ""), it will also automatically reboot the computer (this is disabled by default). If a restart is needed, waiting to restart may cause some applications to have issues.
 
 After performing a number of "checks" (make sure script isn't already running, check for internet connection, check for running instances of pacman/apacman, remove db.lck if it exists and nothing is updating, etc), this script primarily runs the following commands (if they are enabled) to update the computer:
 ````
 pacman-mirrors [--geoip || -c $main_country_str] # Update mirrors
 pacman -S --needed --noconfirm archlinux-keyring manjaro-keyring manjaro-system # Update system packages
-pacman-key --refresh-keys # Can be disabled via bool_updateKeys
-sync
+pacman-key --refresh-keys; sync # Update package signature keys
 pacman -Syyu[u] --needed --noconfirm [ignored packages] # Update packages from official repos
 
 pikaur -Sau[u] [--devel] --needed --noconfirm --noprogressbar [ignored packages] # Update AUR packages
@@ -71,7 +75,7 @@ xs-updatehelper.desktop -> /etc/xdg/autostart/
 
 Make sure auto-update.sh is allowed to execute as a program
 Lastly, run this to enable the auto-update startup service:
-````systemctl enable xs-autoupdate````
+`sudo systemctl enable xs-autoupdate`
 
 
 ## Dependencies:
@@ -97,7 +101,7 @@ makepkg -fsri
 Features:
 * Actively developed/maintained
 * Supports latest PKGBUILD format and AUR features
-* Introduces the ability to pass [specific `makepkg` flags](#custom-makepkg-flags-for-specific-aur-packages "") to packages
+* Introduces the ability to pass [specific makepkg flags](#custom-makepkg-flags-for-specific-aur-packages "") to packages
 
 Drawbacks:
 * Does not support automatically importing PGP keys
@@ -145,46 +149,46 @@ Drawbacks:
 * `none` will not use any AUR helper
 
 ### aur_devel_bool
-* Default: True
+* Default: `1` (True)
 * If true, updates "devel" AUR packages (any package that ends in -git, -svn, etc)
 
 ### cln_1enable_bool
-* Default: True
+* Default: `1` (True)
 * If set to false, disables all cleanup steps
 
 ### cln_aurpkg_bool
-* Default: True
+* Default: `1` (True)
 * If this is True, all packages built from the AUR will be deleted when finished
 
 ### cln_aurbuild_bool
-* Default: True
+* Default: `1` (True)
 * If this is True, all AUR package build folders will be deleted when finished
 
 ### cln_orphan_bool
-* Default: True
+* Default: `1` (True)
 * If this is True, obsolete dependencies will be uninstalled when finished
 
 ### cln_paccache_num
-* Default: 0
+* Default: `0`
 * Specifies the number of official built packages to keep in cache
 * If set to "-1" all official packages will be kept (cache is usually `/var/cache/pacman/pkg`)
 
 ### flatpak_1enable_bool
- * Default: True
+ * Default: `1` (True)
  * If true, checks for Flatpak package updates
  
 ### notify_1enable_bool
-* Default: True
+* Default: `1` (True)
 * If true, enables status notifications via `notify-send` to active users
 
 ### notify_lastmsg_num
-* Default: 20
+* Default: `20`
 * Specifies how long (in seconds) the final "System update finished" notification is visible before it expires.
 * The "Kernel and/or drivers were updated" message does not expire, regardless of this setting
 * Requires `notify_1enable_bool` to be True
 
 ### notify_errors_bool
-* Default: True
+* Default: `1` (True)
 * If true, script attempts to detect errors. If any, includes message "Some packages encountered errors" in notification
 
 ### main_ignorepkgs_str
@@ -192,7 +196,7 @@ Drawbacks:
 * Packages (if any) to ignore, separated by spaces (these are in addition to those stored in pacman.conf)
 
 ### main_logdir_str
-* Default: "/var/log/xs"
+* Default: `/var/log/xs`
 * Defines the directory where the log will be output
 
 ### main_country_str
@@ -201,12 +205,38 @@ Drawbacks:
 * Countries separated by commas from which to pull updates
 * See output of `pacman-mirrors -l` for supported values
 
+### reboot_1enable_bool
+ * Default: `0` (False)
+ * If true, script will automatically reboot if it detects the kernel and/or systemd have been updated
+
+
+### reboot_delayiflogin_bool
+ * Default: `1` (True)
+ * If true, the reboot will be delayed *only if* a user is logged in. If false, there will always be a delay
+
+### reboot_delay_num
+ * Default: `120`
+ * Delay in seconds to wait before rebooting the computer
+
+
+### reboot_notifyrep_num
+ * Default: `10`
+ * Reboot notification is updated every X seconds
+ * Works best if reboot_delay_num is evenly divisible by this
+
+
+### reboot_ignoreusers_str
+ * Default: `nobody lightdm sddm gdm`
+ * List of users separated by spaces
+ * These users will not trigger the reboot delay even if they are logged on
+
+
 ### self_1enable_bool
-* Default: True
+* Default: `1` (True)
 * If true, script checks for updates for itself ("self-updates")
 
 ### self_branch_str
-* Default: stable
+* Default: `stable`
 * Script update branch (requires `self_1enable_bool` be True)
 * Current valid values are: `stable`, `beta`
 
@@ -216,11 +246,11 @@ Drawbacks:
 * Can also be an IP address
 
 ### update_downgrades_bool
-* Default: True
+* Default: `1` (True)
 * If true, allows pacman to downgrade packages if remote packages are a lesser version than installed
 
 ### update_keys_bool
-* Default: True
+* Default: `1` (True)
 * If true, runs `pacman-key --refresh-keys` before checking for package updates
 
 
@@ -228,7 +258,7 @@ Drawbacks:
 * Requires pikaur
 * You can add as many entries as you need
 * All packages listed in one line will be updated at the same time
-* Format: zflag:package1,package2=--flag1,--flag2,--flag3
+* Format: `zflag:package1,package2=--flag1,--flag2,--flag3`
 
 
 ## Sample configuration file
@@ -249,6 +279,11 @@ main_testSite_str=www.google.com
 notify_1enable_bool=1
 notify_lastmsg_num=20
 notify_errors_bool=1
+reboot_1enable_bool=0
+reboot_delayiflogin_bool=1
+ reboot_delay_num=120
+reboot_notifyrep_num=10
+reboot_ignoreusers_str=nobody lightdm sddm gdm
 self_1enable_bool=1
 self_branch_str=stable
 update_downgrades_bool=1
