@@ -1,6 +1,6 @@
 #!/bin/bash
 #Auto Update For Manjaro Xfce by Lectrode
-vsn="v3.1.0-rc1"; vsndsp="$vsn 2019-09-21"
+vsn="v3.1.0-rc2"; vsndsp="$vsn 2019-12-22"
 #-Downloads and Installs new updates
 #-Depends: pacman, paccache, xfce4-notifyd, grep, ping
 #-Optional Depends: pikaur, apacman (deprecated)
@@ -350,7 +350,7 @@ sleep 8 # In case connection just established
 
 #Check for updates for self
 if [[ "${conf_a[self_1enable_bool]}" = "$ctrue" ]]; then
-    trouble "Checking for self-updates..."
+    trouble "Checking for self-updates [branch: ${conf_a[self_branch_str]}]..."
     vsn_new=""; hash_new=""
     vsn_new="$(curl "https://raw.githubusercontent.com/lectrode/xs-update-manjaro/master/vsn_${conf_a[self_branch_str]}" | tr -cd '[:alnum:]+-.')"
     if [[ ! "$(echo $vsn_new | cut -d '+' -f 1)" = "`printf "$(echo $vsn_new | cut -d '+' -f 1)\n$vsn" | sort -V | head -n1`" ]]; then
@@ -485,7 +485,7 @@ grep "Total Removed Size:" $log_f >/dev/null && msg="$msg \nObsolete packages re
 if [ "${conf_a[notify_errors_bool]}" = "$ctrue" ]; then grep "error: failed " $log_f >/dev/null && msg="$msg \nSome packages encountered errors"; fi
 if [ ! "$msg" = "System update finished" ]; then msg="$msg \nDetails: $log_f"; fi
 if [ "$msg" = "System update finished" ]; then msg="System up-to-date, no changes made"; fi
-normcrit=norm; grep "upgrading\|Updating" $log_f |grep -v "tor-browser"|grep -E "linux[0-9]{2,3}|systemd" >/dev/null && normcrit=crit
+normcrit=norm; grep -Ei "(up|down)(grad|dat)ing (linux[0-9]{2,3}|systemd)(\.|-| )" $log_f >/dev/null && normcrit=crit
 [[ "$normcrit" = "norm" ]] && finalmsg_normal; [[ "$normcrit" = "crit" ]] && finalmsg_critical
 trouble "XS-done"; sleep 2; disown -a; sleep 2; systemctl stop xs-autoupdate.service >/dev/null 2>&1; exit 0
 
