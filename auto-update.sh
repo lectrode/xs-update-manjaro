@@ -1,6 +1,6 @@
 #!/bin/bash
 #Auto Update For Manjaro Xfce by Lectrode
-vsn="v3.2.0-a1"; vsndsp="$vsn 2020-04-16"
+vsn="v3.2.0-rc1"; vsndsp="$vsn 2020-04-18"
 #-Downloads and Installs new updates
 #-Depends: pacman, paccache, xfce4-notifyd, grep, ping
 #-Optional Depends: pikaur, apacman (deprecated)
@@ -15,6 +15,8 @@ set $debgn
 
 trouble(){ (echo;echo "#XS# `date` - $@") |tee -a $log_f; }
 troublem(){ echo "XS-$@" |tee -a $log_f; }
+
+test_online(){ ping -c 1 "${conf_a[main_testsite_str]}" >/dev/null 2>&1 && return 0; return 1; }
 
 pacclean(){
 [[ ! "${conf_a[cln_1enable_bool]}" = "$ctrue" ]] && return
@@ -45,7 +47,8 @@ echo '#Config for XS-AutoUpdate' > "$xs_autoupdate_conf"
 echo '#' >> "$xs_autoupdate_conf"
 echo '# AUR Settings #' >> "$xs_autoupdate_conf"
 echo '#aur_1helper_str:          Valid options are auto,none,all,pikaur,apacman' >> "$xs_autoupdate_conf"
-echo '#aur_devel_freq:           Update -git and -svn packages every X days (-1 to disable)' >> "$xs_autoupdate_conf"
+echo '#aur_update_freq:          Update AUR packages every X days' >> "$xs_autoupdate_conf"
+echo '#aur_devel_freq:           Update -git and -svn AUR packages every X days (-1 to disable, best if a multiple of aur_update_freq, pikaur only)' >> "$xs_autoupdate_conf"
 echo '#' >> "$xs_autoupdate_conf"
 echo '# Cleanup Settings #' >> "$xs_autoupdate_conf"
 echo '#cln_1enable_bool:         Enables/disables ALL package cleanup (overrides following cleanup settings)' >> "$xs_autoupdate_conf"
@@ -229,6 +232,7 @@ typeset -A flag_a
 
 typeset -A conf_a; conf_a=(
     [aur_1helper_str]="auto"
+    [aur_update_freq]=3
     [aur_devel_freq]=6
     [cln_1enable_bool]=$ctrue
     [cln_aurpkg_bool]=$ctrue
@@ -273,7 +277,7 @@ shopt -s extglob # needed for validconf
 validconf=@($(echo "${!conf_a[*]}"|sed "s/ /|/g"))
 
 conf_int0="notify_lastmsg_num reboot_delay_num reboot_notifyrep_num"
-conf_intn1="cln_paccache_num aur_devel_freq flatpak_update_freq update_keys_freq update_mirrors_freq"
+conf_intn1="cln_paccache_num aur_update_freq aur_devel_freq flatpak_update_freq update_keys_freq update_mirrors_freq"
 conf_legacy="bool_detectErrors bool_Downgrades bool_notifyMe bool_updateFlatpak bool_updateKeys str_cleanLevel \
     str_ignorePackages str_log_d str_mirrorCountry str_testSite aur_devel_bool flatpak_1enable_bool"
 
@@ -366,7 +370,8 @@ perst_f="${perst_d}/auto-update_persist.dat"
 
 #Load persistent data
 typeset -A perst_a; perst_a=(
-    [last_devel_update]="20000101"
+    [last_aur_update]="20000101"
+    [last_aurdev_update]="20000101"
     [last_flatpak_update]="20000101"
     [last_keys_update]="20000101"
     [last_mirrors_update]="20000101"
@@ -422,7 +427,7 @@ fi
 #Wait up to 5 minutes for network
 trouble "Waiting for network..."
 waiting=1;waited=0; while [ $waiting = 1 ]; do
-    ping -c 1 "${conf_a[main_testsite_str]}" >/dev/null && waiting=0
+    test_online && waiting=0
     if [ $waiting = 1 ]; then
         if [ $waited -ge 60 ]; then exit; fi
         sleep 5; waited=$(($waited+1))
@@ -483,20 +488,23 @@ pacclean
 if perst_isneeded "${conf_a[update_mirrors_freq]}" "${perst_a[last_mirrors_update]}"; then
     trouble "Updating Mirrors..."
     pacman-mirrors $pacmirArgs 2>&1 |sed 's/\x1B\[[0-9;]\+[A-Za-z]//g' |tr -cd '\11\12\15\40-\176' |tee -a $log_f
-    perst_update "last_mirrors_update"
+    err_mirrors=${PIPESTATUS[0]}; if [[ $err_mirrors -eq 0 ]]; then 
+        perst_update "last_mirrors_update"; else trouble "ERR: pacman-mirrors exited with code $err_mirrors"; fi
 fi
-
-
-trouble "Updating key packages..."
-pacman -S --needed --noconfirm archlinux-keyring manjaro-keyring manjaro-system 2>&1 |tee -a $log_f
 
 if perst_isneeded "${conf_a[update_keys_freq]}" "${perst_a[last_keys_update]}"; then
     trouble "Refreshing keys..."; pacman-key --refresh-keys  2>&1 |tee -a $log_f
-    perst_update "last_keys_update"
+    err_keys=${PIPESTATUS[0]}; if [[ $err_keys -eq 0 ]]; then
+        perst_update "last_keys_update"; else trouble "ERR: pacman-key exited with code $err_keys"; fi
 fi
 
+trouble "Updating system packages..."
+pacman -Syy --needed --noconfirm archlinux-keyring manjaro-keyring manjaro-system 2>&1 |tee -a $log_f
+err_sys=${PIPESTATUS[0]}; if [[ $err_sys -ne 0 ]]; then trouble "ERR: pacman exited with code $err_sys"; fi
+
 sync; trouble "Updating packages from main repos..."
-pacman -Syyu$pacdown --needed --noconfirm $pacignore 2>&1 |tee -a $log_f
+pacman -Su$pacdown --needed --noconfirm $pacignore 2>&1 |tee -a $log_f
+err_repo=${PIPESTATUS[0]}; if [[ $err_repo -ne 0 ]]; then trouble "ERR: pacman exited with code $err_repo"; fi
 
 
 #Select supported/configured AUR Helper(s)
@@ -504,6 +512,7 @@ use_apacman=1; use_pikaur=1
 if echo "${conf_a[aur_1helper_str]}" | grep "none" >/dev/null; then conf_a[aur_1helper_str]="none"; use_apacman=0; use_pikaur=0; fi
 echo "${conf_a[aur_1helper_str]}" | grep 'all\|auto\|pikaur' >/dev/null || use_pikaur=0
 echo "${conf_a[aur_1helper_str]}" | grep 'all\|auto\|apacman' >/dev/null || use_apacman=0
+if ! perst_isneeded "${conf_a[aur_update_freq]}" "${perst_a[last_aur_update]}";  then use_apacman=0; use_pikaur=0; fi
 
 if [ "$use_pikaur" = "1" ]; then if ! type pikaur >/dev/null 2>&1; then
     use_pikaur=0
@@ -528,14 +537,21 @@ if [[ "$use_pikaur" = "1" ]]; then
     if [[ ! "${#flag_a[@]}" = "0" ]]; then
         trouble "Updating AUR packages with custom flags [pikaur]..."
         for i in ${!flag_a[*]}; do
+            if ! test_online; then trouble "Not online - skipping pikaur command"; break; fi
             pacman -Q $(echo "$i" | tr ',' ' ') >/dev/null 2>&1 && \
                 pikaur -S --needed --noconfirm --noprogressbar --mflags=${flag_a[$i]} $(echo "$i" | tr ',' ' ') 2>&1 |tee -a $log_f
+                let "err_aur=err_aur+${PIPESTATUS[0]}"
         done
     fi
-    perst_isneeded "${conf_a[aur_devel_freq]}" "${perst_a[last_devel_update]}" && devel="--devel"
-    trouble "Updating normal AUR packages [pikaur $devel]..."
-    pikaur -Sau$pacdown $devel --needed --noconfirm --noprogressbar $pacignore 2>&1 |tee -a $log_f
-    [[ "$devel" == "--devel" ]] && perst_update "last_devel_update"
+    perst_isneeded "${conf_a[aur_devel_freq]}" "${perst_a[last_aurdev_update]}" && devel="--devel"
+    if test_online; then
+        trouble "Updating remaining AUR packages [pikaur $devel]..."
+        pikaur -Sau$pacdown $devel --needed --noconfirm --noprogressbar $pacignore 2>&1 |tee -a $log_f
+        let "err_aur=err_aur+${PIPESTATUS[0]}"; if [[ $err_aur -eq 0 ]]; then
+            perst_update "last_aur_update"
+            [[ "$devel" == "--devel" ]] && perst_update "last_aurdev_update"
+        else trouble "ERR: pikaur exited with error"; fi
+    else err_aur="1"; trouble "Not online - skipping pikaur command"; fi
 fi
 
 if [[ "$use_apacman" = "1" ]]; then
@@ -550,6 +566,8 @@ if [[ "$use_apacman" = "1" ]]; then
     trouble "Updating AUR packages [apacman]..."
     apacman -Su$pacdown --auronly --needed --noconfirm $pacignore 2>&1 |\
         sed 's/\x1B\[[0-9;]\+[A-Za-z]//g' |tr -cd '\11\12\15\40-\176' |grep -Fv "%" |tee -a $log_f
+    err_aur=${PIPESTATUS[0]}; if [[ $err_aur -eq 0 ]]; then 
+        perst_update "last_aur_update"; else trouble "ERR: apacman exited with error"; fi
     if [ -d "`dirname $dummystty`" ]; then rm -rf "`dirname $dummystty`"; fi
 fi
 
@@ -559,6 +577,7 @@ if [[ "${conf_a[cln_1enable_bool]}" = "$ctrue" ]]; then
         if [[ ! "$(pacman -Qtdq)" = "" ]]; then
             trouble "Removing orphan packages..."
             pacman -Rnsc $(pacman -Qtdq) --noconfirm  2>&1 |tee -a $log_f
+            err_orphan=${PIPESTATUS[0]}; [[ $err_orphan -gt 0 ]] && trouble "ERR: pacman exited with error code $err_orphan"
         fi
     fi
 fi
@@ -569,19 +588,32 @@ if perst_isneeded "${conf_a[flatpak_update_freq]}" "${perst_a[last_flatpak_updat
     if type flatpak >/dev/null 2>&1; then
         trouble "Updating flatpak..."
         flatpak update -y | grep -Fv "[" 2>&1 |tee -a $log_f
-        perst_update "last_flatpak_update"
+        err_fpak=${PIPESTATUS[0]}; if [[ $err_fpak -eq 0 ]]; then
+            perst_update "last_flatpak_update"; else trouble "ERR: flatpak exited with error code $err_fpak"; fi
     fi
 fi
 
 #Finish
 trouble "Update completed, final notifications and cleanup..."
 kill $bkntfypid
-msg="System update finished"; grep "Total Installed Size:" $log_f >/dev/null && msg="$msg \nPackages successfully updated"
-grep "new signatures:" $log_f >/dev/null && msg="$msg \nSecurity signatures updated"
-grep "Total Removed Size:" $log_f >/dev/null && msg="$msg \nObsolete packages removed"
-if [ "${conf_a[notify_errors_bool]}" = "$ctrue" ]; then grep "error: failed " $log_f >/dev/null && msg="$msg \nSome packages encountered errors"; fi
-if [ ! "$msg" = "System update finished" ]; then msg="$msg \nDetails: $log_f"; fi
-if [ "$msg" = "System update finished" ]; then msg="System up-to-date, no changes made"; fi
+
+msg="System update finished"
+grep "Total Installed Size:\|new signatures:\|Total Removed Size:" $log_f >/dev/null || msg="$msg; no changes made"
+
+if [ "${conf_a[notify_errors_bool]}" = "$ctrue" ]; then 
+    echo error codes: [mirrors:$err_mirrors][sys:$err_sys][keys:$err_keys][repo:$err_repo][aur:$err_aur][fpak:$err_fpak]
+    [[ "$err_mirrors" -gt 0 ]] && errmsg="\n-Mirrors failed to update"
+    [[ "$err_sys" -gt 0 ]] && errmsg="$errmsg \n-System packages failed to update"
+    [[ "$err_keys" -gt 0 ]] && errmsg="$errmsg \n-Security signatures failed to update"
+    [[ "$err_repo" -gt 0 ]] && errmsg="$errmsg \n-Packages from main repos failed to update"
+    [[ "$err_aur" -gt 0 ]] && errmsg="$errmsg \n-Packages from AUR failed to update"
+    [[ "$err_fpak" -gt 0 ]] && errmsg="$errmsg \n-Packages from Flatpak failed to update"
+    [[ "$err_orphan" -gt 0 ]] && errmsg="$errmsg \n-Failed to remove orphan packages"
+    [[ "$errmsg" = "" ]] || msg="$msg \n\nSome update tasks encountered errors:$errmsg"
+fi
+
+if [ ! "$msg" = "System update finished; no changes made" ]; then msg="$msg\n\nDetails: $log_f"; fi
+
 normcrit=norm; grep -Ei "(up|down)(grad|dat)ing (linux[0-9]{2,3}|systemd)(\.|-| )" $log_f >/dev/null && normcrit=crit
 [[ "$normcrit" = "norm" ]] && finalmsg_normal; [[ "$normcrit" = "crit" ]] && finalmsg_critical
 trouble "XS-done"; sleep 2; disown -a; sleep 2; systemctl stop xs-autoupdate.service >/dev/null 2>&1; exit 0
