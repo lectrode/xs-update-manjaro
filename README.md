@@ -86,7 +86,7 @@ coreutils, pacman, paccache, xfce4-notifyd, grep, ping
 
 ## Supported AUR Helpers:
 
-If you want the script to automatically update packages from the AUR, it will need either [`pikaur`](https://github.com/actionless/pikaur) or `apacman` (deprecated).
+If you want the script to automatically update packages from the AUR, it will need either [`pikaur`](https://github.com/actionless/pikaur) (recommended) or `apacman` (deprecated).
 
 ### pikaur:
 
@@ -281,7 +281,7 @@ notify_lastmsg_num=20
 notify_errors_bool=1
 reboot_1enable_bool=0
 reboot_delayiflogin_bool=1
- reboot_delay_num=120
+reboot_delay_num=120
 reboot_notifyrep_num=10
 reboot_ignoreusers_str=nobody lightdm sddm gdm
 self_1enable_bool=1

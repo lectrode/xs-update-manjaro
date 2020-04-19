@@ -1,6 +1,6 @@
 #!/bin/bash
 #Auto Update For Manjaro Xfce by Lectrode
-vsn="v3.1.1"; vsndsp="$vsn 2019-12-22"
+vsn="v3.2.0-a1"; vsndsp="$vsn 2020-04-16"
 #-Downloads and Installs new updates
 #-Depends: pacman, paccache, xfce4-notifyd, grep, ping
 #-Optional Depends: pikaur, apacman (deprecated)
@@ -39,23 +39,23 @@ if [[ "${conf_a[cln_paccache_num]}" -gt "-1" ]]; then
 fi
 }
 
-exportconf(){
+conf_export(){
 if [ ! -d `dirname $xs_autoupdate_conf` ]; then mkdir `dirname $xs_autoupdate_conf`; fi
 echo '#Config for XS-AutoUpdate' > "$xs_autoupdate_conf"
 echo '#' >> "$xs_autoupdate_conf"
 echo '# AUR Settings #' >> "$xs_autoupdate_conf"
 echo '#aur_1helper_str:          Valid options are auto,none,all,pikaur,apacman' >> "$xs_autoupdate_conf"
-echo '#aur_devel_bool:           If enabled, directs pikaur to update -git and -svn packages' >> "$xs_autoupdate_conf"
+echo '#aur_devel_freq:           Update -git and -svn packages every X days (-1 to disable)' >> "$xs_autoupdate_conf"
 echo '#' >> "$xs_autoupdate_conf"
 echo '# Cleanup Settings #' >> "$xs_autoupdate_conf"
-echo '#cln_1enable_bool:         Enables/disables all package cleanup' >> "$xs_autoupdate_conf"
+echo '#cln_1enable_bool:         Enables/disables ALL package cleanup (overrides following cleanup settings)' >> "$xs_autoupdate_conf"
 echo '#cln_aurpkg_bool:          Enables/disables AUR package cleanup' >> "$xs_autoupdate_conf"
 echo '#cln_aurbuild_bool:        Enables/disables AUR build cleanup' >> "$xs_autoupdate_conf"
 echo '#cln_orphan_bool:          Enables/disables uninstall of uneeded packages' >> "$xs_autoupdate_conf"
 echo '#cln_paccache_num:         Number of official packages to keep (-1 to keep all)' >> "$xs_autoupdate_conf"
 echo '#' >> "$xs_autoupdate_conf"
 echo '# Flatpak Settings #' >> "$xs_autoupdate_conf"
-echo '#flatpak_1enable_bool:     Enables/Disables checking for Flatpak package updates' >> "$xs_autoupdate_conf"
+echo '#flatpak_update_freq:      Check for Flatpak package updates every X days (-1 to disable)' >> "$xs_autoupdate_conf"
 echo '#' >> "$xs_autoupdate_conf"
 echo '# Notification Settings #' >> "$xs_autoupdate_conf"
 echo '#notify_1enable_bool:      Enable/Disable nofications' >> "$xs_autoupdate_conf"
@@ -65,6 +65,7 @@ echo '#' >> "$xs_autoupdate_conf"
 echo '# Main Settings #' >> "$xs_autoupdate_conf"
 echo '#main_ignorepkgs_str:      List of packages to ignore separated by spaces (in addition to pacman.conf)' >> "$xs_autoupdate_conf"
 echo '#main_logdir_str:          Path to the log directory' >> "$xs_autoupdate_conf"
+echo '#main_perstdir_str:        Path to the persistant timestamp directory (uses main_logdir_str if not defined)' >> "$xs_autoupdate_conf"
 echo '#main_country_str:         Countries separated by commas from which to pull updates. Default is automatic (geoip)' >> "$xs_autoupdate_conf"
 echo '#main_testsite_str:        URL (without protocol) used to test internet connection' >> "$xs_autoupdate_conf"
 echo '#' >> "$xs_autoupdate_conf"
@@ -81,7 +82,8 @@ echo '#self_branch_str:          Update branch (this script only): stable, beta'
 echo '#' >> "$xs_autoupdate_conf"
 echo '# Update Settings #' >> "$xs_autoupdate_conf"
 echo '#update_downgrades_bool:   Directs pacman to downgrade package if remote is older than local' >> "$xs_autoupdate_conf"
-echo '#update_keys_bool:         Enables/Disables checking for security signature/key updates' >> "$xs_autoupdate_conf"
+echo '#update_mirrors_freq:      Update mirror list every X days (-1 to disable)' >> "$xs_autoupdate_conf"
+echo '#update_keys_freq:         Check for security signature/key updates every X days (-1 to disable)' >> "$xs_autoupdate_conf"
 echo '#' >> "$xs_autoupdate_conf"
 echo '# Custom Makepkg Flags for AUR packages (requires pikaur)' >> "$xs_autoupdate_conf"
 echo '#zflag:packagename1,packagename2=--flag1,--flag2,--flag3' >> "$xs_autoupdate_conf"
@@ -92,6 +94,42 @@ for i in $(sort <<< "${!conf_a[*]}"); do
 	echo "$i=${conf_a[$i]}" >> "$xs_autoupdate_conf"
 done; IFS=$DEFAULTIFS
 }
+
+#Persistant Data Functions
+
+perst_isneeded(){
+#$1 = frequency: xxxx_freq
+#$2 = previous date: perst_a[last_xxxx]
+
+    if [[ "$1" -eq "-1" ]]; then return 1; fi
+    curdate=`date +'%Y%m%d'`
+    let "diffd=$curdate-$2"
+    
+    if [[ "$diffd" -lt "0" ]]; then
+        return 0
+    elif [[ "$diffd" -ge "$1" ]]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+perst_update(){
+#$1 = last_*
+    perst_a[$1]=`date +'%Y%m%d'`
+    echo "$1=`date +'%Y%m%d'`" >> "$perst_f"
+}
+
+perst_export(){
+    touch "$perst_f"
+    echo "#Last day specific tasks were performed" > "$perst_f"
+
+    DEFAULTIFS=$IFS; IFS=$'\n'
+    for i in $(sort <<< "${!perst_a[*]}"); do
+        echo "$i=${perst_a[$i]}" >> "$perst_f"
+    done; IFS=$DEFAULTIFS
+}
+
 
 #Notification Functions
 
@@ -191,24 +229,26 @@ typeset -A flag_a
 
 typeset -A conf_a; conf_a=(
     [aur_1helper_str]="auto"
-    [aur_devel_bool]=$ctrue
+    [aur_devel_freq]=6
     [cln_1enable_bool]=$ctrue
     [cln_aurpkg_bool]=$ctrue
     [cln_aurbuild_bool]=$ctrue
     [cln_orphan_bool]=$ctrue
     [cln_paccache_num]=0
-    [flatpak_1enable_bool]=$ctrue
+    [flatpak_update_freq]=3
     [notify_1enable_bool]=$ctrue
     [notify_lastmsg_num]=20
     [notify_errors_bool]=$ctrue
     [main_ignorepkgs_str]=""
     [main_logdir_str]="/var/log/xs"
+    [main_perstdir_str]=""
     [main_country_str]=""
     [main_testsite_str]="www.google.com"
     [self_1enable_bool]=$ctrue
     [self_branch_str]="stable"
     [update_downgrades_bool]=$ctrue
-    [update_keys_bool]=$ctrue
+    [update_keys_freq]=30
+    [update_mirrors_freq]=0
     [reboot_1enable_bool]=$cfalse
     [reboot_delayiflogin_bool]=$ctrue
     [reboot_delay_num]=120
@@ -225,19 +265,22 @@ typeset -A conf_a; conf_a=(
     [str_log_d]=""
     [str_mirrorCountry]=""
     [str_testSite]=""
+    [aur_devel_bool]=""
+    [flatpak_1enable_bool]=""
 )
 
 shopt -s extglob # needed for validconf
 validconf=@($(echo "${!conf_a[*]}"|sed "s/ /|/g"))
 
 conf_int0="notify_lastmsg_num reboot_delay_num reboot_notifyrep_num"
-conf_intn1="cln_paccache_num"
-conf_legacy="bool_detectErrors bool_Downgrades bool_notifyMe bool_updateFlatpak bool_updateKeys str_cleanLevel str_ignorePackages str_log_d str_mirrorCountry str_testSite"
+conf_intn1="cln_paccache_num aur_devel_freq flatpak_update_freq update_keys_freq update_mirrors_freq"
+conf_legacy="bool_detectErrors bool_Downgrades bool_notifyMe bool_updateFlatpak bool_updateKeys str_cleanLevel \
+    str_ignorePackages str_log_d str_mirrorCountry str_testSite aur_devel_bool flatpak_1enable_bool"
 
 #Load external config
 #Basic config validation
 
-if [ -f $xs_autoupdate_conf ]; then
+if [[ -f "$xs_autoupdate_conf" ]]; then
     while read line; do
         line=$(echo "$line" | cut -d ';' -f 1 | cut -d '#' -f 1)
         if echo "$line" | grep -F '=' &>/dev/null; then
@@ -297,15 +340,17 @@ case "${conf_a[str_cleanLevel]}" in
     off)  conf_a[cln_aurpkg_bool]="$cfalse"; conf_a[cln_aurbuild_bool]="$cfalse"; conf_a[cln_paccache_num]=-1
 esac
 
-[[ ! "${conf_a[bool_detectErrors]}" = "" ]]  && conf_a[notify_errors_bool]="${conf_a[bool_detectErrors]}"
-[[ ! "${conf_a[bool_Downgrades]}" = "" ]]    && conf_a[update_downgrades_bool]="${conf_a[bool_Downgrades]}"
-[[ ! "${conf_a[bool_notifyMe]}" = "" ]]      && conf_a[notify_1enable_bool]="${conf_a[bool_notifyMe]}"
-[[ ! "${conf_a[bool_updateFlatpak]}" = "" ]] && conf_a[flatpak_1enable_bool]="${conf_a[bool_updateFlatpak]}"
-[[ ! "${conf_a[bool_updateKeys]}" = "" ]]    && conf_a[update_keys_bool]="${conf_a[bool_updateKeys]}"
-[[ ! "${conf_a[str_ignorePackages]}" = "" ]] && conf_a[main_ignorepkgs_str]="${conf_a[str_ignorePackages]}"
-[[ ! "${conf_a[str_log_d]}" = "" ]]          && conf_a[main_logdir_str]="${conf_a[str_log_d]}"
-[[ ! "${conf_a[str_mirrorCountry]}" = "" ]]  && conf_a[main_country_str]="${conf_a[str_mirrorCountry]}"
-[[ ! "${conf_a[str_testSite]}" = "" ]]       && conf_a[main_testsite_str]="${conf_a[str_testSite]}"
+[[ ! "${conf_a[bool_detectErrors]}" = "" ]]   && conf_a[notify_errors_bool]="${conf_a[bool_detectErrors]}"
+[[ ! "${conf_a[bool_Downgrades]}" = "" ]]     && conf_a[update_downgrades_bool]="${conf_a[bool_Downgrades]}"
+[[ ! "${conf_a[bool_notifyMe]}" = "" ]]       && conf_a[notify_1enable_bool]="${conf_a[bool_notifyMe]}"
+[[ ! "${conf_a[bool_updateFlatpak]}" = "" ]]  && conf_a[flatpak_1enable_bool]="${conf_a[bool_updateFlatpak]}"
+[[ ! "${conf_a[bool_updateKeys]}" = "" ]]     && conf_a[update_keys_bool]="${conf_a[bool_updateKeys]}"
+[[ ! "${conf_a[str_ignorePackages]}" = "" ]]  && conf_a[main_ignorepkgs_str]="${conf_a[str_ignorePackages]}"
+[[ ! "${conf_a[str_log_d]}" = "" ]]           && conf_a[main_logdir_str]="${conf_a[str_log_d]}"
+[[ ! "${conf_a[str_mirrorCountry]}" = "" ]]   && conf_a[main_country_str]="${conf_a[str_mirrorCountry]}"
+[[ ! "${conf_a[str_testSite]}" = "" ]]        && conf_a[main_testsite_str]="${conf_a[str_testSite]}"
+[[ "${conf_a[aur_devel_bool]}" = "0" ]]       && conf_a[aur_devel_freq]="-1"
+[[ "${conf_a[flatpak_1enable_bool]}" = "0" ]] && conf_a[flatpak_update_freq]="-1"
 
 DEFAULTIFS=$IFS; IFS=$' '
 for i in $(sort <<< "$conf_legacy"); do
@@ -314,6 +359,43 @@ done; IFS=$DEFAULTIFS
 
 
 log_d="${conf_a[main_logdir_str]}"; log_f="${log_d}/auto-update.log"
+
+if [ "${conf_a[main_perstdir_str]}" = "" ]; then perst_d="$log_d";
+else perst_d="${conf_a[main_perstdir_str]}"; fi
+perst_f="${perst_d}/auto-update_persist.dat"
+
+#Load persistent data
+typeset -A perst_a; perst_a=(
+    [last_devel_update]="20000101"
+    [last_flatpak_update]="20000101"
+    [last_keys_update]="20000101"
+    [last_mirrors_update]="20000101"
+)
+
+shopt -s extglob # needed for validconf
+validconf=@($(echo "${!perst_a[*]}"|sed "s/ /|/g"))
+
+
+if [[ -f "$perst_f" ]]; then
+    while read line; do
+        line=$(echo "$line" | cut -d ';' -f 1 | cut -d '#' -f 1)
+        if echo "$line" | grep -F '=' &>/dev/null; then
+            varname=$(echo "$line" | cut -d '=' -f 1)
+            case $varname in
+                $validconf) ;;
+                *) continue
+            esac
+            line=$(echo "$line" | cut -d '=' -f 2-)
+            if [[ ! "$line" = "" ]]; then
+                #validate timestamp
+                let "line += 0"; [[ "$line" -lt "20000101" ]] && continue
+                perst_a[$varname]=$line
+            fi
+        fi
+    done < "$perst_f"; unset line; unset varname
+fi
+
+unset validconf; shopt -u extglob
 
 
 #---Main---
@@ -329,7 +411,8 @@ mkdir -p "${conf_a[main_logdir_str]}"; if [ ! -d "${conf_a[main_logdir_str]}" ];
     echo "Critical error: could not create log directory"; sleep 10; exit; fi
 if [ ! -f "$log_f" ]; then echo "init">$log_f; fi
 if pidof -o %PPID -x "`basename "$0"`">/dev/null; then exit 0; fi #Only 1 main instance allowed
-exportconf
+conf_export
+perst_export
 if [ $# -eq 0 ]; then
     echo "`date` - XS-Update $vsndsp starting..." |tee $log_f
     troublem "Config file: $xs_autoupdate_conf"
@@ -387,7 +470,7 @@ pacmirArgs="--geoip"
 [[ "${conf_a[main_country_str]}" = "" ]] || pacmirArgs="-c ${conf_a[main_country_str]}"
 [[ "${conf_a[main_ignorepkgs_str]}" = "" ]] || pacignore="--ignore ${conf_a[main_ignorepkgs_str]}"
 [[ "${conf_a[update_downgrades_bool]}" = "$ctrue" ]] && pacdown="u"
-[[ "${conf_a[aur_devel_bool]}" = "$ctrue" ]] && devel="--devel"
+
 getsessions; i=0; while [ $i -lt ${#s_usr[@]} ]; do
 if [ -d "${s_home[$i]}/.cache" ]; then
     mkdir -p "${s_home[$i]}/.cache/xs"; echo "tmp" > "${s_home[$i]}/.cache/xs/logonnotify"
@@ -396,16 +479,23 @@ if [ -d "${s_home[$i]}/.cache" ]; then
 
 #Check for, download, and install main updates
 pacclean
-trouble "Updating Mirrors..."
-pacman-mirrors $pacmirArgs 2>&1 |sed 's/\x1B\[[0-9;]\+[A-Za-z]//g' |tr -cd '\11\12\15\40-\176' |tee -a $log_f
+
+if perst_isneeded "${conf_a[update_mirrors_freq]}" "${perst_a[last_mirrors_update]}"; then
+    trouble "Updating Mirrors..."
+    pacman-mirrors $pacmirArgs 2>&1 |sed 's/\x1B\[[0-9;]\+[A-Za-z]//g' |tr -cd '\11\12\15\40-\176' |tee -a $log_f
+    perst_update "last_mirrors_update"
+fi
+
 
 trouble "Updating key packages..."
 pacman -S --needed --noconfirm archlinux-keyring manjaro-keyring manjaro-system 2>&1 |tee -a $log_f
 
-if [[ "${conf_a[update_keys_bool]}" = "$ctrue" ]]; then
-    trouble "Refreshing keys..."; (pacman-key --refresh-keys; sync;)  2>&1 |tee -a $log_f; fi
+if perst_isneeded "${conf_a[update_keys_freq]}" "${perst_a[last_keys_update]}"; then
+    trouble "Refreshing keys..."; pacman-key --refresh-keys  2>&1 |tee -a $log_f
+    perst_update "last_keys_update"
+fi
 
-trouble "Updating packages from main repos..."
+sync; trouble "Updating packages from main repos..."
 pacman -Syyu$pacdown --needed --noconfirm $pacignore 2>&1 |tee -a $log_f
 
 
@@ -442,8 +532,10 @@ if [[ "$use_pikaur" = "1" ]]; then
                 pikaur -S --needed --noconfirm --noprogressbar --mflags=${flag_a[$i]} $(echo "$i" | tr ',' ' ') 2>&1 |tee -a $log_f
         done
     fi
-    trouble "Updating normal AUR packages [pikaur]..."
+    perst_isneeded "${conf_a[aur_devel_freq]}" "${perst_a[last_devel_update]}" && devel="--devel"
+    trouble "Updating normal AUR packages [pikaur $devel]..."
     pikaur -Sau$pacdown $devel --needed --noconfirm --noprogressbar $pacignore 2>&1 |tee -a $log_f
+    [[ "$devel" == "--devel" ]] && perst_update "last_devel_update"
 fi
 
 if [[ "$use_apacman" = "1" ]]; then
@@ -462,19 +554,24 @@ if [[ "$use_apacman" = "1" ]]; then
 fi
 
 #Remove orphan packages, cleanup
-if [[ "${conf_a[cln_1enable_bool]}" = "$ctrue" ]]; then if [[ "${conf_a[cln_orphan_bool]}" = "$ctrue" ]]; then
-    if [[ ! "$(pacman -Qtdq)" = "" ]]; then
-        trouble "Removing orphan packages..."
-        pacman -Rnsc $(pacman -Qtdq) --noconfirm  2>&1 |tee -a $log_f
+if [[ "${conf_a[cln_1enable_bool]}" = "$ctrue" ]]; then 
+    if [[ "${conf_a[cln_orphan_bool]}" = "$ctrue" ]]; then
+        if [[ ! "$(pacman -Qtdq)" = "" ]]; then
+            trouble "Removing orphan packages..."
+            pacman -Rnsc $(pacman -Qtdq) --noconfirm  2>&1 |tee -a $log_f
+        fi
     fi
-fi; fi
+fi
 pacclean
 
 #Update Flatpak
-if [[ "${conf_a[flatpak_1enable_bool]}" = "$ctrue" ]]; then if type flatpak >/dev/null 2>&1; then
-    trouble "Updating flatpak..."
-    flatpak update -y | grep -Fv "[" 2>&1 |tee -a $log_f
-fi; fi
+if perst_isneeded "${conf_a[flatpak_update_freq]}" "${perst_a[last_flatpak_update]}"; then
+    if type flatpak >/dev/null 2>&1; then
+        trouble "Updating flatpak..."
+        flatpak update -y | grep -Fv "[" 2>&1 |tee -a $log_f
+        perst_update "last_flatpak_update"
+    fi
+fi
 
 #Finish
 trouble "Update completed, final notifications and cleanup..."
@@ -488,4 +585,5 @@ if [ "$msg" = "System update finished" ]; then msg="System up-to-date, no change
 normcrit=norm; grep -Ei "(up|down)(grad|dat)ing (linux[0-9]{2,3}|systemd)(\.|-| )" $log_f >/dev/null && normcrit=crit
 [[ "$normcrit" = "norm" ]] && finalmsg_normal; [[ "$normcrit" = "crit" ]] && finalmsg_critical
 trouble "XS-done"; sleep 2; disown -a; sleep 2; systemctl stop xs-autoupdate.service >/dev/null 2>&1; exit 0
+
 
