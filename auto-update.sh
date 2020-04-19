@@ -1,9 +1,9 @@
 #!/bin/bash
-#Auto Update For Manjaro Xfce by Lectrode
-vsn="v3.2.0-rc1"; vsndsp="$vsn 2020-04-18"
+#Auto Update For Manjaro by Lectrode
+vsn="v3.2.0-rc2"; vsndsp="$vsn 2020-04-19"
 #-Downloads and Installs new updates
-#-Depends: pacman, paccache, xfce4-notifyd, grep, ping
-#-Optional Depends: pikaur, apacman (deprecated)
+#-Depends: pacman, paccache
+#-Optional Depends: notification daemon, pikaur, apacman (deprecated)
 true=0; false=1; ctrue=1; cfalse=0;
 
 
@@ -64,6 +64,7 @@ echo '# Notification Settings #' >> "$xs_autoupdate_conf"
 echo '#notify_1enable_bool:      Enable/Disable nofications' >> "$xs_autoupdate_conf"
 echo '#notify_lastmsg_num:       Seconds before final normal notification expires (0=never)' >> "$xs_autoupdate_conf"
 echo '#notify_errors_bool:       Include possible errors in notifications' >> "$xs_autoupdate_conf"
+echo '#notify_vsn_bool:          Include version number in notifications' >> "$xs_autoupdate_conf"
 echo '#' >> "$xs_autoupdate_conf"
 echo '# Main Settings #' >> "$xs_autoupdate_conf"
 echo '#main_ignorepkgs_str:      List of packages to ignore separated by spaces (in addition to pacman.conf)' >> "$xs_autoupdate_conf"
@@ -143,7 +144,7 @@ iconcritical(){ icon=system-shutdown; }
 
 sendmsg(){
     if [ "${conf_a[notify_1enable_bool]}" = "$ctrue" ]; then
-        DISPLAY=$2 su $1 -c "dbus-launch notify-send -i $icon XS-AutoUpdate -u critical \"$3\"" & fi
+        DISPLAY=$2 su $1 -c "notify-send -i $icon XS-AutoUpdate -u critical \"$notifyvsn$3\"" & fi
 }
 
 sendall(){
@@ -243,6 +244,7 @@ typeset -A conf_a; conf_a=(
     [notify_1enable_bool]=$ctrue
     [notify_lastmsg_num]=20
     [notify_errors_bool]=$ctrue
+    [notify_vsn_bool]=$cfalse
     [main_ignorepkgs_str]=""
     [main_logdir_str]="/var/log/xs"
     [main_perstdir_str]=""
@@ -404,6 +406,8 @@ unset validconf; shopt -u extglob
 
 
 #---Main---
+
+[[ "${conf_a[notify_vsn_bool]}" = "$ctrue" ]] && notifyvsn="[$vsn]\n"
 
 
 #Start Sub-processes
@@ -601,7 +605,7 @@ msg="System update finished"
 grep "Total Installed Size:\|new signatures:\|Total Removed Size:" $log_f >/dev/null || msg="$msg; no changes made"
 
 if [ "${conf_a[notify_errors_bool]}" = "$ctrue" ]; then 
-    echo error codes: [mirrors:$err_mirrors][sys:$err_sys][keys:$err_keys][repo:$err_repo][aur:$err_aur][fpak:$err_fpak]
+    trouble "error codes: [mirrors:$err_mirrors][sys:$err_sys][keys:$err_keys][repo:$err_repo][aur:$err_aur][fpak:$err_fpak][orphan:$err_orphan]"
     [[ "$err_mirrors" -gt 0 ]] && errmsg="\n-Mirrors failed to update"
     [[ "$err_sys" -gt 0 ]] && errmsg="$errmsg \n-System packages failed to update"
     [[ "$err_keys" -gt 0 ]] && errmsg="$errmsg \n-Security signatures failed to update"
@@ -612,10 +616,13 @@ if [ "${conf_a[notify_errors_bool]}" = "$ctrue" ]; then
     [[ "$errmsg" = "" ]] || msg="$msg \n\nSome update tasks encountered errors:$errmsg"
 fi
 
-if [ ! "$msg" = "System update finished; no changes made" ]; then msg="$msg\n\nDetails: $log_f"; fi
+if [ ! "$msg" = "System update finished; no changes made" ]; then 
+    [[ "$msg" = "System update finished" ]] || msg="$msg\n"
+    msg="$msg\nDetails: $log_f"
+fi
 
 normcrit=norm; grep -Ei "(up|down)(grad|dat)ing (linux[0-9]{2,3}|systemd)(\.|-| )" $log_f >/dev/null && normcrit=crit
-[[ "$normcrit" = "norm" ]] && finalmsg_normal; [[ "$normcrit" = "crit" ]] && finalmsg_critical
-trouble "XS-done"; sleep 2; disown -a; sleep 2; systemctl stop xs-autoupdate.service >/dev/null 2>&1; exit 0
+if [[ "$normcrit" = "norm" ]]; then finalmsg_normal; else finalmsg_critical; fi
+trouble "XS-done"; sync; disown -a; sleep 1; systemctl stop xs-autoupdate.service >/dev/null 2>&1; exit 0
 
 
