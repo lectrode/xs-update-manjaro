@@ -1,6 +1,6 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.2.1"; vsndsp="$vsn 2020-04-29"
+vsn="v3.2.2"; vsndsp="$vsn 2020-05-01"
 #-Downloads and Installs new updates
 #-Depends: pacman, paccache
 #-Optional Depends: notification daemon, pikaur, apacman (deprecated)
@@ -107,11 +107,11 @@ perst_isneeded(){
 
     if [[ "$1" -eq "-1" ]]; then return 1; fi
     curdate=`date +'%Y%m%d'`
-    let "diffd=$curdate-$2"
+    scheddate=`date -d "$2 + $1 days" +'%Y%m%d'`
     
-    if [[ "$diffd" -lt "0" ]]; then
+    if [[ "$scheddate" -lt "$curdate" ]]; then
         return 0
-    elif [[ "$diffd" -ge "$1" ]]; then
+    elif [[ "$2" -ge "$curdate" ]]; then
         return 0
     else
         return 1
