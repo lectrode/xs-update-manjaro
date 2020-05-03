@@ -1,6 +1,6 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.2.3"; vsndsp="$vsn 2020-05-02"
+vsn="v3.2.4"; vsndsp="$vsn 2020-05-02"
 #-Downloads and Installs new updates
 #-Depends: pacman, paccache
 #-Optional Depends: notification daemon, pikaur, apacman (deprecated)
@@ -111,7 +111,7 @@ perst_isneeded(){
     
     if [[ "$scheddate" -le "$curdate" ]]; then
         return 0
-    elif [[ "$2" -ge "$curdate" ]]; then
+    elif [[ "$2" -gt "$curdate" ]]; then
         return 0
     else
         return 1
