@@ -1,10 +1,10 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.2.4"; vsndsp="$vsn 2020-05-02"
+vsn="v3.2.5"; vsndsp="$vsn 2020-05-04"
 #-Downloads and Installs new updates
 #-Depends: pacman, paccache
 #-Optional Depends: notification daemon, pikaur, apacman (deprecated)
-true=0; false=1; ctrue=1; cfalse=0;
+true=0; false=1; ctrue=1; cfalse=0; set -m
 
 
 [[ "$xs_autoupdate_conf" = "" ]] && xs_autoupdate_conf='/etc/xs/auto-update.conf'
@@ -485,6 +485,7 @@ if [ -d "${s_home[$i]}/.cache" ]; then
     mkdir -p "${s_home[$i]}/.cache/xs"; echo "tmp" > "${s_home[$i]}/.cache/xs/logonnotify"
     chown -R ${s_usr[$i]} "${s_home[$i]}/.cache/xs"; fi; i=$(($i+1)); done
 "$0" "backnotify"& bkntfypid=$!
+set +m
 
 #Check for, download, and install main updates
 pacclean
