@@ -1,6 +1,6 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.2.5"; vsndsp="$vsn 2020-05-04"
+vsn="v3.2.6"; vsndsp="$vsn 2020-05-04"
 #-Downloads and Installs new updates
 #-Depends: pacman, paccache
 #-Optional Depends: notification daemon, pikaur, apacman (deprecated)
@@ -448,7 +448,7 @@ if [[ "${conf_a[self_1enable_bool]}" = "$ctrue" ]]; then
     if [[ ! "$(echo $vsn_new | cut -d '+' -f 1)" = "`printf "$(echo $vsn_new | cut -d '+' -f 1)\n$vsn" | sort -V | head -n1`" ]]; then
         hash_new=$(curl "https://raw.githubusercontent.com/lectrode/xs-update-manjaro/${vsn_new}/hash_auto-update-sh" |tr -cd [:alnum:])
         if [ "${#hash_new}" = "64" ]; then
-            wget "https://raw.githubusercontent.com/lectrode/xs-update-manjaro/${vsn_new}/auto-update.sh" -O "/tmp/xs-auto-update.sh"
+            wget "https://raw.githubusercontent.com/lectrode/xs-update-manjaro/${vsn_new}/auto-update.sh" -O "/tmp/xs-auto-update.sh" -q
             if [[ "$(sha256sum '/tmp/xs-auto-update.sh' |cut -d ' ' -f 1 |tr -cd [:alnum:])" = "$hash_new" ]]; then
                 troublem "Updating script to $vsn_new..."
                 mv -f '/tmp/xs-auto-update.sh' "$0"
