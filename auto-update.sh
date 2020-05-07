@@ -1,11 +1,11 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.3.0-rc3"; vsndsp="$vsn 2020-05-04"
+vsn="v3.3.0-rc4"; vsndsp="$vsn 2020-05-07"
 #-Downloads and Installs new updates
 #-Depends: pacman, paccache
 #-Optional Depends: notification daemon, notify-desktop, pikaur, apacman (deprecated)
 true=0; false=1; ctrue=1; cfalse=0
-if [ $# -eq 0 ]; then set -m; "$0" "XS"& exit 0; fi # start in background
+if [ $# -eq 0 ]; then "$0" "XS"& exit 0; fi # start in background
 
 
 [[ "$xs_autoupdate_conf" = "" ]] && xs_autoupdate_conf='/etc/xs/auto-update.conf'
@@ -168,7 +168,7 @@ sendmsg(){
             if [[ "$3" = "dismiss" ]]; then
                 noti_id["$1"]="$(DISPLAY=$2 su $1 -c "notify-desktop -u normal -r ${noti_id["$1"]} \" \" -t 1")"
             else
-                tmp_m1="$(echo "$3"|sed 's/\\\n/\n/g')"
+                tmp_m1="$(echo "$3"|sed 's/\\n/\n/g')"
                 noti_id["$1"]="$(DISPLAY=$2 su $1 -c "notify-desktop -i $icon $tmp_t1 -r ${noti_id["$1"]} xs-update-manjaro \"$notifyvsn$tmp_m1\"")"
             fi
         fi
@@ -253,11 +253,10 @@ finalmsg_critical(){
     fi
 }
 
-backgroundnotify_quit(){ sendall "dismiss"; exit 0; }
-
 backgroundnotify(){
-trap "backgroundnotify_quit" SIGINT
 while : ; do
+    if [[ -f "${perst_d}\auto-update_termnotify.dat" ]]; then 
+        rm -f "${perst_d}\auto-update_termnotify.dat" >/dev/null 2>&1; sendall "dismiss"; exit 0; fi
     getsessions; i=0; while [ $i -lt ${#s_usr[@]} ]; do
         if [ -f "${s_home[$i]}/.cache/xs/logonnotify" ]; then
             iconwarn; sleep 5; sendmsg "${s_usr[$i]}" "${s_disp[$i]}" \
@@ -343,7 +342,7 @@ if [[ -f "$xs_autoupdate_conf" ]]; then
         if echo "$line" | grep -F '=' &>/dev/null; then
             varname="$(echo "$line" | cut -d '=' -f 1)"
             if ! echo $varname |grep "$validconf" >/dev/null; then
-                echo \"$varname\"|grep -F \"zflag:\" >/dev/null || continue
+                echo "$varname"|grep -F "zflag:" >/dev/null || continue
             fi
             line="$(echo "$line" | cut -d '=' -f 2-)"
             if [[ ! "$line" = "" ]]; then
@@ -508,7 +507,7 @@ else noti_gdbus=$false; noti_desk=$false; noti_send=$false; fi
 #---Main---
 
 #Start Sub-processes
-if [ "$1" = "backnotify" ]; then set -m; backgroundnotify; exit 0; fi
+if [ "$1" = "backnotify" ]; then backgroundnotify; exit 0; fi
 if [ "$1" = "userlogon" ]; then userlogon; exit 0; fi
 
 #Init log dir, check for other running instances, start notifier
@@ -549,7 +548,7 @@ if [[ "${conf_a[self_1enable_bool]}" = "$ctrue" ]]; then
                 troublem "Updating script to $vsn_new..."
                 troublem "==================================="
                 mv -f '/tmp/xs-auto-update.sh' "$0"
-                chmod +x "$0"; set -m; "$0" "XS"& exit 0
+                chmod +x "$0"; "$0" "XS"& exit 0
             fi; [[ -f "/tmp/xs-auto-update.sh" ]] && rm -f "/tmp/xs-auto-update.sh"
         fi
     fi; unset vsn_new; unset hash_new
@@ -572,11 +571,12 @@ if [ -f /var/lib/pacman/db.lck ]; then rm -f /var/lib/pacman/db.lck; fi
 
 #init main script and background notifications
 trouble "Init vars and notifier..."
+rm -f "${perst_d}\auto-update_termnotify.dat" >/dev/null 2>&1
 getsessions; i=0; while [ $i -lt ${#s_usr[@]} ]; do
 if [ -d "${s_home[$i]}/.cache" ]; then
     mkdir -p "${s_home[$i]}/.cache/xs"; echo "tmp" > "${s_home[$i]}/.cache/xs/logonnotify"
     chown -R ${s_usr[$i]} "${s_home[$i]}/.cache/xs"; fi; i=$(($i+1)); done
-set -m; "$0" "backnotify"& bkntfypid=$!; set +m
+"$0" "backnotify"& bkntfypid=$!
 pacmirArgs="--geoip"
 [[ "${conf_a[main_country_str]}" = "" ]] || pacmirArgs="-c ${conf_a[main_country_str]}"
 [[ "${conf_a[main_ignorepkgs_str]}" = "" ]] || pacignore="--ignore ${conf_a[main_ignorepkgs_str]}"
@@ -710,7 +710,7 @@ fi
 
 #Finish
 trouble "Update completed, final notifications and cleanup..."
-kill -SIGINT $bkntfypid
+touch "${perst_d}\auto-update_termnotify.dat"
 
 msg="System update finished"
 grep "Total Installed Size:\|new signatures:\|Total Removed Size:" $log_f >/dev/null || msg="$msg; no changes made"
