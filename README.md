@@ -18,6 +18,7 @@
   * [cln_paccache_num](#cln_paccache_num "")
   * [flatpak_update_freq](#flatpak_update_freq "")
   * [notify_1enable_bool](#notify_1enable_bool "")
+  * [notify_function_str](#notify_function_str "")
   * [notify_lastmsg_num](#notify_lastmsg_num "")
   * [notify_errors_bool](#notify_errors_bool "")
   * [notify_vsn_bool](#notify_vsn_bool "")
@@ -42,7 +43,7 @@
 ### Warning: this script is intended for use by advanced users only
 
 ## Summary
-This performs a full and automatic update of all packages using `pacman`. If a supported [AUR helper](#supported-aur-helpers "") is installed and [enabled](#aur_1helper_str ""), this will also update all AUR packages. If flatpak is installed and [enabled](#flatpak_update_freq ""), this will also update flatpak packages. If notifications are [enabled](#notify_1enable_bool ""), status notifications are sent to any active users (notifications are only fully supported on Xfce for now - partial support currently implemented for KDE/Gnome).
+This performs a full and automatic update of all packages using `pacman`. If a supported [AUR helper](#supported-aur-helpers "") is installed and [enabled](#aur_1helper_str ""), this will also update all AUR packages. If flatpak is installed and [enabled](#flatpak_update_freq ""), this will also update flatpak packages. If notifications are [enabled](#notify_1enable_bool ""), status notifications are sent to any active users (supports Xfce, KDE, and Gnome). If using Gnome, I recommend installing the [permanent notifications extension](https://extensions.gnome.org/extension/41/permanent-notifications/ "").
 
 ## Suggested Usage and Disclaimer:
 This is not a replacement for manually updating/maintaining your own computer, but a supplement. This script automates what it can, but updates needing manual steps (for example, merging .pacnew files) will still need those. If not used properly, this script may "break" your system. For example, if the computer is restarted while the script is updating core components, the computer may no longer be able to boot. No warranty or guarantee is included or implied. **Use at your own risk**.
@@ -189,6 +190,16 @@ Drawbacks:
 * Default: `1` (True)
 * If true, enables status notifications via `notify-send` to active users
 
+### notify_function_str
+* Default: `auto`
+* Specifies which notification method to use
+* Current valid values are: `auto`,`gdbus`,`desk`,`send`
+  * `auto`: will automatically select the best method
+  * `gdbus`: uses `gdbus` to create notifications (works on Xfce, Gnome)
+  * `desk`: uses `notify-desktop` to create notifications (works on Xfce, KDE, and Gnome)
+  * `send`: uses legacy `notify-send` to create notifications (works on Xfce)
+* Note: if `auto` or `desk` is specified, and an AUR helper is configured, and KDE is detected, script will attempt to install [`notify-desktop-git`](https://aur.archlinux.org/packages/notify-desktop-git "") to provide this functionality
+
 ### notify_lastmsg_num
 * Default: `20`
 * Specifies how long (in seconds) the final "System update finished" notification is visible before it expires.
@@ -298,6 +309,7 @@ main_logdir_str=/var/log/xs
 main_country_str=
 main_testSite_str=www.google.com
 notify_1enable_bool=1
+notify_function_str=auto
 notify_lastmsg_num=20
 notify_errors_bool=1
 reboot_1enable_bool=0
@@ -312,6 +324,7 @@ update_keys_bool=1
 zflag:tor-browser=--skippgpcheck
 
 ````
+
 
 
 
