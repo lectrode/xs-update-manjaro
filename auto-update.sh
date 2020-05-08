@@ -1,6 +1,6 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.3.0-rc4"; vsndsp="$vsn 2020-05-07"
+vsn="v3.3.0-rc5"; vsndsp="$vsn 2020-05-07"
 #-Downloads and Installs new updates
 #-Depends: pacman, paccache
 #-Optional Depends: notification daemon, notify-desktop, pikaur, apacman (deprecated)
@@ -268,10 +268,11 @@ done; }
 
 userlogon(){
     sleep 5; if [ ! -d "$HOME/.cache/xs" ]; then mkdir -p "$HOME/.cache/xs"; fi
-    if [ ! -f "$log_f" ]; then if [[ $(ls "${log_d}" | grep -F "auto-update.log_" 2>/dev/null) ]]; then
+    if [ ! -f "${conf_a[main_logdir_str]}/auto-update.log" ]; then
+    if [[ $(ls "${conf_a[main_logdir_str]}" | grep -F "auto-update.log_" 2>/dev/null) ]]; then
         iconcritical; notify-send -i $icon XS-AutoUpdate -u critical \
             "Kernel and/or drivers were updated. Please restart your computer to finish"
-    fi; else echo "This is a temporary file. It will be removed automatically" > "~/.cache/xs/logonnotify"; fi
+    fi; else touch "$HOME/.cache/xs/logonnotify"; fi
 }
 
 
@@ -418,44 +419,6 @@ for i in $(sort <<< "$conf_legacy"); do
 done; IFS=$DEFAULTIFS
 
 
-log_d="${conf_a[main_logdir_str]}"; log_f="${log_d}/auto-update.log"
-
-if [ "${conf_a[main_perstdir_str]}" = "" ]; then perst_d="$log_d"
-else perst_d="${conf_a[main_perstdir_str]}"; fi
-perst_f="${perst_d}/auto-update_persist.dat"
-
-#Load persistent data
-typeset -A perst_a; perst_a=(
-    [last_aur_update]="20000101"
-    [last_aurdev_update]="20000101"
-    [last_flatpak_update]="20000101"
-    [last_keys_update]="20000101"
-    [last_mirrors_update]="20000101"
-)
-
-validconf=$(echo "${!perst_a[*]}"|sed 's/ /\\|/g')
-
-
-if [[ -f "$perst_f" ]]; then
-    while read line; do
-        line="$(echo "$line" | cut -d ';' -f 1 | cut -d '#' -f 1)"
-        if echo "$line" | grep -F '=' &>/dev/null; then
-            varname="$(echo "$line" | cut -d '=' -f 1)"
-            if ! echo $varname |grep "$validconf" >/dev/null; then continue; fi
-            line="$(echo "$line" | cut -d '=' -f 2-)"
-            if [[ ! "$line" = "" ]]; then
-                #validate timestamp
-                let "line += 0"; [[ "$line" -lt "20000101" ]] && continue
-                perst_a[$varname]=$line
-            fi
-        fi
-    done < "$perst_f"; unset line; unset varname
-fi
-
-unset validconf
-
-
-
 # Init notifications
 
 notierr(){ troubleqin "ERR: $1 specified for notifications but not available/functioning. There will be no notifications"; }
@@ -510,14 +473,50 @@ else noti_gdbus=$false; noti_desk=$false; noti_send=$false; fi
 if [ "$1" = "backnotify" ]; then backgroundnotify; exit 0; fi
 if [ "$1" = "userlogon" ]; then userlogon; exit 0; fi
 
-#Init log dir, check for other running instances, start notifier
+if pidof -o %PPID -x "$(basename "$0")">/dev/null; then exit 0; fi #Only 1 main instance allowed
+
+#Init logs
 mkdir -p "${conf_a[main_logdir_str]}"; if [ ! -d "${conf_a[main_logdir_str]}" ]; then conf_a[main_logdir_str]="/var/log/xs"; fi
 mkdir -p "${conf_a[main_logdir_str]}"; if [ ! -d "${conf_a[main_logdir_str]}" ]; then
     echo "Critical error: could not create log directory"; sleep 10; exit; fi
+log_d="${conf_a[main_logdir_str]}"; log_f="${log_d}/auto-update.log"; export log_f
 if [ ! -f "$log_f" ]; then echo "init">$log_f; fi
-if pidof -o %PPID -x "$(basename "$0")">/dev/null; then exit 0; fi #Only 1 main instance allowed
-conf_export
-perst_export
+
+
+#Init perst
+if [ "${conf_a[main_perstdir_str]}" = "" ]; then perst_d="$log_d"
+else perst_d="${conf_a[main_perstdir_str]}"; fi
+mkdir -p "$perst_d"; if [ ! -d "$perst_d" ]; then
+    conf_a[main_perstdir_str]="${conf_a[main_logdir_str]}"; perst_d="${conf_a[main_logdir_str]}"; fi
+perst_f="${perst_d}/auto-update_persist.dat"; export perst_d
+
+typeset -A perst_a; perst_a=(
+    [last_aur_update]="20000101"
+    [last_aurdev_update]="20000101"
+    [last_flatpak_update]="20000101"
+    [last_keys_update]="20000101"
+    [last_mirrors_update]="20000101"
+)
+
+validconf=$(echo "${!perst_a[*]}"|sed 's/ /\\|/g')
+if [[ -f "$perst_f" ]]; then
+    while read line; do
+        line="$(echo "$line" | cut -d ';' -f 1 | cut -d '#' -f 1)"
+        if echo "$line" | grep -F '=' &>/dev/null; then
+            varname="$(echo "$line" | cut -d '=' -f 1)"
+            if ! echo $varname |grep "$validconf" >/dev/null; then continue; fi
+            line="$(echo "$line" | cut -d '=' -f 2-)"
+            if [[ ! "$line" = "" ]]; then
+                #validate timestamp
+                let "line += 0"; [[ "$line" -lt "20000101" ]] && continue
+                perst_a[$varname]=$line
+            fi
+        fi
+    done < "$perst_f"; unset line; unset varname
+fi; unset validconf
+
+#Finish init
+conf_export; perst_export
 echo "$(date) - XS-Update $vsndsp initialized..." |tee $log_f
 troublem "Config file: $xs_autoupdate_conf"
 troubleqout
