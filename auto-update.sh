@@ -1,10 +1,11 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.2.6"; vsndsp="$vsn 2020-05-04"
+vsn="v3.3.1"; vsndsp="$vsn 2020-05-07"
 #-Downloads and Installs new updates
 #-Depends: pacman, paccache
-#-Optional Depends: notification daemon, pikaur, apacman (deprecated)
-true=0; false=1; ctrue=1; cfalse=0; set -m
+#-Optional Depends: notification daemon, notify-desktop, pikaur, apacman (deprecated)
+true=0; false=1; ctrue=1; cfalse=0
+if [ $# -eq 0 ]; then "$0" "XS"& exit 0; fi # start in background
 
 
 [[ "$xs_autoupdate_conf" = "" ]] && xs_autoupdate_conf='/etc/xs/auto-update.conf'
@@ -13,8 +14,16 @@ set $debgn
 
 #---Define Functions---
 
-trouble(){ (echo;echo "#XS# `date` - $@") |tee -a $log_f; }
+trouble(){ (echo;echo "#XS# $(date) - $@") |tee -a $log_f; }
 troublem(){ echo "XS-$@" |tee -a $log_f; }
+
+troubleqin(){ logqueue+=("#XS# $(date) - $@"); }
+troubleqout(){
+    while [ 0 -lt ${#logqueue[@]} ]; do
+        (echo;echo "${logqueue[0]}") |tee -a $log_f
+        logqueue=(${logqueue[@]:1})
+    done
+}
 
 test_online(){ ping -c 1 "${conf_a[main_testsite_str]}" >/dev/null 2>&1 && return 0; return 1; }
 
@@ -42,7 +51,7 @@ fi
 }
 
 conf_export(){
-if [ ! -d `dirname $xs_autoupdate_conf` ]; then mkdir `dirname $xs_autoupdate_conf`; fi
+if [ ! -d "$(dirname $xs_autoupdate_conf)" ]; then mkdir "$(dirname $xs_autoupdate_conf)"; fi
 echo '#Config for XS-AutoUpdate' > "$xs_autoupdate_conf"
 echo '#' >> "$xs_autoupdate_conf"
 echo '# AUR Settings #' >> "$xs_autoupdate_conf"
@@ -62,6 +71,7 @@ echo '#flatpak_update_freq:      Check for Flatpak package updates every X days 
 echo '#' >> "$xs_autoupdate_conf"
 echo '# Notification Settings #' >> "$xs_autoupdate_conf"
 echo '#notify_1enable_bool:      Enable/Disable nofications' >> "$xs_autoupdate_conf"
+echo '#notify_function_str:      Valid options are auto,gdbus,desk,send' >> "$xs_autoupdate_conf"
 echo '#notify_lastmsg_num:       Seconds before final normal notification expires (0=never)' >> "$xs_autoupdate_conf"
 echo '#notify_errors_bool:       Include possible errors in notifications' >> "$xs_autoupdate_conf"
 echo '#notify_vsn_bool:          Include version number in notifications' >> "$xs_autoupdate_conf"
@@ -106,8 +116,8 @@ perst_isneeded(){
 #$2 = previous date: perst_a[last_xxxx]
 
     if [[ "$1" -eq "-1" ]]; then return 1; fi
-    curdate=`date +'%Y%m%d'`
-    scheddate=`date -d "$2 + $1 days" +'%Y%m%d'`
+    curdate=$(date +'%Y%m%d')
+    scheddate=$(date -d "$2 + $1 days" +'%Y%m%d')
     
     if [[ "$scheddate" -le "$curdate" ]]; then
         return 0
@@ -120,8 +130,8 @@ perst_isneeded(){
 
 perst_update(){
 #$1 = last_*
-    perst_a[$1]=`date +'%Y%m%d'`
-    echo "$1=`date +'%Y%m%d'`" >> "$perst_f"
+    perst_a[$1]=$(date +'%Y%m%d')
+    echo "$1=$(date +'%Y%m%d')" >> "$perst_f"
 }
 
 perst_export(){
@@ -137,68 +147,63 @@ perst_export(){
 
 #Notification Functions
 
-killmsg(){ if [ "${conf_a[notify_1enable_bool]}" = "$ctrue" ]; then killall xfce4-notifyd 2>/dev/null; fi; }
 iconnormal(){ icon=ElectrodeXS; }
 iconwarn(){ icon=important; }
 iconcritical(){ icon=system-shutdown; }
 
 sendmsg(){
+#$1=user; $2=display; $3=msg; [$4=timeout]
+
     if [ "${conf_a[notify_1enable_bool]}" = "$ctrue" ]; then
-        DISPLAY=$2 su $1 -c "notify-send -i $icon XS-AutoUpdate -u critical \"$notifyvsn$3\"" & fi
-}
-
-sendall(){
-    if [ "${conf_a[notify_1enable_bool]}" = "$ctrue" ]; then
-        getsessions; i=0; while [ $i -lt ${#s_usr[@]} ]; do
-            sendmsg "${s_usr[$i]}" "${s_disp[$i]}" "$1"; i=$(($i+1))
-        done; unset i
-    fi
-}
-
-finalmsg_normal(){
-    killmsg; iconnormal; sendall "$msg"; if [ ! "${conf_a[notify_lastmsg_num]}" = "0" ]; then
-        sleep ${conf_a[notify_lastmsg_num]}; killmsg; fi
-}
-
-finalmsg_critical(){
-    killmsg; iconcritical
     
-    orig_log="$log_f"
-    mv -f "$log_f" "${log_f}_`date -I`"; log_f=${log_f}_`date -I`
-    
-    if [ "${conf_a[reboot_1enable_bool]}" = "$ctrue" ]; then
-    
-        trouble "XS-done"
-        secremain=${conf_a[reboot_delay_num]}
-        echo "init">$orig_log
-        ignoreusers=`echo "${conf_a[reboot_ignoreusers_str]}" |sed 's/ /\\\|/g'`
-        while [ $secremain -gt 0 ]; do
-            usersexist=$false; loginctl list-sessions --no-legend |grep -v "$ignoreusers" |grep "seat\|pts" >/dev/null && usersexist=$true
-            
-            if [ "${conf_a[reboot_delayiflogin_bool]}" = "$ctrue" ]; then
-                if [ "$usersexist" = "$false" ]; then troublem "No logged-in users detected, rebooting now"; secremain=0; sleep 1; continue; fi; fi
-            
-            if [[ "$usersexist" = "$true" ]]; then killmsg; sendall "Kernel and/or drivers were updated.\nYour computer will automatically restart in \n$secremain seconds..."; fi
-            sleep ${conf_a[reboot_notifyrep_num]}
-            let secremain-=${conf_a[reboot_notifyrep_num]}
-        done
-
-        reboot
-    else
-        sendall "Kernel and/or drivers were updated. Please restart your computer to finish"
+        let noti_id["$1"]="${noti_id["$1"]}+0"
+        let tmp_t0="$4+0"
+        if [ "$tmp_t0" = "0" ]; then
+            tmp_t1="-u critical"
+        else
+            let tmp_t0="$tmp_t0*1000"
+            tmp_t1="-t $tmp_t0"
+        fi
+        if [ "$noti_desk" = "$true" ]; then
+            if [[ "$3" = "dismiss" ]]; then
+                noti_id["$1"]="$(DISPLAY=$2 su $1 -c "notify-desktop -u normal -r ${noti_id["$1"]} \" \" -t 1")"
+            else
+                tmp_m1="$(echo "$3"|sed 's/\\n/\n/g')"
+                noti_id["$1"]="$(DISPLAY=$2 su $1 -c "notify-desktop -i $icon $tmp_t1 -r ${noti_id["$1"]} xs-update-manjaro \"$notifyvsn$tmp_m1\"")"
+            fi
+        fi
+        if [ "$noti_send" = "$true" ]; then
+            if [[ ! "$3" = "dismiss" ]]; then
+                killall xfce4-notifyd 2>/dev/null
+                DISPLAY=$2 su $1 -c "notify-send -i $icon $tmp_t1 xs-update-manjaro \"$notifyvsn$3\""
+            fi
+        fi
+        if [ "$noti_gdbus" = "$true" ]; then
+            if [[ "$3" = "dismiss" ]]; then
+                noti_id["$1"]="$(DISPLAY=$2 su $1 -c "gdbus call --session --dest org.freedesktop.Notifications \
+                    --object-path /org/freedesktop/Notifications --method org.freedesktop.Notifications.CloseNotification ${noti_id["$1"]}")"
+            else
+                noti_id["$1"]="$(DISPLAY=$2 su $1 -c "gdbus call --session --dest org.freedesktop.Notifications \
+                    --object-path /org/freedesktop/Notifications --method org.freedesktop.Notifications.Notify \
+                    xs-update-manjaro ${noti_id["$1"]} $icon xs-update-manjaro \"$notifyvsn$3\" [] {} $tmp_t0"|cut -d ' ' -f 2|cut -d ',' -f 1)"
+            fi
+        fi
+        unset tmp_t0 tmp_t1
+        
     fi
 }
 
 getsessions(){
     DEFAULTIFS=$IFS; IFS=$'\n\b';
     unset s_usr[@]; unset s_disp[@]; unset s_home[@]
-    i=0; for sssn in `loginctl list-sessions --no-legend`; do
+    i=0; for sssn in $(loginctl list-sessions --no-legend); do
         IFS=' '; sssnarr=($sssn)
-        actv=$(loginctl show-session -p Active ${sssnarr[0]}|cut -d '=' -f 2)
+        actv="$(loginctl show-session -p Active ${sssnarr[0]}|cut -d '=' -f 2)"
         [[ "$actv" = "yes" ]] || continue
-        usr=$(loginctl show-session -p Name ${sssnarr[0]}|cut -d '=' -f 2)
-        disp=$(loginctl show-session -p Display ${sssnarr[0]}|cut -d '=' -f 2)
-        usrhome=$(getent passwd "$usr"|cut -d: -f6) #alt: eval echo "~$usr"
+        usr="$(loginctl show-session -p Name ${sssnarr[0]}|cut -d '=' -f 2)"
+        disp="$(loginctl show-session -p Display ${sssnarr[0]}|cut -d '=' -f 2)"
+        [[ "$disp" = "" ]] && disp=":0" #workaround for gnome, which returns nothing
+        usrhome="$(getent passwd "$usr"|cut -d: -f6)"
         [[  ${usr-x} && ${disp-x} && ${usrhome-x} ]] || continue
         s_usr[$i]=$usr; s_disp[$i]=$disp; s_home[$i]=$usrhome; i=$(($i+1)); IFS=$'\n\b';
     done
@@ -206,7 +211,52 @@ getsessions(){
     IFS=$DEFAULTIFS; unset i; unset usr; unset disp; unset usrhome; unset actv; unset sssnarr; unset sssn
 }
 
-backgroundnotify(){ while : ; do
+sendall(){
+    if [ "${conf_a[notify_1enable_bool]}" = "$ctrue" ]; then
+        getsessions; i=0; while [ $i -lt ${#s_usr[@]} ]; do
+            sendmsg "${s_usr[$i]}" "${s_disp[$i]}" "$1" "$2"; i=$(($i+1))
+        done; unset i
+    fi
+}
+
+finalmsg_normal(){
+    iconnormal
+    sendall "$msg" "${conf_a[notify_lastmsg_num]}"
+}
+
+finalmsg_critical(){
+    iconcritical
+    
+    orig_log="$log_f"
+    mv -f "$log_f" "${log_f}_$(date -I)"; log_f=${log_f}_$(date -I)
+    
+    if [ "${conf_a[reboot_1enable_bool]}" = "$ctrue" ]; then
+
+        trouble "XS-done"
+        secremain=${conf_a[reboot_delay_num]}
+        echo "init">$orig_log
+        ignoreusers="$(echo "${conf_a[reboot_ignoreusers_str]}" |sed 's/ /\\\|/g')"
+        while [ $secremain -gt 0 ]; do
+            usersexist=$false; loginctl list-sessions --no-legend |grep -v "$ignoreusers" |grep "seat\|pts" >/dev/null && usersexist=$true
+            
+            if [ "${conf_a[reboot_delayiflogin_bool]}" = "$ctrue" ]; then
+                if [ "$usersexist" = "$false" ]; then troublem "No logged-in users detected, rebooting now"; secremain=0; sleep 1; continue; fi; fi
+            
+            if [[ "$usersexist" = "$true" ]]; then sendall "Kernel and/or drivers were updated.\nYour computer will automatically restart in \n$secremain seconds..."; fi
+            sleep ${conf_a[reboot_notifyrep_num]}
+            let secremain-=${conf_a[reboot_notifyrep_num]}
+        done
+        reboot
+
+    else
+        sendall "Kernel and/or drivers were updated. Please restart your computer to finish"
+    fi
+}
+
+backgroundnotify(){
+while : ; do
+    if [[ -f "${perst_d}\auto-update_termnotify.dat" ]]; then 
+        rm -f "${perst_d}\auto-update_termnotify.dat" >/dev/null 2>&1; sendall "dismiss"; exit 0; fi
     getsessions; i=0; while [ $i -lt ${#s_usr[@]} ]; do
         if [ -f "${s_home[$i]}/.cache/xs/logonnotify" ]; then
             iconwarn; sleep 5; sendmsg "${s_usr[$i]}" "${s_disp[$i]}" \
@@ -218,10 +268,11 @@ done; }
 
 userlogon(){
     sleep 5; if [ ! -d "$HOME/.cache/xs" ]; then mkdir -p "$HOME/.cache/xs"; fi
-    if [ ! -f "$log_f" ]; then if [[ `ls "${log_d}" | grep -F "auto-update.log_" 2>/dev/null` ]]; then
+    if [ ! -f "${conf_a[main_logdir_str]}/auto-update.log" ]; then
+    if [[ $(ls "${conf_a[main_logdir_str]}" | grep -F "auto-update.log_" 2>/dev/null) ]]; then
         iconcritical; notify-send -i $icon XS-AutoUpdate -u critical \
             "Kernel and/or drivers were updated. Please restart your computer to finish"
-    fi; else echo "This is a temporary file. It will be removed automatically" > "~/.cache/xs/logonnotify"; fi
+    fi; else touch "$HOME/.cache/xs/logonnotify"; fi
 }
 
 
@@ -242,6 +293,7 @@ typeset -A conf_a; conf_a=(
     [cln_paccache_num]=0
     [flatpak_update_freq]=3
     [notify_1enable_bool]=$ctrue
+    [notify_function_str]="auto"
     [notify_lastmsg_num]=20
     [notify_errors_bool]=$ctrue
     [notify_vsn_bool]=$cfalse
@@ -275,8 +327,7 @@ typeset -A conf_a; conf_a=(
     [flatpak_1enable_bool]=""
 )
 
-shopt -s extglob # needed for validconf
-validconf=@($(echo "${!conf_a[*]}"|sed "s/ /|/g"))
+validconf=$(echo "${!conf_a[*]}"|sed 's/ /\\|/g')
 
 conf_int0="notify_lastmsg_num reboot_delay_num reboot_notifyrep_num"
 conf_intn1="cln_paccache_num aur_update_freq aur_devel_freq flatpak_update_freq update_keys_freq update_mirrors_freq"
@@ -288,14 +339,13 @@ conf_legacy="bool_detectErrors bool_Downgrades bool_notifyMe bool_updateFlatpak 
 
 if [[ -f "$xs_autoupdate_conf" ]]; then
     while read line; do
-        line=$(echo "$line" | cut -d ';' -f 1 | cut -d '#' -f 1)
+        line="$(echo "$line" | cut -d ';' -f 1 | cut -d '#' -f 1)"
         if echo "$line" | grep -F '=' &>/dev/null; then
-            varname=$(echo "$line" | cut -d '=' -f 1)
-            case $varname in
-                $validconf) ;;
-                *) echo "$varname"|grep -F "zflag:" >/dev/null || continue
-            esac
-            line=$(echo "$line" | cut -d '=' -f 2-)
+            varname="$(echo "$line" | cut -d '=' -f 1)"
+            if ! echo $varname |grep "$validconf" >/dev/null; then
+                echo "$varname"|grep -F "zflag:" >/dev/null || continue
+            fi
+            line="$(echo "$line" | cut -d '=' -f 2-)"
             if [[ ! "$line" = "" ]]; then
                 #validate boolean
                 echo "$varname" | grep -F "bool" >/dev/null && if [[ ! ( "$line" = "$ctrue" || \
@@ -322,6 +372,11 @@ if [[ -f "$xs_autoupdate_conf" ]]; then
                         auto|none|all|pikaur|apacman) ;;
                         *) continue
                 esac; fi
+                #validate notify_function_str
+                if [[ "$varname" = "notify_function_str" ]]; then case "$line" in
+                        auto|gdbus|desk|send) ;;
+                        *) continue
+                esac; fi
                 #validate self_branch_str
                 if [[ "$varname" = "self_branch_str" ]]; then case "$line" in
                         stable|beta) ;;
@@ -330,13 +385,13 @@ if [[ -f "$xs_autoupdate_conf" ]]; then
 
                 conf_a[$varname]=$line
                 echo "$varname" | grep -F "zflag:" >/dev/null && \
-                    flag_a[$(echo "$varname" | cut -d ':' -f 2)]="${conf_a[$varname]}"
+                    flag_a["$(echo "$varname" | cut -d ':' -f 2)"]="${conf_a[$varname]}"
 
             fi
         fi
     done < "$xs_autoupdate_conf"; unset line; unset varname
 fi
-unset validconf; shopt -u extglob
+unset validconf
 
 #Convert legacy settings
 
@@ -364,13 +419,77 @@ for i in $(sort <<< "$conf_legacy"); do
 done; IFS=$DEFAULTIFS
 
 
-log_d="${conf_a[main_logdir_str]}"; log_f="${log_d}/auto-update.log"
+# Init notifications
 
-if [ "${conf_a[main_perstdir_str]}" = "" ]; then perst_d="$log_d";
+notierr(){ troubleqin "ERR: $1 specified for notifications but not available/functioning. There will be no notifications"; }
+notierr2(){ troubleqin "ERR: No compatible notification method found. There will be no notifications"; }
+
+if [ "${conf_a[notify_1enable_bool]}" = "$ctrue" ]; then 
+
+    [[ "${conf_a[notify_vsn_bool]}" = "$ctrue" ]] && notifyvsn="[$vsn]\n"
+
+    noti_gdbus=$true; noti_desk=$true; noti_send=$true
+
+    case ${conf_a[notify_function_str]} in
+    "gdbus")
+        noti_desk=$false; noti_send=$false
+        gdbus help >/dev/null 2>&1 || notierr "gdbus" 
+        ;;
+    "desk")
+        noti_gdbus=$false; noti_send=$false
+        notify-desktop --help >/dev/null 2>&1 || notierr "notify-desktop"
+        ;;
+    "send")
+        noti_gdbus=$false; noti_desk=$false
+        notify-send --help >/dev/null 2>&1 || notierr "notify-send"
+        ;;
+    "auto")
+        if notify-desktop --help >/dev/null 2>&1; then
+            noti_gdbus=$false; noti_send=$false
+            troubleqin "notify-desktop found, using for notifications"
+        elif pacman -Q plasma-desktop >/dev/null 2>&1; then
+            if notify-send --help >/dev/null 2>&1; then
+                noti_gdbus=$false; noti_desk=$false
+                troubleqin "WARN: KDE Plasma desktop found, falling back to legacy. Please install notify-desktop-git for fully-supported notifications in KDE Plasma"
+            else
+                noti_desk=$false; noti_send=$false
+                troubleqin "ERR: KDE Plasma desktop found, but no compatible notification method found"
+                if gdbus help >/dev/null 2>&1; then troubleqin "WARN: Attempting to use gdbus...(this will likely fail on KDE)"
+                else noti_gdbus=$false; notierr2; fi
+            fi
+        else
+            if gdbus help >/dev/null 2>&1; then noti_desk=$false; noti_send=$false; troubleqin "gdbus found, using for notifications"
+            else noti_gdbus=$false; noti_desk=$false; noti_send=$false; notierr2; fi
+        fi
+        ;;
+    esac
+
+else noti_gdbus=$false; noti_desk=$false; noti_send=$false; fi
+
+
+#---Main---
+
+#Start Sub-processes
+if [ "$1" = "backnotify" ]; then backgroundnotify; exit 0; fi
+if [ "$1" = "userlogon" ]; then userlogon; exit 0; fi
+
+if pidof -o %PPID -x "$(basename "$0")">/dev/null; then exit 0; fi #Only 1 main instance allowed
+
+#Init logs
+mkdir -p "${conf_a[main_logdir_str]}"; if [ ! -d "${conf_a[main_logdir_str]}" ]; then conf_a[main_logdir_str]="/var/log/xs"; fi
+mkdir -p "${conf_a[main_logdir_str]}"; if [ ! -d "${conf_a[main_logdir_str]}" ]; then
+    echo "Critical error: could not create log directory"; sleep 10; exit; fi
+log_d="${conf_a[main_logdir_str]}"; log_f="${log_d}/auto-update.log"; export log_f
+if [ ! -f "$log_f" ]; then echo "init">$log_f; fi
+
+
+#Init perst
+if [ "${conf_a[main_perstdir_str]}" = "" ]; then perst_d="$log_d"
 else perst_d="${conf_a[main_perstdir_str]}"; fi
-perst_f="${perst_d}/auto-update_persist.dat"
+mkdir -p "$perst_d"; if [ ! -d "$perst_d" ]; then
+    conf_a[main_perstdir_str]="${conf_a[main_logdir_str]}"; perst_d="${conf_a[main_logdir_str]}"; fi
+perst_f="${perst_d}/auto-update_persist.dat"; export perst_d
 
-#Load persistent data
 typeset -A perst_a; perst_a=(
     [last_aur_update]="20000101"
     [last_aurdev_update]="20000101"
@@ -379,20 +498,14 @@ typeset -A perst_a; perst_a=(
     [last_mirrors_update]="20000101"
 )
 
-shopt -s extglob # needed for validconf
-validconf=@($(echo "${!perst_a[*]}"|sed "s/ /|/g"))
-
-
+validconf=$(echo "${!perst_a[*]}"|sed 's/ /\\|/g')
 if [[ -f "$perst_f" ]]; then
     while read line; do
-        line=$(echo "$line" | cut -d ';' -f 1 | cut -d '#' -f 1)
+        line="$(echo "$line" | cut -d ';' -f 1 | cut -d '#' -f 1)"
         if echo "$line" | grep -F '=' &>/dev/null; then
-            varname=$(echo "$line" | cut -d '=' -f 1)
-            case $varname in
-                $validconf) ;;
-                *) continue
-            esac
-            line=$(echo "$line" | cut -d '=' -f 2-)
+            varname="$(echo "$line" | cut -d '=' -f 1)"
+            if ! echo $varname |grep "$validconf" >/dev/null; then continue; fi
+            line="$(echo "$line" | cut -d '=' -f 2-)"
             if [[ ! "$line" = "" ]]; then
                 #validate timestamp
                 let "line += 0"; [[ "$line" -lt "20000101" ]] && continue
@@ -400,33 +513,13 @@ if [[ -f "$perst_f" ]]; then
             fi
         fi
     done < "$perst_f"; unset line; unset varname
-fi
+fi; unset validconf
 
-unset validconf; shopt -u extglob
-
-
-#---Main---
-
-[[ "${conf_a[notify_vsn_bool]}" = "$ctrue" ]] && notifyvsn="[$vsn]\n"
-
-
-#Start Sub-processes
-if [ "$1" = "backnotify" ]; then backgroundnotify; exit 0; fi
-if [ "$1" = "userlogon" ]; then userlogon; exit 0; fi
-
-#Init log dir, check for other running instances, start notifier
-mkdir -p "${conf_a[main_logdir_str]}"; if [ ! -d "${conf_a[main_logdir_str]}" ]; then conf_a[main_logdir_str]="/var/log/xs"; fi
-mkdir -p "${conf_a[main_logdir_str]}"; if [ ! -d "${conf_a[main_logdir_str]}" ]; then
-    echo "Critical error: could not create log directory"; sleep 10; exit; fi
-if [ ! -f "$log_f" ]; then echo "init">$log_f; fi
-if pidof -o %PPID -x "`basename "$0"`">/dev/null; then exit 0; fi #Only 1 main instance allowed
-conf_export
-perst_export
-if [ $# -eq 0 ]; then
-    echo "`date` - XS-Update $vsndsp starting..." |tee $log_f
-    troublem "Config file: $xs_autoupdate_conf"
-    "$0" "XS"& exit 0
-fi
+#Finish init
+conf_export; perst_export
+echo "$(date) - XS-Update $vsndsp initialized..." |tee $log_f
+troublem "Config file: $xs_autoupdate_conf"
+troubleqout
 
 #Wait up to 5 minutes for network
 trouble "Waiting for network..."
@@ -444,17 +537,19 @@ sleep 8 # In case connection just established
 if [[ "${conf_a[self_1enable_bool]}" = "$ctrue" ]]; then
     trouble "Checking for self-updates [branch: ${conf_a[self_branch_str]}]..."
     vsn_new=""; hash_new=""
-    vsn_new="$(curl "https://raw.githubusercontent.com/lectrode/xs-update-manjaro/master/vsn_${conf_a[self_branch_str]}" | tr -cd '[:alnum:]+-.')"
-    if [[ ! "$(echo $vsn_new | cut -d '+' -f 1)" = "`printf "$(echo $vsn_new | cut -d '+' -f 1)\n$vsn" | sort -V | head -n1`" ]]; then
-        hash_new=$(curl "https://raw.githubusercontent.com/lectrode/xs-update-manjaro/${vsn_new}/hash_auto-update-sh" |tr -cd [:alnum:])
+    vsn_new="$(curl -s "https://raw.githubusercontent.com/lectrode/xs-update-manjaro/master/vsn_${conf_a[self_branch_str]}" | tr -cd '[:alnum:]+-.')"
+    if [[ ! "$(echo $vsn_new | cut -d '+' -f 1)" = "$(printf "$(echo $vsn_new | cut -d '+' -f 1)\n$vsn" | sort -V | head -n1)" ]]; then
+        hash_new="$(curl -s "https://raw.githubusercontent.com/lectrode/xs-update-manjaro/${vsn_new}/hash_auto-update-sh" |tr -cd [:alnum:])"
         if [ "${#hash_new}" = "64" ]; then
-            wget "https://raw.githubusercontent.com/lectrode/xs-update-manjaro/${vsn_new}/auto-update.sh" -O "/tmp/xs-auto-update.sh" -q
+            wget -q "https://raw.githubusercontent.com/lectrode/xs-update-manjaro/${vsn_new}/auto-update.sh" -O "/tmp/xs-auto-update.sh"
             if [[ "$(sha256sum '/tmp/xs-auto-update.sh' |cut -d ' ' -f 1 |tr -cd [:alnum:])" = "$hash_new" ]]; then
+                troublem "==================================="
                 troublem "Updating script to $vsn_new..."
+                troublem "==================================="
                 mv -f '/tmp/xs-auto-update.sh' "$0"
                 chmod +x "$0"; "$0" "XS"& exit 0
             fi; [[ -f "/tmp/xs-auto-update.sh" ]] && rm -f "/tmp/xs-auto-update.sh"
-        fi;
+        fi
     fi; unset vsn_new; unset hash_new
 fi
 
@@ -475,17 +570,16 @@ if [ -f /var/lib/pacman/db.lck ]; then rm -f /var/lib/pacman/db.lck; fi
 
 #init main script and background notifications
 trouble "Init vars and notifier..."
-pacmirArgs="--geoip"
-[[ "${conf_a[main_country_str]}" = "" ]] || pacmirArgs="-c ${conf_a[main_country_str]}"
-[[ "${conf_a[main_ignorepkgs_str]}" = "" ]] || pacignore="--ignore ${conf_a[main_ignorepkgs_str]}"
-[[ "${conf_a[update_downgrades_bool]}" = "$ctrue" ]] && pacdown="u"
-
+rm -f "${perst_d}\auto-update_termnotify.dat" >/dev/null 2>&1
 getsessions; i=0; while [ $i -lt ${#s_usr[@]} ]; do
 if [ -d "${s_home[$i]}/.cache" ]; then
     mkdir -p "${s_home[$i]}/.cache/xs"; echo "tmp" > "${s_home[$i]}/.cache/xs/logonnotify"
     chown -R ${s_usr[$i]} "${s_home[$i]}/.cache/xs"; fi; i=$(($i+1)); done
 "$0" "backnotify"& bkntfypid=$!
-set +m
+pacmirArgs="--geoip"
+[[ "${conf_a[main_country_str]}" = "" ]] || pacmirArgs="-c ${conf_a[main_country_str]}"
+[[ "${conf_a[main_ignorepkgs_str]}" = "" ]] || pacignore="--ignore ${conf_a[main_ignorepkgs_str]}"
+[[ "${conf_a[update_downgrades_bool]}" = "$ctrue" ]] && pacdown="u"
 
 #Check for, download, and install main updates
 pacclean
@@ -512,7 +606,8 @@ pacman -Su$pacdown --needed --noconfirm $pacignore 2>&1 |tee -a $log_f
 err_repo=${PIPESTATUS[0]}; if [[ $err_repo -ne 0 ]]; then trouble "ERR: pacman exited with code $err_repo"; fi
 
 
-#Select supported/configured AUR Helper(s)
+# Init AUR selection
+
 use_apacman=1; use_pikaur=1
 if echo "${conf_a[aur_1helper_str]}" | grep "none" >/dev/null; then conf_a[aur_1helper_str]="none"; use_apacman=0; use_pikaur=0; fi
 echo "${conf_a[aur_1helper_str]}" | grep 'all\|auto\|pikaur' >/dev/null || use_pikaur=0
@@ -535,6 +630,20 @@ fi; fi
 
 if echo "${conf_a[aur_1helper_str]}" | grep 'auto' >/dev/null; then
     if [ "$use_pikaur" = "1" ]; then conf_a[aur_1helper_str]="auto"; use_apacman=0; fi; fi
+
+
+#Install KDE notifier dependency (if auto|desk on KDE)
+if [ "${conf_a[notify_1enable_bool]}" = "$ctrue" ]; then 
+    if echo "${conf_a[notify_function_str]}"|grep "auto\|desk" >/dev/null; then
+        if pacman -Q plasma-desktop >/dev/null 2>&1; then
+            if ! pacman -Q notify-desktop-git; then
+                if [ "$use_pikaur" = "1" ]; then pikaur -S --needed --noconfirm notify-desktop-git; fi
+                if [ "$use_apacman" = "1" ]; then apacman -S --needed --noconfirm notify-desktop-git; fi
+            fi
+        fi
+    fi
+fi
+
 
 #Update AUR packages
 
@@ -562,18 +671,18 @@ fi
 if [[ "$use_apacman" = "1" ]]; then
     # Workaround apacman script crash ( https://github.com/lectrode/xs-update-manjaro/issues/2 )
     dummystty="/tmp/xs-dummy/stty"
-    mkdir `dirname $dummystty`
+    mkdir $(dirname $dummystty)
     echo '#!/bin/sh' >$dummystty
     echo "echo 15" >>$dummystty
     chmod +x $dummystty
-    export PATH=`dirname $dummystty`:$PATH
+    export PATH=$(dirname $dummystty):$PATH
 
     trouble "Updating AUR packages [apacman]..."
     apacman -Su$pacdown --auronly --needed --noconfirm $pacignore 2>&1 |\
         sed 's/\x1B\[[0-9;]\+[A-Za-z]//g' |tr -cd '\11\12\15\40-\176' |grep -Fv "%" |tee -a $log_f
     err_aur=${PIPESTATUS[0]}; if [[ $err_aur -eq 0 ]]; then 
         perst_update "last_aur_update"; else trouble "ERR: apacman exited with error"; fi
-    if [ -d "`dirname $dummystty`" ]; then rm -rf "`dirname $dummystty`"; fi
+    if [ -d "$(dirname $dummystty)" ]; then rm -rf "$(dirname $dummystty)"; fi
 fi
 
 #Remove orphan packages, cleanup
@@ -600,7 +709,7 @@ fi
 
 #Finish
 trouble "Update completed, final notifications and cleanup..."
-kill $bkntfypid
+touch "${perst_d}\auto-update_termnotify.dat"
 
 msg="System update finished"
 grep "Total Installed Size:\|new signatures:\|Total Removed Size:" $log_f >/dev/null || msg="$msg; no changes made"
