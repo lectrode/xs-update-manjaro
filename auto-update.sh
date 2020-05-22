@@ -1,6 +1,6 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.3.1"; vsndsp="$vsn 2020-05-07"
+vsn="v3.3.2-rc1"; vsndsp="$vsn 2020-05-21"
 #-Downloads and Installs new updates
 #-Depends: pacman, paccache
 #-Optional Depends: notification daemon, notify-desktop, pikaur, apacman (deprecated)
@@ -195,7 +195,7 @@ sendmsg(){
 
 getsessions(){
     DEFAULTIFS=$IFS; IFS=$'\n\b';
-    unset s_usr[@]; unset s_disp[@]; unset s_home[@]
+    unset s_usr[@] s_disp[@] s_home[@]
     i=0; for sssn in $(loginctl list-sessions --no-legend); do
         IFS=' '; sssnarr=($sssn)
         actv="$(loginctl show-session -p Active ${sssnarr[0]}|cut -d '=' -f 2)"
@@ -208,7 +208,7 @@ getsessions(){
         s_usr[$i]=$usr; s_disp[$i]=$disp; s_home[$i]=$usrhome; i=$(($i+1)); IFS=$'\n\b';
     done
     if [ ${#s_usr[@]} -eq 0 ]; then sleep 5; fi
-    IFS=$DEFAULTIFS; unset i; unset usr; unset disp; unset usrhome; unset actv; unset sssnarr; unset sssn
+    IFS=$DEFAULTIFS; unset i usr disp usrhome actv sssnarr sssn
 }
 
 sendall(){
@@ -290,7 +290,7 @@ typeset -A conf_a; conf_a=(
     [cln_aurpkg_bool]=$ctrue
     [cln_aurbuild_bool]=$ctrue
     [cln_orphan_bool]=$ctrue
-    [cln_paccache_num]=0
+    [cln_paccache_num]=1
     [flatpak_update_freq]=3
     [notify_1enable_bool]=$ctrue
     [notify_function_str]="auto"
@@ -312,6 +312,8 @@ typeset -A conf_a; conf_a=(
     [reboot_delay_num]=120
     [reboot_notifyrep_num]=10
     [reboot_ignoreusers_str]="nobody lightdm sddm gdm"
+    [repair_db01_bool]=$ctrue
+    [repair_pikaur01_bool]=$ctrue
     #legacy
     [bool_detectErrors]=""
     [bool_Downgrades]=""
@@ -512,7 +514,7 @@ if [[ -f "$perst_f" ]]; then
                 perst_a[$varname]=$line
             fi
         fi
-    done < "$perst_f"; unset line; unset varname
+    done < "$perst_f"; unset line varname
 fi; unset validconf
 
 #Finish init
@@ -529,7 +531,7 @@ waiting=1;waited=0; while [ $waiting = 1 ]; do
         if [ $waited -ge 60 ]; then exit; fi
         sleep 5; waited=$(($waited+1))
     fi
-done; unset waiting; unset waited
+done; unset waiting waited
 
 sleep 8 # In case connection just established
 
@@ -550,7 +552,7 @@ if [[ "${conf_a[self_1enable_bool]}" = "$ctrue" ]]; then
                 chmod +x "$0"; "$0" "XS"& exit 0
             fi; [[ -f "/tmp/xs-auto-update.sh" ]] && rm -f "/tmp/xs-auto-update.sh"
         fi
-    fi; unset vsn_new; unset hash_new
+    fi; unset vsn_new hash_new
 fi
 
 #wait up to 5 minutes for running instances of pacman/apacman/pikaur
@@ -563,10 +565,10 @@ waiting=1;waited=0; while [ $waiting = 1 ]; do
         if [ $waited -ge 60 ]; then exit; fi
         sleep 5; waited=$(($waited+1))
     fi
-done;  unset waiting; unset waited; unset isRunning
+done;  unset waiting waited isRunning
 
 #remove .lck file (pacman is not running at this point)
-if [ -f /var/lib/pacman/db.lck ]; then rm -f /var/lib/pacman/db.lck; fi
+if [[ -f "$(pacman-conf DBPath)db.lck" ]]; then rm -f "$(pacman-conf DBPath)db.lck"; fi
 
 #init main script and background notifications
 trouble "Init vars and notifier..."
@@ -597,9 +599,42 @@ if perst_isneeded "${conf_a[update_keys_freq]}" "${perst_a[last_keys_update]}"; 
         perst_update "last_keys_update"; else trouble "ERR: pacman-key exited with code $err_keys"; fi
 fi
 
+trouble "Downloading packages from main repos..."
+pacman -Syyuw$pacdown --needed --noconfirm $pacignore 2>&1 |tee -a $log_f
+err_repo=${PIPESTATUS[0]}; if [[ $err_repo -ne 0 ]]; then trouble "ERR: pacman exited with code $err_repo"; fi
+
 trouble "Updating system packages..."
-pacman -Syy --needed --noconfirm archlinux-keyring manjaro-keyring manjaro-system 2>&1 |tee -a $log_f
+pacman -S --needed --noconfirm archlinux-keyring manjaro-keyring manjaro-system 2>&1 |tee -a $log_f
 err_sys=${PIPESTATUS[0]}; if [[ $err_sys -ne 0 ]]; then trouble "ERR: pacman exited with code $err_sys"; fi
+
+#Any system issues detected here were not fixed by manjaro-system
+
+#check for missing database files
+trouble "Checking for database errors..."
+if [[ "${conf_a[repair_db01_bool]}" = "$ctrue" ]]; then
+    i=-1; while IFS= read -r rp_errmsg; do
+        if [[ ! "$rp_errmsg" = "" ]]; then
+            ((i++))
+            rp_pathf[$i]="$(echo "$rp_errmsg" | grep -o "/[[:alnum:]\./-]*")"
+            troublem "Missing file: ${rp_pathf[$i]}"
+            rp_pathd[$i]="$(dirname "${rp_pathf[$i]}")"
+            troublem "detected dir: ${rp_pathd[$i]}"
+            rp_pkgn[$i]="$(basename "${rp_pathd[$i]}"|grep -oP '.+?(?=-[0-9A-z\.\+:]+-[0-9]+$)')"
+            troublem "detected pkg: ${rp_pkgn[$i]}"; mkdir -p "${rp_pathd[$i]}"
+            if [[ ! -d "${rp_pathd[$i]}" ]]; then trouble "Err: mkdir failed: ${rp_pathd[$i]}"; break; fi
+            touch "${rp_pathd[$i]}/files"; touch "${rp_pathd[$i]}/desc"
+            if [[ ! -f "${rp_pathd[$i]}/files" ]] || [[ ! -f "${rp_pathd[$i]}/desc" ]]; then trouble "Err: could not touch files and/or desc"; continue; fi
+        fi
+    done< <(pacman -Qo pacman 2>&1 | grep -Ei "error: could not open file [[:alnum:]\./-]*/(files|desc): No such file or directory")
+    unset rp_errmsg; IFS=$DEFAULTIFS
+    m=$i; i=-1; while [[ $i -lt $m ]]; do
+        ((i++))
+        troublem "reinstalling ${rp_pkgn[$i]}"
+        pacman -S --noconfirm --overwrite=* ${rp_pkgn[$i]} 2>&1 |tee -a $log_f
+    done; unset i m rp_pathf[@] rp_pathd[@] rp_pkgn[@]
+else if [[ "$(pacman -Dk 2>&1|grep -Ei "error:.+(description file|file list) is missing$"|wc -l)" -gt "0" ]]; then
+    trouble "ERR: system has missing files in package database. Automatic fix disabled; reporting only."
+fi; fi
 
 sync; trouble "Updating packages from main repos..."
 pacman -Su$pacdown --needed --noconfirm $pacignore 2>&1 |tee -a $log_f
@@ -614,12 +649,24 @@ echo "${conf_a[aur_1helper_str]}" | grep 'all\|auto\|pikaur' >/dev/null || use_p
 echo "${conf_a[aur_1helper_str]}" | grep 'all\|auto\|apacman' >/dev/null || use_apacman=0
 if ! perst_isneeded "${conf_a[aur_update_freq]}" "${perst_a[last_aur_update]}";  then use_apacman=0; use_pikaur=0; fi
 
-if [ "$use_pikaur" = "1" ]; then if ! type pikaur >/dev/null 2>&1; then
-    use_pikaur=0
-    if echo "${conf_a[aur_1helper_str]}" | grep 'pikaur' >/dev/null; then
-        trouble "Warning: AURHelper: pikaur specified but not found..."
+if [ "$use_pikaur" = "1" ]; then
+    if ! type pikaur >/dev/null 2>&1; then
+        use_pikaur=0
+        if echo "${conf_a[aur_1helper_str]}" | grep 'pikaur' >/dev/null; then
+            trouble "Warning: AURHelper: pikaur specified but not found..."; fi
+    elif ! pikaur --help >/dev/null 2>&1; then
+        trouble "Warning: AURHelper: pikaur not functioning"
+        if [[ "${conf_a[repair_pikaur01_bool]}" = "$ctrue" ]] && pacman -Q pikaur >/dev/null 2>&1; then
+            troublem "Attempting to re-install pikaur..."
+            mkdir "/tmp/xs-autmp"; cd "/tmp/xs-autmp"
+            git clone https://github.com/actionless/pikaur.git && cd pikaur
+            python3 ./pikaur.py -S pikaur --noconfirm 2>&1 |tee -a $log_f
+            sync; rm -rf /tmp/xs-autmp
+        fi
+        if ! pikaur --help >/dev/null 2>&1; then
+            trouble "Warning: AURHelper: pikaur will be disabled"; fi
     fi
-fi; fi
+fi
 
 if [ "$use_apacman" = "1" ]; then if ! type apacman >/dev/null 2>&1; then
     use_apacman=0
