@@ -1,0 +1,9 @@
+
+This is a precompiled pacman with little to no dependencies originally from:
+https://pkgbuild.com/~eschwartz/repo/x86_64-extracted/pacman-static
+
+It is specifically for updating installs with libarchive<3.3.3-1 (sept 2018)
+
+
+In most cases this should not be needed
+
