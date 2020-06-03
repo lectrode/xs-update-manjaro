@@ -1,6 +1,6 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.4.0-rc2"; vsndsp="$vsn 2020-05-26"
+vsn="v3.4.0-rc3"; vsndsp="$vsn 2020-06-02"
 #-Downloads and Installs new updates
 #-Depends: pacman, paccache
 #-Optional Depends: notification daemon, notify-desktop, pikaur, apacman (deprecated)
@@ -195,9 +195,7 @@ iconcritical(){ icon=system-shutdown; }
 
 sendmsg(){
 #$1=user; $2=display; $3=msg; [$4=timeout]
-
-    if [ "${conf_a[notify_1enable_bool]}" = "$ctrue" ]; then
-    
+    if [[ "${conf_a[notify_1enable_bool]}" = "$ctrue" ]] && [[ "$(($noti_desk+$noti_send+$noti_gdbus))" -le 2 ]]; then
         let noti_id["$1"]="${noti_id["$1"]}+0"
         let tmp_t0="$4+0"
         if [ "$tmp_t0" = "0" ]; then
@@ -211,13 +209,13 @@ sendmsg(){
                 noti_id["$1"]="$(DISPLAY=$2 su $1 -c "notify-desktop -u normal -r ${noti_id["$1"]} \" \" -t 1")"
             else
                 tmp_m1="$(echo "$3"|sed 's/\\n/\n/g')"
-                noti_id["$1"]="$(DISPLAY=$2 su $1 -c "notify-desktop -i $icon $tmp_t1 -r ${noti_id["$1"]} xs-update-manjaro \"$notifyvsn$tmp_m1\"")"
+                noti_id["$1"]="$(DISPLAY=$2 su $1 -c "notify-desktop -i $icon $tmp_t1 -r ${noti_id["$1"]} xs-update-manjaro \"$notifyvsn$tmp_m1\" 2>/dev/null || echo error")"
             fi
         fi
         if [ "$noti_send" = "$true" ]; then
             if [[ ! "$3" = "dismiss" ]]; then
                 killall xfce4-notifyd 2>/dev/null
-                DISPLAY=$2 su $1 -c "notify-send -i $icon $tmp_t1 xs-update-manjaro \"$notifyvsn$3\""
+                noti_id["$1"]="$(DISPLAY=$2 su $1 -c "notify-send -i $icon $tmp_t1 xs-update-manjaro \"$notifyvsn$3\" 2>/dev/null || echo error")"
             fi
         fi
         if [ "$noti_gdbus" = "$true" ]; then
@@ -227,12 +225,12 @@ sendmsg(){
             else
                 noti_id["$1"]="$(DISPLAY=$2 su $1 -c "gdbus call --session --dest org.freedesktop.Notifications \
                     --object-path /org/freedesktop/Notifications --method org.freedesktop.Notifications.Notify \
-                    xs-update-manjaro ${noti_id["$1"]} $icon xs-update-manjaro \"$notifyvsn$3\" [] {} $tmp_t0"|cut -d ' ' -f 2|cut -d ',' -f 1)"
+                    xs-update-manjaro ${noti_id["$1"]} $icon xs-update-manjaro \"$notifyvsn$3\" [] {} $tmp_t0 2>/dev/null || echo error"|cut -d' ' -f2|cut -d',' -f1)"
             fi
         fi
-        unset tmp_t0 tmp_t1
-        
-    fi
+        unset tmp_t0 tmp_t1; if [[ "${noti_id["$1"]}" = "error" ]]; then noti_id["$1"]=0; return 1; fi
+    else systemctl is-system-running 2>/dev/null |grep 'unknown' >/dev/null && return 1
+    fi; return 0
 }
 
 getsessions(){
@@ -240,10 +238,10 @@ getsessions(){
     unset s_usr[@] s_disp[@] s_home[@]
     i=0; for sssn in $(loginctl list-sessions --no-legend); do
         IFS=' '; sssnarr=($sssn)
-        actv="$(loginctl show-session -p Active ${sssnarr[0]}|cut -d '=' -f 2)"
+        actv="$(loginctl show-session -p Active ${sssnarr[0]}|cut -d'=' -f2)"
         [[ "$actv" = "yes" ]] || continue
-        usr="$(loginctl show-session -p Name ${sssnarr[0]}|cut -d '=' -f 2)"
-        disp="$(loginctl show-session -p Display ${sssnarr[0]}|cut -d '=' -f 2)"
+        usr="$(loginctl show-session -p Name ${sssnarr[0]}|cut -d'=' -f2)"
+        disp="$(loginctl show-session -p Display ${sssnarr[0]}|cut -d'=' -f2)"
         [[ "$disp" = "" ]] && disp=":0" #workaround for gnome, which returns nothing
         usrhome="$(getent passwd "$usr"|cut -d: -f6)"
         [[  ${usr-x} && ${disp-x} && ${usrhome-x} ]] || continue
@@ -255,9 +253,9 @@ getsessions(){
 
 sendall(){
     if [ "${conf_a[notify_1enable_bool]}" = "$ctrue" ]; then
-        getsessions; i=0; while [ $i -lt ${#s_usr[@]} ]; do
-            sendmsg "${s_usr[$i]}" "${s_disp[$i]}" "$1" "$2"; i=$(($i+1))
-        done; unset i
+        sa_err=0; getsessions; i=0; while [ $i -lt ${#s_usr[@]} ]; do
+            sendmsg "${s_usr[$i]}" "${s_disp[$i]}" "$1" "$2" || sa_err=1; i=$(($i+1))
+        done; unset i; return $sa_err
     fi
 }
 
@@ -273,10 +271,9 @@ finalmsg_critical(){
     mv -f "$log_f" "${log_f}_$(date -I)"; log_f=${log_f}_$(date -I)
 
     allowreboot=1; [[ "${conf_a[reboot_1enable_num]}" = "-1" ]] && allowreboot=0
-    if [[ "${conf_a[reboot_1enable_num]}" = "0" ]]; then
-        systemctl is-system-running 2>/dev/null |grep 'unknown' >/dev/null || allowreboot=0; fi
+    if [[ "${conf_a[reboot_1enable_num]}" = "0" ]] || [ "$allowreboot" = "0" ]; then
+        sendall "Kernel and/or drivers were updated. Please restart your computer to finish" || allowreboot=1; fi
     if [ "$allowreboot" = "1" ]; then
-
         trouble "XS-done"
         secremain=${conf_a[reboot_delay_num]}
         echo "init">$orig_log
@@ -292,9 +289,6 @@ finalmsg_critical(){
             let secremain-=${conf_a[reboot_notifyrep_num]}
         done
         sync; reboot || systemctl --force reboot || systemctl --force --force reboot
-
-    else
-        sendall "Kernel and/or drivers were updated. Please restart your computer to finish"
     fi
 }
 
