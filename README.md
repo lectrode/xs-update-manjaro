@@ -1,5 +1,7 @@
 # xs-update-manjaro
 
+ ## ReadMe for Beta/Dev ([Switch to Stable](https://github.com/lectrode/xs-update-manjaro/tree/stable))
+
 ## Contents:
 * [Summary](#summary "")
 * [Suggested usage / Disclaimer](#suggested-usage-and-disclaimer "")
@@ -9,6 +11,7 @@
 * [Supported AUR Helpers](#supported-aur-helpers "")
 * [Configuration](#configuration "")
   * [aur_1helper_str](#aur_1helper_str "")
+  * [aur_aftercritical_bool](#aur_aftercritical_bool "")
   * [aur_update_freq](#aur_update_freq "")
   * [aur_devel_freq](#aur_devel_freq "")
   * [cln_1enable_bool](#cln_1enable_bool "")
@@ -27,11 +30,14 @@
   * [main_perstdir_str](#main_perstdir_str "")
   * [main_country_str](#main_country_str "")
   * [main_testsite_str](#main_testsite_str "")
-  * [reboot_1enable_bool](#reboot_1enable_bool "")
+  * [reboot_1enable_num](#reboot_1enable_num "")
   * [reboot_delayiflogin_bool](#reboot_delayiflogin_bool "")
   * [reboot_delay_num](#reboot_delay_num "")
   * [reboot_notifyrep_num](#reboot_notifyrep_num "")
   * [reboot_ignoreusers_str](#reboot_ignoreusers_str "")
+  * [repair_db01_bool](#repair_db01_bool "")
+  * [repair_manualpkg_bool](#repair_manualpkg_bool "")
+  * [repair_pikaur01_bool](#repair_pikaur01_bool "")
   * [self_1enable_bool](#self_1enable_bool "")
   * [self_branch_str](#self_1enable_bool "")
   * [update_downgrades_bool](#update_downgrades_bool "")
@@ -57,7 +63,8 @@ After performing a number of "checks" (make sure script isn't already running, c
 ````
 pacman-mirrors [--geoip || -c $main_country_str] # Update mirrors
 pacman-key --refresh-keys # Update package signature keys
-pacman -Syy --needed --noconfirm archlinux-keyring manjaro-keyring manjaro-system # Update system packages
+pacman -Syyu[u]w --needed --noconfirm [ignored packages] # Update repo databases, download all packages before any updates
+pacman -S --needed --noconfirm archlinux-keyring manjaro-keyring manjaro-system # Update system packages
 pacman -Su[u] --needed --noconfirm [ignored packages] # Update packages from official repos
 
 pikaur -Sau[u] [--devel] --needed --noconfirm --noprogressbar [ignored packages] # Update AUR packages
@@ -67,6 +74,19 @@ flatpak update -y # Update Flatpak packages
 
 pacman -Rnsc $(pacman -Qtdq) --noconfirm # Removes orphan packages no longer required
 ````
+
+### Automatic Repair and Manual Changes
+
+This script supports detecting and repairing the following potential issues:
+ * [Package database errors](#repair_db01_bool "")
+ * [Non-functioning Pikaur](#repair_pikaur01_bool "")
+
+Every once in a while, updating Manjaro requires manual package changes to allow updates to succeed. This script [supports](#repair_manualpkg_bool "") automatically performing the following:
+ * Removal: pyqt5-common<=5.13.2-1, engrampa-thunar-plugin<=1.0-2
+ * Update: libarchive<3.3.3-1, pacman<5.2
+ * Replace: pamac<8.0.0-1 with pamac-gtk
+
+The oldest fresh install this script has successfully updated is Manjaro Xfce 17.1.10 (as of June of 2020)
 
 ## Installation:
 
@@ -153,6 +173,11 @@ Drawbacks:
 * `all` will run every supported AUR helper found in this order: pikaur, apacman
 * `none` will not use any AUR helper
 
+### aur_aftercritical_bool
+* Default: `0` (False)
+* If set to false, script will skip AUR package updates after critical main system packages have been updated
+* If set to true, script will proceed to update AUR packages, regardless of critical main package updates
+
 ### aur_update_freq
 * Default: `3`
 * Every X days, update AUR packages (-1 disables all AUR updates, including devel)
@@ -232,9 +257,11 @@ Drawbacks:
 * Countries separated by commas from which to pull updates
 * See output of `pacman-mirrors -l` for supported values
 
-### reboot_1enable_bool
- * Default: `0` (False)
- * If true, script will automatically reboot if it detects the kernel and/or systemd have been updated
+### reboot_1enable_num
+ * Default: `0`
+ * -1: Disable script reboot in all cases
+ *  0: Allow script reboot only if rebooting normally may not be possible (system may be in critical state after systemd update)
+ *  1: Always allow script to reboot after critical system packages have been updated
 
 
 ### reboot_delayiflogin_bool
@@ -256,6 +283,24 @@ Drawbacks:
  * Default: `nobody lightdm sddm gdm`
  * List of users separated by spaces
  * These users will not trigger the reboot delay even if they are logged on
+
+
+### repair_db01_bool
+ * Default: `1` (True)
+ * If true, the script will detect and attempt to repair missing "desc"/"files" files in package database
+ * NOTE: It does this by creating the missing files and re-installing the package(s) with `overwrite=*` specified
+
+
+### repair_manualpkg_bool
+ * Default: `1` (True)
+ * If true, script will check for and perform critical package changes required for continued updates
+ * See [Automatic Repair](#automatic-repair-and-manual-changes "") for specific package changes the script supports
+
+
+### repair_pikaur01_bool
+ * Default: `1` (True)
+ * If true, the script will attempt to re-install pikaur if it is not functioning
+ * NOTE: Specifically needed if python is updated
 
 
 ### self_1enable_bool
@@ -296,32 +341,39 @@ Drawbacks:
 * NOTE: Blank line at end is required for last line to be parsed
 ````
 aur_1helper_str=auto
+aur_aftercritical_bool=0
 aur_update_freq=3
 aur_devel_freq=6
 cln_1enable_bool=1
-cln_aurbuild_bool=1
+cln_aurbuild_bool=0
 cln_aurpkg_bool=1
 cln_orphan_bool=1
-cln_paccache_num=0
-flatpak_1enable_bool=1
-main_ignorePackages_str=
-main_logdir_str=/var/log/xs
+cln_paccache_num=1
+flatpak_update_freq=3
 main_country_str=
-main_testSite_str=www.google.com
+main_ignorepkgs_str=
+main_logdir_str=/var/log/xs
+main_perstdir_str=
+main_testsite_str=www.google.com
 notify_1enable_bool=1
+notify_errors_bool=1
 notify_function_str=auto
 notify_lastmsg_num=20
-notify_errors_bool=1
-reboot_1enable_bool=0
+notify_vsn_bool=0
+reboot_1enable_num=0
 reboot_delayiflogin_bool=1
 reboot_delay_num=120
-reboot_notifyrep_num=10
 reboot_ignoreusers_str=nobody lightdm sddm gdm
+reboot_notifyrep_num=10
+repair_db01_bool=1
+repair_manualpkg_bool=1
+repair_pikaur01_bool=1
 self_1enable_bool=1
 self_branch_str=stable
 update_downgrades_bool=1
-update_keys_bool=1
-zflag:tor-browser=--skippgpcheck
+update_keys_freq=30
+update_mirrors_freq=1
+zflag:dropbox,tor-browser=--skippgpcheck
 
 ````
 

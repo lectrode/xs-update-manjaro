@@ -1,6 +1,6 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.4.0-rc3"; vsndsp="$vsn 2020-06-02"
+vsn="v3.4.0-rc4"; vsndsp="$vsn 2020-06-04"
 #-Downloads and Installs new updates
 #-Depends: pacman, paccache
 #-Optional Depends: notification daemon, notify-desktop, pikaur, apacman (deprecated)
@@ -13,6 +13,8 @@ debgn=+x; # -x =debugging | +x =no debugging
 set $debgn
 
 #---Define Functions---
+
+cnvrt2_int(){ if ! [[ "$1" =~ ^[0-9]+$ ]]; then echo 0; return; fi; echo $1; }
 
 trouble(){ (echo;echo "#XS# $(date) - $@") |tee -a $log_f; }
 troublem(){ echo "XS-$@" |tee -a $log_f; }
@@ -196,8 +198,8 @@ iconcritical(){ icon=system-shutdown; }
 sendmsg(){
 #$1=user; $2=display; $3=msg; [$4=timeout]
     if [[ "${conf_a[notify_1enable_bool]}" = "$ctrue" ]] && [[ "$(($noti_desk+$noti_send+$noti_gdbus))" -le 2 ]]; then
-        let noti_id["$1"]="${noti_id["$1"]}+0"
-        let tmp_t0="$4+0"
+        noti_id["$1"]="$(cnvrt2_int "${noti_id["$1"]}")"
+        tmp_t0="$(cnvrt2_int "$4")"
         if [ "$tmp_t0" = "0" ]; then
             tmp_t1="-u critical"
         else
@@ -397,7 +399,7 @@ if [[ -f "$xs_autoupdate_conf" ]]; then
                     "$line" = "$cfalse" ) ]]; then continue; fi
                 #validate numbers
                 if echo "$varname" | grep "num" >/dev/null; then 
-                    if [[ ! "$line" = "0" ]]; then let "line += 0"
+                    if [[ ! "$line" = "0" ]]; then line="$(cnvrt2_int "$line")"
                     [[ "$line" = "0" ]] && continue; fi; fi
                 #validate integers 0+
                 if echo "$conf_int0" | grep "$varname" >/dev/null; then 
@@ -554,7 +556,7 @@ if [[ -f "$perst_f" ]]; then
             line="$(echo "$line" | cut -d '=' -f 2-)"
             if [[ ! "$line" = "" ]]; then
                 #validate timestamp
-                let "line += 0"; [[ "$line" -lt "20000101" ]] && continue
+                line="$(cnvrt2_int "$line")"; [[ "$line" -lt "20000101" ]] && continue
                 perst_a[$varname]=$line
             fi
         fi
@@ -796,9 +798,10 @@ if [[ "$use_pikaur" = "1" ]]; then
         trouble "Updating AUR packages with custom flags [pikaur]..."
         for i in ${!flag_a[*]}; do
             if ! test_online; then trouble "Not online - skipping pikaur command"; break; fi
-            pacman -Q $(echo "$i" | tr ',' ' ') >/dev/null 2>&1 && \
+            if pacman -Q $(echo "$i" | tr ',' ' ') >/dev/null 2>&1; then
                 pikaur -S --needed --noconfirm --noprogressbar --mflags=${flag_a[$i]} $(echo "$i" | tr ',' ' ') 2>&1 |tee -a $log_f
                 let "err_aur=err_aur+${PIPESTATUS[0]}"
+            fi
         done
     fi
     perst_isneeded "${conf_a[aur_devel_freq]}" "${perst_a[last_aurdev_update]}" && devel="--devel"
