@@ -1,6 +1,6 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.4.0-rc4"; vsndsp="$vsn 2020-06-04"
+vsn="v3.4.0-rc5"; vsndsp="$vsn 2020-06-10"
 #-Downloads and Installs new updates
 #-Depends: pacman, paccache
 #-Optional Depends: notification daemon, notify-desktop, pikaur, apacman (deprecated)
@@ -10,7 +10,7 @@ if [ $# -eq 0 ]; then "$0" "XS"& exit 0; fi # start in background
 
 [[ "$xs_autoupdate_conf" = "" ]] && xs_autoupdate_conf='/etc/xs/auto-update.conf'
 debgn=+x; # -x =debugging | +x =no debugging
-set $debgn
+set $debgn; pcmbin="pacman"
 
 #---Define Functions---
 
@@ -52,8 +52,8 @@ if [[ "${conf_a[cln_paccache_num]}" -gt "-1" ]]; then
 fi
 }
 
-chk_pkgisinst(){ [[ "$(pacman -Qq $1 2>/dev/null | grep -m1 -x $1)" == "$1" ]] && return 0; return 1; }
-chk_pkgvsndiff(){ if chk_pkgisinst "$1"; then echo "$(vercmp $(pacman -Q $1 | grep "$1 " -m1 | cut -d' ' -f2) $2)"; else echo -1; fi; }
+chk_pkgisinst(){ [[ "$($pcmbin -Qq $1 2>/dev/null | grep -m1 -x $1)" == "$1" ]] && return 0; return 1; }
+chk_pkgvsndiff(){ cpvd_t1="$($pcmbin -Q $1 | grep "$1 " -m1 | cut -d' ' -f2)"; echo "$(vercmp ${cpvd_t1:-0} $2)"; unset cpvd_t1; }
 
 chk_sha256(){ [[ "$(sha256sum "$1" |cut -d ' ' -f 1 |tr -cd [:alnum:])" = "$2" ]] && return 0; return 1; }
 
@@ -69,10 +69,10 @@ fi; dl_clean $1; return 1
 
 get_pkgfilename(){
 #$1=pkg name
-regex="^$1-([0-9\.+:a-z]+-[0-9]+)-[0-9a-z_]+.pkg.[0-9a-z]+.[0-9a-z]+$"
+regex="^$1-([0-9\.+:a-z]+-[0-9\.]+)-[0-9a-z_]+.pkg.[0-9a-z]+.[0-9a-z]+$"
 i=-1; while IFS= read -r gpfn_t1; do
     if [[ "$gpfn_t1" =~ $regex ]]; then
-        if [[ "$(vercmp ${BASH_REMATCH[1]} $(pacman -Q $1 | grep "$1 " -m1 | cut -d' ' -f2))" -ge 0 ]]; then gpfn_t2+=("$(get_pacmancfg CacheDir)$gpfn_t1"); break; fi
+        if [[ "$(vercmp ${BASH_REMATCH[1]} $(cnvrt2_int "$($pcmbin -Q $1 | grep "$1 " -m1 | cut -d' ' -f2)"))" -ge 0 ]]; then gpfn_t2+=("$(get_pacmancfg CacheDir)$gpfn_t1"); break; fi
     fi
 done< <(ls "$(get_pacmancfg CacheDir)"|grep -E "^$1-[0-9]"|sort -r)
 echo "$gpfn_t2"; unset gpfn_t1 i regex gpfn_t2
@@ -495,7 +495,7 @@ if [ "${conf_a[notify_1enable_bool]}" = "$ctrue" ]; then
         if notify-desktop --help >/dev/null 2>&1; then
             noti_gdbus=$false; noti_send=$false
             troubleqin "notify-desktop found, using for notifications"
-        elif pacman -Q plasma-desktop >/dev/null 2>&1; then
+        elif chk_pkgisinst plasma-desktop; then
             if notify-send --help >/dev/null 2>&1; then
                 noti_gdbus=$false; noti_desk=$false
                 troubleqin "WARN: KDE Plasma desktop found, falling back to legacy. Please install notify-desktop-git for fully-supported notifications in KDE Plasma"
@@ -645,59 +645,42 @@ fi
 #Any critical errors will disable further changes
 while : ; do
 
-#Does not support installs with glibc<2.27
-if [[ "$(chk_pkgvsndiff "glibc" "2.27-1")" -lt 0 ]]; then
-    trouble "ERR: Critical: old glibc installed - system too old for script to update"; err_repo=1; break; fi
+#Does not support installs with xproto<=7.0.31-1
+if chk_pkgisinst "xproto" && [[ "$(chk_pkgvsndiff "xproto" "7.0.31-1")" -le 0 ]]; then
+    trouble "ERR: Critical: old xproto installed - system too old for script to update"; err_repo=1; break; fi
 
 trouble "Downloading packages from main repos..."
-pacman -Syyuw$pacdown --needed --noconfirm $pacignore 2>&1 |tee -a $log_f
+#pacman -Syyuw$pacdown --needed --noconfirm $pacignore 2>&1 |tee -a $log_f
+pacman -Syy 2>&1 |tee -a $log_f
 err_repodl=${PIPESTATUS[0]}; if [[ $err_repodl -ne 0 ]]; then trouble "ERR: pacman exited with code $err_repodl"; fi
 
 #Required manual pkg changes
 if [[ "${conf_a[repair_manualpkg_bool]}" = "$ctrue" ]]; then
 
-#Update libarchive<3.3.3-1 (17.1.12 and earlier)
-if [[ "$(chk_pkgvsndiff "libarchive" "3.3.3-1")" -lt 0 ]]; then
-    trouble "Updating old libarchive..."
-    if dl_verify "pacmanstatic" "$self_repo/master/external/hash_pacman-static" "$self_repo/master/external/pacman-static"; then
-        chmod +x /tmp/xs-autmp-pacmanstatic/pacman-static
-        /tmp/xs-autmp-pacmanstatic/pacman-static -S --noconfirm libarchive 2>&1 |tee -a $log_f
-        dl_clean "pacmanstatic"
-        if [[ "$(chk_pkgvsndiff "libarchive" "3.3.3-1")" -lt 0 ]]; then
-            trouble "ERR: Critical: old libarchive still detected"; err_repo=1; break; fi
-    fi
+#Fix for pacman<5.2 (18.1.1 and earlier)
+if [[ "$(chk_pkgvsndiff "pacman" "5.2.0-1")" -lt 0 ]]; then
+    trouble "Old pacman detected, attempting to use pacman-static..."
+    pacman -Sw --noconfirm pacman-static
+    pacman -U --noconfirm "$(get_pkgfilename "pacman-static")" && pcmbin="pacman-static"
+    if ! chk_pkgisinst "pacman-static"; then
+        if dl_verify "pacmanstatic" "$self_repo/master/external/hash_pacman-static" "$self_repo/master/external/pacman-static"; then
+            chmod +x /tmp/xs-autmp-pacmanstatic/pacman-static && pcmbin="/tmp/xs-autmp-pacmanstatic/pacman-static"; fi; fi
+    if echo "$pcmbin"|grep "pacman-static" >/dev/null 2>&1 && $pcmbin --help >/dev/null 2>&1; then
+        trouble "Using $pcmbin"
+    else trouble "ERR: Critical: failed to use pacman-static. Cannot update system packages"; err_repo=1; break; fi
 fi
 
 #Removed from repos early December 2019
 if chk_pkgisinst "pyqt5-common" && [[ "$(chk_pkgvsndiff "pyqt5-common" "5.13.2-1")" -le 0 ]]; then
     pacman -Rdd pyqt5-common --noconfirm 2>&1 |tee -a $log_f; fi
-#Xfce 18.0 and earlier
-if chk_pkgisinst "pamac" && [[ "$(chk_pkgvsndiff "pamac" "8.0.0-1")" -lt 0 ]]; then
-    pacman -Rdd pamac --noconfirm 2>&1 |tee -a $log_f; installlater+=" pamac-gtk"; fi
 #Xfce 17.1.10 and earlier
 if chk_pkgisinst "engrampa-thunar-plugin" && [[ "$(chk_pkgvsndiff "engrampa-thunar-plugin" "1.0-2")" -le 0 ]]; then
     pacman -Rdd engrampa-thunar-plugin --noconfirm 2>&1 |tee -a $log_f; fi
 
-#Update pacman<5.2 (18.1.1 and earlier)
-if [[ "$(chk_pkgvsndiff "pacman" "5.2.0-1")" -lt 0 ]]; then
-    trouble "Updating old pacman..."
-    rp_appnm=(pacman)
-    for pkg in pamac-common pamac-cli; do
-        if [[ "$(pacman -Qq | grep -m1 -x $pkg)" == "$pkg" ]]; then rp_appnm+=($pkg); fi; done
-    pacman -Syw --noconfirm ${rp_appnm[@]}
-    while [ 0 -lt ${#rp_appnm[@]} ]; do rp_appfile+=("$(get_pkgfilename ${rp_appnm[0]})"); rp_appnm=(${rp_appnm[@]:1}); done
-    if [[ ! "$rp_appfile" = "" ]]; then
-        pacman -U --noconfirm ${rp_appfile[@]} 2>&1 |tee -a $log_f
-    fi
-    unset rp_appfile rp_appnm
-    if [[ "$(chk_pkgvsndiff "pacman" "5.2.0-1")" -lt 0 ]]; then
-        trouble "ERR: Critical: old pacman still detected"; err_repo=1; break; fi
-fi
-
 fi
 
 trouble "Updating system packages..."
-pacman -S --needed --noconfirm archlinux-keyring manjaro-keyring manjaro-system 2>&1 |tee -a $log_f
+$pcmbin -S --needed --noconfirm archlinux-keyring manjaro-keyring manjaro-system 2>&1 |tee -a $log_f
 err_sys=${PIPESTATUS[0]}; if [[ $err_sys -ne 0 ]]; then trouble "ERR: pacman exited with code $err_sys"; fi
 
 #check for missing database files
@@ -716,20 +699,19 @@ if [[ "${conf_a[repair_db01_bool]}" = "$ctrue" ]]; then
             touch "${rp_pathd[$i]}/files"; touch "${rp_pathd[$i]}/desc"
             if [[ ! -f "${rp_pathd[$i]}/files" ]] || [[ ! -f "${rp_pathd[$i]}/desc" ]]; then trouble "Err: could not touch files and/or desc"; continue; fi
         fi
-    done< <(pacman -Qo pacman 2>&1 | grep -Ei "error: could not open file [[:alnum:]\./-]*/(files|desc): No such file or directory")
+    done< <($pcmbin -Qo pacman 2>&1 | grep -Ei "error: could not open file [[:alnum:]\./-]*/(files|desc): No such file or directory")
     unset rp_errmsg; IFS=$DEFAULTIFS
     m=$i; i=-1; while [[ $i -lt $m ]]; do
         ((i++))
         troublem "reinstalling ${rp_pkgn[$i]}"
-        pacman -S --noconfirm --overwrite=* ${rp_pkgn[$i]} 2>&1 |tee -a $log_f
+        $pcmbin -S --noconfirm --overwrite=* ${rp_pkgn[$i]} 2>&1 |tee -a $log_f
     done; unset i m rp_pathf[@] rp_pathd[@] rp_pkgn[@]
-else if [[ "$(pacman -Dk 2>&1|grep -Ei "error:.+(description file|file list) is missing$"|wc -l)" -gt "0" ]]; then
+else if [[ "$($pcmbin -Dk 2>&1|grep -Ei "error:.+(description file|file list) is missing$"|wc -l)" -gt "0" ]]; then
     trouble "ERR: system has missing files in package database. Automatic fix disabled; reporting only."
 fi; fi
 
 sync; trouble "Updating packages from main repos..."
-[[ "$installlater" = "" ]] || pacman -S --needed --noconfirm $installlater 2>&1 |tee -a $log_f
-pacman -Su$pacdown --needed --noconfirm $pacignore 2>&1 |tee -a $log_f
+$pcmbin -Su$pacdown --needed --noconfirm $pacignore 2>&1 |tee -a $log_f
 err_repo=${PIPESTATUS[0]}; if [[ $err_repo -ne 0 ]]; then trouble "ERR: pacman exited with code $err_repo"; break; fi
 if [[ "${conf_a[aur_aftercritical_bool]}" = "$cfalse" ]]; then
     normcrit=norm; grep -Ei "(up|down)(grad|dat)ing (linux[0-9]{2,3}|systemd)(\.|-| )" $log_f >/dev/null && normcrit=crit
@@ -751,10 +733,10 @@ if [ "$use_pikaur" = "1" ]; then
         if echo "${conf_a[aur_1helper_str]}" | grep 'pikaur' >/dev/null; then
             trouble "Warning: AURHelper: pikaur specified but not found..."; fi
     else
-        pikaur -S --needed --noconfirm "$(pacman -Qq pikaur)" 2>&1 |tee -a $log_f
+        pikaur -S --needed --noconfirm "$($pcmbin -Qq pikaur)" 2>&1 |tee -a $log_f
         if [[ ! "${PIPESTATUS[0]}" = "0" ]]; then
             trouble "Warning: AURHelper: pikaur not functioning"
-            if [[ "${conf_a[repair_pikaur01_bool]}" = "$ctrue" ]] && pacman -Q pikaur >/dev/null 2>&1; then
+            if [[ "${conf_a[repair_pikaur01_bool]}" = "$ctrue" ]] && $pcmbin -Q pikaur >/dev/null 2>&1; then
                 troublem "Attempting to re-install pikaur..."
                 mkdir "/tmp/xs-autmp-2delete"; pushd "/tmp/xs-autmp-2delete"
                 git clone https://github.com/actionless/pikaur.git && cd pikaur
@@ -781,8 +763,8 @@ if echo "${conf_a[aur_1helper_str]}" | grep 'auto' >/dev/null; then
 #Install KDE notifier dependency (if auto|desk on KDE)
 if [ "${conf_a[notify_1enable_bool]}" = "$ctrue" ]; then 
     if echo "${conf_a[notify_function_str]}"|grep "auto\|desk" >/dev/null; then
-        if pacman -Q plasma-desktop >/dev/null 2>&1; then
-            if ! pacman -Q notify-desktop-git; then
+        if $pcmbin -Q plasma-desktop >/dev/null 2>&1; then
+            if ! $pcmbin -Q notify-desktop-git; then
                 if [ "$use_pikaur" = "1" ]; then pikaur -S --needed --noconfirm notify-desktop-git; fi
                 if [ "$use_apacman" = "1" ]; then apacman -S --needed --noconfirm notify-desktop-git; fi
             fi
@@ -798,7 +780,7 @@ if [[ "$use_pikaur" = "1" ]]; then
         trouble "Updating AUR packages with custom flags [pikaur]..."
         for i in ${!flag_a[*]}; do
             if ! test_online; then trouble "Not online - skipping pikaur command"; break; fi
-            if pacman -Q $(echo "$i" | tr ',' ' ') >/dev/null 2>&1; then
+            if $pcmbin -Q $(echo "$i" | tr ',' ' ') >/dev/null 2>&1; then
                 pikaur -S --needed --noconfirm --noprogressbar --mflags=${flag_a[$i]} $(echo "$i" | tr ',' ' ') 2>&1 |tee -a $log_f
                 let "err_aur=err_aur+${PIPESTATUS[0]}"
             fi
@@ -840,14 +822,16 @@ done
 #Remove orphan packages, cleanup
 if [[ "${conf_a[cln_1enable_bool]}" = "$ctrue" ]]; then 
     if [[ "${conf_a[cln_orphan_bool]}" = "$ctrue" ]] && [[ "$err_repo" = "0" ]]; then
-        if [[ ! "$(pacman -Qtdq)" = "" ]]; then
+        if [[ ! "$($pcmbin -Qtdq)" = "" ]]; then
             trouble "Removing orphan packages..."
-            pacman -Rnsc $(pacman -Qtdq) --noconfirm  2>&1 |tee -a $log_f
+            $pcmbin -Rnsc $($pcmbin -Qtdq) --noconfirm 2>&1 |tee -a $log_f
             err_orphan=${PIPESTATUS[0]}; [[ $err_orphan -gt 0 ]] && trouble "ERR: pacman exited with error code $err_orphan"
         fi
     fi
 fi
 pacclean
+if [[ "$pcmbin" = "pacman-static" ]]; then $pcmbin -Rdd --noconfirm pacman-static 2>&1 |tee -a $log_f
+    elif [[ ! "$pcmbin" = "pacman" ]]; then dl_clean "pacmanstatic"; fi
 
 #Update Flatpak
 if perst_isneeded "${conf_a[flatpak_update_freq]}" "${perst_a[last_flatpak_update]}"; then

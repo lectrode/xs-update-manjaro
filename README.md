@@ -2,7 +2,9 @@
 
  ## ReadMe for Beta/Dev ([Switch to Stable](https://github.com/lectrode/xs-update-manjaro/tree/stable))
 
-## Contents:
+<details>
+ <summary><h2>Table of Contents</h2></summary>
+
 * [Summary](#summary "")
 * [Suggested usage / Disclaimer](#suggested-usage-and-disclaimer "")
 * [Detailed Description](#detailed-description "")
@@ -45,22 +47,40 @@
   * [update_keys_freq](#update_keys_freq "")
 * [Custom makepkg flags for specific AUR packages](#custom-makepkg-flags-for-specific-aur-packages "")
 * [Sample configuration file](#sample-configuration-file "")
-
-### Warning: this script is intended for use by advanced users only
+</details>
 
 ## Summary
-This performs a full and automatic update of all packages using `pacman`. If a supported [AUR helper](#supported-aur-helpers "") is installed and [enabled](#aur_1helper_str ""), this will also update all AUR packages. If flatpak is installed and [enabled](#flatpak_update_freq ""), this will also update flatpak packages. If notifications are [enabled](#notify_1enable_bool ""), status notifications are sent to any active users (supports Xfce, KDE, and Gnome). If using Gnome, I recommend installing the [permanent notifications extension](https://extensions.gnome.org/extension/41/permanent-notifications/ "").
+
+This is a highly configurable script for automating updates for Manjaro Linux. It supports updating the following:
+* Main system packages (via `pacman`)
+* AUR packages (via an [AUR helper](#supported-aur-helpers ""))
+* Flatpak packages
+
+Status Notifications are currently supported on the following Desktop Environments:
+* Xfce
+* KDE (requires [notify-desktop-git](https://aur.archlinux.org/packages/notify-desktop-git) for full notification support)
+* Gnome ([permanent notifications extension](https://extensions.gnome.org/extension/41/permanent-notifications/ "") is recommended)
+.
+
 
 ## Suggested Usage and Disclaimer:
-This is not a replacement for manually updating/maintaining your own computer, but a supplement. This script automates what it can, but updates needing manual steps (for example, merging .pacnew files) will still need those. If not used properly, this script may "break" your system. For example, if the computer is restarted while the script is updating core components, the computer may no longer be able to boot. No warranty or guarantee is included or implied. **Use at your own risk**.
+No warranty or guarantee is included or implied. **Use at your own risk**.
 
-Personally, I use this script to update my personal computer, as well as help manage remote computers. If manual steps are required, I'll take care of those manually on the computers. Otherwise (as is usually the case), this script will keep those updated.
+Please do not use this script blindly. You should have a firm understanding of how to manually update your computer before using this. 
+You can learn about updating your computer at the following:
+* [Manjaro Wiki](https://wiki.manjaro.org/index.php?title=Main_Page#Software_Management_.2F_Applications)
+* [Manjaro User Guide](https://manjaro.org/support/userguide/)
+
+This is not a replacement for manually updating/maintaining your own computer, but a supplement. This script automates what it can, but updates needing manual steps (for example, merging .pacnew files) will still need those.
+Some of the manual steps have been incorporated into this script, but your system(s) may require additional manual steps depending on what packages you have installed.
+
+Always have external bootable media (like a flash drive with manjaro on it) available in case the system becomes unbootable.
 
 ## Detailed Description
 This script requires root access and is made to run automatically at startup, although it can be run manually or on a schedule as well. It logs everything it does in [`$main_logdir_str`](#main_logdir_str "")`/auto-update.log`. If it detects that kernel or systemd packages were updated, it will include the date in the log name to keep it for future reference, as well as notify the user that a restart is needed. If automatic reboot is [enabled](#reboot_1enable_bool ""), it will also automatically reboot the computer (this is disabled by default). If a restart is needed, waiting to restart may cause some applications to have issues.
 
 After performing a number of "checks" (make sure script isn't already running, check for internet connection, check for running instances of pacman/apacman, remove db.lck if it exists and nothing is updating, etc), this script primarily runs the following commands (if they are enabled) to update the computer:
-````
+```
 pacman-mirrors [--geoip || -c $main_country_str] # Update mirrors
 pacman-key --refresh-keys # Update package signature keys
 pacman -Syyu[u]w --needed --noconfirm [ignored packages] # Update repo databases, download all packages before any updates
@@ -73,20 +93,19 @@ apacman -Su[u] --auronly --needed --noconfirm [ignored packages] # Update AUR pa
 flatpak update -y # Update Flatpak packages
 
 pacman -Rnsc $(pacman -Qtdq) --noconfirm # Removes orphan packages no longer required
-````
+```
 
 ### Automatic Repair and Manual Changes
 
 This script supports detecting and repairing the following potential issues:
- * [Package database errors](#repair_db01_bool "")
- * [Non-functioning Pikaur](#repair_pikaur01_bool "")
+* [Package database errors](#repair_db01_bool "")
+* [Non-functioning Pikaur](#repair_pikaur01_bool "")
 
 Every once in a while, updating Manjaro requires manual package changes to allow updates to succeed. This script [supports](#repair_manualpkg_bool "") automatically performing the following:
- * Removal: pyqt5-common<=5.13.2-1, engrampa-thunar-plugin<=1.0-2
- * Update: libarchive<3.3.3-1, pacman<5.2
- * Replace: pamac<8.0.0-1 with pamac-gtk
+* Removal: pyqt5-common<=5.13.2-1, engrampa-thunar-plugin<=1.0-2
+* Update: pacman<5.2
 
-The oldest fresh install this script has successfully updated is Manjaro Xfce 17.1.10 (as of June of 2020)
+The oldest fresh install this script has successfully updated is Manjaro Xfce 17.1.7 (as of June of 2020)
 
 ## Installation:
 
