@@ -2,14 +2,15 @@
 
  ## ReadMe for Beta/Dev ([Switch to Stable](https://github.com/lectrode/xs-update-manjaro/tree/stable))
 
+## Table of Contents
 <details>
- <summary><h2>Table of Contents</h2></summary>
+ <summary>↕</summary>
 
 * [Summary](#summary "")
 * [Suggested usage / Disclaimer](#suggested-usage-and-disclaimer "")
-* [Detailed Description](#detailed-description "")
-* [Installation](#installation "")
-* [Dependencies](#dependencies "")
+* [Execution Overview](#execution-overview "")
+* [Supported Automatic Repair / Manual Changes](#supported-automatic-repair-and-manual-changes "")
+* [Installation/Requrements](#installation-requrements "")
 * [Supported AUR Helpers](#supported-aur-helpers "")
 * [Configuration](#configuration "")
   * [aur_1helper_str](#aur_1helper_str "")
@@ -41,7 +42,7 @@
   * [repair_manualpkg_bool](#repair_manualpkg_bool "")
   * [repair_pikaur01_bool](#repair_pikaur01_bool "")
   * [self_1enable_bool](#self_1enable_bool "")
-  * [self_branch_str](#self_1enable_bool "")
+  * [self_branch_str](#self_branch_str "")
   * [update_downgrades_bool](#update_downgrades_bool "")
   * [update_mirrors_freq](#update_mirrors_freq "")
   * [update_keys_freq](#update_keys_freq "")
@@ -51,7 +52,7 @@
 
 ## Summary
 
-This is a highly configurable script for automating updates for Manjaro Linux. It supports updating the following:
+This is a highly configurable, **non-interactive** script for automating updates for Manjaro Linux. It supports updating the following:
 * Main system packages (via `pacman`)
 * AUR packages (via an [AUR helper](#supported-aur-helpers ""))
 * Flatpak packages
@@ -76,40 +77,138 @@ Some of the manual steps have been incorporated into this script, but your syste
 
 Always have external bootable media (like a flash drive with manjaro on it) available in case the system becomes unbootable.
 
-## Detailed Description
-This script requires root access and is made to run automatically at startup, although it can be run manually or on a schedule as well. It logs everything it does in [`$main_logdir_str`](#main_logdir_str "")`/auto-update.log`. If it detects that kernel or systemd packages were updated, it will include the date in the log name to keep it for future reference, as well as notify the user that a restart is needed. If automatic reboot is [enabled](#reboot_1enable_bool ""), it will also automatically reboot the computer (this is disabled by default). If a restart is needed, waiting to restart may cause some applications to have issues.
+## Execution Overview
+<details>
+<summary>↕</summary>
 
-After performing a number of "checks" (make sure script isn't already running, check for internet connection, check for running instances of pacman/apacman, remove db.lck if it exists and nothing is updating, etc), this script primarily runs the following commands (if they are enabled) to update the computer:
-```
-pacman-mirrors [--geoip || -c $main_country_str] # Update mirrors
-pacman-key --refresh-keys # Update package signature keys
-pacman -Syyu[u]w --needed --noconfirm [ignored packages] # Update repo databases, download all packages before any updates
-pacman -S --needed --noconfirm archlinux-keyring manjaro-keyring manjaro-system # Update system packages
-pacman -Su[u] --needed --noconfirm [ignored packages] # Update packages from official repos
+Overview of what the script does from start to finish. Some steps may be slightly out of order for readability.
 
-pikaur -Sau[u] [--devel] --needed --noconfirm --noprogressbar [ignored packages] # Update AUR packages
-apacman -Su[u] --auronly --needed --noconfirm [ignored packages] # Update AUR packages
+### Initialization
+<details>
+ <summary>↕</summary>
+
+* Define main functions
+* Load Config
+* Determine notification function (*config: [enable](#notify_1enable_bool ""), [manual selection](#notify_function_str "")*)
+* Initialize logging (*config: [location](#main_logdir_str "")*)
+* Load Persistent data (*config: [location](#main_perstdir_str "")*)
+* Export Config and Persistent data files
+* Perform checks:
+  * Ensure only 1 instance is running
+  * Wait up to 5 minutes for network connection
+  * Check for script updates (*config: [enable](#self_1enable_bool ""), [branch](#self_branch_str "")*)
+  * Wait up to 5 minutes for any already running instances of pacman/pikaur/apacman
+  * Check for and remove db.lck
+* Start background notification process
+</details>
+
+### Update Official Repos
+<details>
+ <summary>↕</summary>
+
+* Update mirrorlist (*config: [frequency](#update_mirrors_freq "")*)
+  * `pacman-mirrors [--geoip || -c `[`$main_country_str`](#main_country_str "")`]`
+  * Upon failure, falls back to `pacman-mirrors -g`
+
+
+* Update package signature keys (*config: [frequency](#update_keys_freq "")*)
+  * `pacman-key --refresh-keys`
+
+* Check if packages are too old for script to update
+  * Does not support installs with xproto<=7.0.31-1
+
+* Update repo databases, download package updates
+  * `pacman -Syyu[`[`u`](#update_downgrades_bool "")`]w --needed --noconfirm [--ignore `[`$main_ignorepkgs_str`](#main_ignorepkgs_str "")`]`
+
+* Apply manual package changes (*config: [enable](#repair_manualpkg_bool "")*)
+  * If pacman<5.2, switch to pacman-static
+  * Required removal of known conflicting packages
+  * If these actions fail, remaining repo and AUR packages are skipped
+
+* Update System packages
+  * `pacman -S --needed --noconfirm archlinux-keyring manjaro-keyring manjaro-system`
+
+* Check for package database errors (*config: [enable](#repair_db01_bool "")*)
+  * For every package with errors:
+    * create missing files/desc
+    * reinstall with `pacman -S --noconfirm --overwrite=* packagename`
+
+
+* Update packages from Official Repos
+  * `pacman -Syyu[`[`u`](#update_downgrades_bool "")`] --needed --noconfirm [--ignore `[`$main_ignorepkgs_str`](#main_ignorepkgs_str "")`]`
+  * If this fails, AUR updates are skipped
+
+</details>
+
+### Update AUR packages
+<details>
+ <summary>↕</summary>
+
+* AUR updates are skipped after critical system package updates if [aur_aftercritical_bool](#aur_aftercritical_bool "") is false
+
+* Determine available AUR helpers (*config: [frequency](#aur_update_freq ""), [manual selection](#aur_1helper_str "")*)
+  * Check if pikaur is functional (*config: [enable repair](#repair_pikaur01_bool "")*)
+
+* If selected, update AUR packages with `pikaur`
+  * Update AUR packages with [custom flags](#custom-makepkg-flags-for-specific-aur-packages "") specified
+  * Update remaining AUR packages
+    * `pikaur -Sau[`[`u`](#update_downgrades_bool "")`] [`[`--devel`](#aur_devel_freq "")`] --needed --noconfirm --noprogressbar [--ignore `[`$main_ignorepkgs_str`](#main_ignorepkgs_str "")`]`
+
+* If selected, update AUR packages with `apacman`
+  * `apacman -Su[`[`u`](#update_downgrades_bool "")`] --auronly --needed --noconfirm [--ignore `[`$main_ignorepkgs_str`](#main_ignorepkgs_str "")`]`
+
+</details>
+
+### Update Flatpak
+<details>
+ <summary>↕</summary>
 
 flatpak update -y # Update Flatpak packages
+</details>
+
+### Post-Update Tasks
+<details>
+ <summary>↕</summary>
 
 pacman -Rnsc $(pacman -Qtdq) --noconfirm # Removes orphan packages no longer required
-```
+</details>
 
-### Automatic Repair and Manual Changes
+----
 
+</details>
+
+## Supported Automatic Repair and Manual Changes
+<details>
+<summary>↕</summary>
+
+### Automatic repair
 This script supports detecting and repairing the following potential issues:
 * [Package database errors](#repair_db01_bool "")
 * [Non-functioning Pikaur](#repair_pikaur01_bool "")
 
+### Manual Changes
 Every once in a while, updating Manjaro requires manual package changes to allow updates to succeed. This script [supports](#repair_manualpkg_bool "") automatically performing the following:
 * Removal: pyqt5-common<=5.13.2-1, engrampa-thunar-plugin<=1.0-2
 * Update: pacman<5.2
 
 The oldest fresh install this script has successfully updated is Manjaro Xfce 17.1.7 (as of June of 2020)
 
-## Installation:
+----
 
-Move the files to the proper locations:
+</details>
+
+## Installation/Requrements:
+<details>
+<summary>↕</summary>
+
+### Dependencies:
+
+This script requires these external tools/commands:
+coreutils, pacman, pacman-mirrors, grep, ping
+
+### Installation
+
+1) Move the files to the proper locations:
 ````
 ElectrodeXS.png         -> /usr/share/pixmaps/
 auto-update.sh          -> /usr/share/xs/
@@ -117,24 +216,33 @@ xs-autoupdate.service   -> /etc/systemd/system/
 xs-updatehelper.desktop -> /etc/xdg/autostart/
 ````
 
-Make sure auto-update.sh is allowed to execute as a program
-Lastly, run this to enable running the auto-update script at startup:
+2) Make sure auto-update.sh is allowed to execute as a program
+
+3) Enable running the auto-update script at startup: (optional)
 `sudo systemctl enable xs-autoupdate`
 
+4) You can manually run the script with:
+`sudo systemctl start xs-autoupdate` (start in background)
+OR
+`sudo /usr/share/xs/auto-update.sh` (to watch logs in real-time)
 
-## Dependencies:
+----
 
-This script requires these external tools/commands:
-coreutils, pacman, paccache, xfce4-notifyd, grep, ping
+</details>
+
+
 
 
 ## Supported AUR Helpers:
+<details>
+<summary>↕</summary>
 
-If you want the script to automatically update packages from the AUR, it will need either [`pikaur`](https://github.com/actionless/pikaur) (recommended) or `apacman` (deprecated).
+If you want the script to automatically update packages from the AUR, it will need one of the following:
 
-### pikaur:
+<details>
+<summary>pikaur (recommended)</summary>
 
-You can install `pikaur` with another AUR helper, or install it directly with the following:
+You can install [`pikaur`](https://github.com/actionless/pikaur) with another AUR helper, or install it directly with the following:
 ```
 sudo pacman -S --needed base-devel git
 git clone https://aur.archlinux.org/pikaur.git
@@ -146,12 +254,15 @@ Features:
 * Actively developed/maintained
 * Supports latest PKGBUILD format and AUR features
 * Introduces the ability to pass [specific makepkg flags](#custom-makepkg-flags-for-specific-aur-packages "") to packages
+* Supports [skipping devel packages](#aur_devel_freq "")
 
 Drawbacks:
 * Does not support automatically importing PGP keys
  * (workaround: pass `--skippgpcheck` to packages that need it)
+</details>
 
-### apacman (deprecated):
+<details>
+<summary>apacman (deprecated)</summary>
 
 You can install `apacman` (deprecated) with the following:
 ````
@@ -166,14 +277,21 @@ sudo chmod +x "/usr/bin/apacman"
 ````
 Features:
 * Automatically imports PGP keys for packages
-* Stable
 
 Drawbacks:
-* No longer maintained
+* No longer maintained upstream
 * Does not support newer AUR packages
 * Cannot pass custom makepkg flags
+* Support will be removed in future version of script
+</details>
+</details>
 
-## Configuration:
+
+----
+
+## Configuration
+<details>
+ <summary>=Overview=</summary>
 
 * By default settings are located at /etc/xs/auto-update.conf
 * Settings file is (re)generated on every run
@@ -183,180 +301,11 @@ Drawbacks:
 * Settings location can be changed by exporting `xs_autoupdate_conf` environment variable
    * This needs absolute path and filename
    * Warning: whichever file is specified will be overwritten whenever the script runs
+</details>
 
-### aur_1helper_str
-* Default: `auto`
-* Specifies which AUR helper to use to update AUR packages
-* Current valid values are: `auto`,`none`,`all`,`pikaur`,`apacman`
-* `auto` will use an available AUR helper with the following preference: pikaur > apacman
-* `all` will run every supported AUR helper found in this order: pikaur, apacman
-* `none` will not use any AUR helper
+<details>
+<summary>=Sample configuration file=</summary>
 
-### aur_aftercritical_bool
-* Default: `0` (False)
-* If set to false, script will skip AUR package updates after critical main system packages have been updated
-* If set to true, script will proceed to update AUR packages, regardless of critical main package updates
-
-### aur_update_freq
-* Default: `3`
-* Every X days, update AUR packages (-1 disables all AUR updates, including devel)
-
-### aur_devel_freq
-* Default: `6`
-* Every X days, update "devel" AUR packages (any package that ends in -git, -svn, etc) (-1 to disable)
-
-### cln_1enable_bool
-* Default: `1` (True)
-* If set to false, disables all cleanup steps
-
-### cln_aurpkg_bool
-* Default: `1` (True)
-* If this is True, all packages built from the AUR will be deleted when finished
-
-### cln_aurbuild_bool
-* Default: `1` (True)
-* If this is True, all AUR package build folders will be deleted when finished
-
-### cln_orphan_bool
-* Default: `1` (True)
-* If this is True, obsolete dependencies will be uninstalled when finished
-
-### cln_paccache_num
-* Default: `0`
-* Specifies the number of official built packages to keep in cache
-* If set to "-1" all official packages will be kept (cache is usually `/var/cache/pacman/pkg`)
-
-### flatpak_update_freq
- * Default: `3`
- * Every X days, check for Flatpak package updates (-1 to disable)
- 
-### notify_1enable_bool
-* Default: `1` (True)
-* If true, enables status notifications via `notify-send` to active users
-
-### notify_function_str
-* Default: `auto`
-* Specifies which notification method to use
-* Current valid values are: `auto`,`gdbus`,`desk`,`send`
-  * `auto`: will automatically select the best method
-  * `gdbus`: uses `gdbus` to create notifications (works on Xfce, Gnome)
-  * `desk`: uses `notify-desktop` to create notifications (works on Xfce, KDE, and Gnome)
-  * `send`: uses legacy `notify-send` to create notifications (works on Xfce)
-* Note: if `auto` or `desk` is specified, and an AUR helper is configured, and KDE is detected, script will attempt to install [`notify-desktop-git`](https://aur.archlinux.org/packages/notify-desktop-git "") to provide this functionality
-
-### notify_lastmsg_num
-* Default: `20`
-* Specifies how long (in seconds) the final "System update finished" notification is visible before it expires.
-* The "Kernel and/or drivers were updated" message does not expire, regardless of this setting
-* Requires `notify_1enable_bool` to be True
-
-### notify_errors_bool
-* Default: `1` (True)
-* If true, script attempts to detect errors. If any, includes message "Some packages encountered errors" in notification
-
-### notify_vsn_bool
-* Default: `0` (False)
-* If true, the version number of the script will be included in notifications
-
-### main_ignorepkgs_str
-* Default: (blank)
-* Packages (if any) to ignore, separated by spaces (these are in addition to those stored in pacman.conf)
-
-### main_logdir_str
-* Default: `/var/log/xs`
-* Defines the directory where the log will be output
-
-### main_perstdir_str
-* Default: (blank)
-* Defines the directory where persistant timestamps are stored. If blank, uses main_logdir_str
-
-### main_country_str
-* Default: (blank)
-* If blank, `pacman-mirrors --geoip` is used
-* Countries separated by commas from which to pull updates
-* See output of `pacman-mirrors -l` for supported values
-
-### reboot_1enable_num
- * Default: `0`
- * -1: Disable script reboot in all cases
- *  0: Allow script reboot only if rebooting normally may not be possible (system may be in critical state after systemd update)
- *  1: Always allow script to reboot after critical system packages have been updated
-
-
-### reboot_delayiflogin_bool
- * Default: `1` (True)
- * If true, the reboot will be delayed *only if* a user is logged in. If false, there will always be a delay
-
-### reboot_delay_num
- * Default: `120`
- * Delay in seconds to wait before rebooting the computer
-
-
-### reboot_notifyrep_num
- * Default: `10`
- * Reboot notification is updated every X seconds
- * Works best if reboot_delay_num is evenly divisible by this
-
-
-### reboot_ignoreusers_str
- * Default: `nobody lightdm sddm gdm`
- * List of users separated by spaces
- * These users will not trigger the reboot delay even if they are logged on
-
-
-### repair_db01_bool
- * Default: `1` (True)
- * If true, the script will detect and attempt to repair missing "desc"/"files" files in package database
- * NOTE: It does this by creating the missing files and re-installing the package(s) with `overwrite=*` specified
-
-
-### repair_manualpkg_bool
- * Default: `1` (True)
- * If true, script will check for and perform critical package changes required for continued updates
- * See [Automatic Repair](#automatic-repair-and-manual-changes "") for specific package changes the script supports
-
-
-### repair_pikaur01_bool
- * Default: `1` (True)
- * If true, the script will attempt to re-install pikaur if it is not functioning
- * NOTE: Specifically needed if python is updated
-
-
-### self_1enable_bool
-* Default: `1` (True)
-* If true, script checks for updates for itself ("self-updates")
-
-### self_branch_str
-* Default: `stable`
-* Script update branch (requires `self_1enable_bool` be True)
-* Current valid values are: `stable`, `beta`
-
-### main_testsite_str
-* Default: `www.google.com`
-* Script checks if there is internet access by attempting to ping this address
-* Can also be an IP address
-
-### update_downgrades_bool
-* Default: `1` (True)
-* If true, allows pacman to downgrade packages if remote packages are a lesser version than installed
-
-### update_mirrors_freq
-* Default: `0`
-* Every X days, refreshes mirror list before checking for package updates (-1 to disable)
-
-### update_keys_freq
-* Default: `30`
-* Every X days, runs `pacman-key --refresh-keys` before checking for package updates (-1 to disable)
-
-
-## Custom makepkg flags for specific AUR packages
-* Requires pikaur
-* You can add as many entries as you need
-* All packages listed in one line will be updated at the same time
-* Format: `zflag:package1,package2=--flag1,--flag2,--flag3`
-
-
-## Sample configuration file
 * NOTE: Blank line at end is required for last line to be parsed
 ````
 aur_1helper_str=auto
@@ -396,7 +345,277 @@ zflag:dropbox,tor-browser=--skippgpcheck
 
 ````
 
+</details>
 
+<details>
+<summary>=Custom makepkg flags for specific AUR packages=</summary>
+
+* Requires pikaur
+* You can add as many entries as you need
+* All packages listed in one line will be updated at the same time
+* Format: `zflag:package1,package2=--flag1,--flag2,--flag3`
+
+</details>
+
+### Individual Settings
+
+<details>
+ <summary><a name="aur_1helper_str"></a>aur_1helper_str</summary>
+
+* Default: `auto`
+* Specifies which AUR helper to use to update AUR packages
+* Current valid values are: `auto`,`none`,`all`,`pikaur`,`apacman`
+* `auto` will use an available AUR helper with the following preference: pikaur > apacman
+* `all` will run every supported AUR helper found in this order: pikaur, apacman
+* `none` will not use any AUR helper
+</details>
+
+<details>
+ <summary><a name="aur_aftercritical_bool"></a>aur_aftercritical_bool</summary>
+
+* Default: `0` (False)
+* If set to false, script will skip AUR package updates after critical main system packages have been updated
+* If set to true, script will proceed to update AUR packages, regardless of critical main package updates
+</details>
+
+<details>
+<summary><a name="aur_update_freq"></a>aur_update_freq</summary>
+
+* Default: `3`
+* Every X days, update AUR packages (-1 disables all AUR updates, including devel)
+</details>
+
+<details>
+<summary><a name="aur_devel_freq"></a>aur_devel_freq</summary>
+
+* Default: `6`
+* Every X days, update "devel" AUR packages (any package that ends in -git, -svn, etc) (-1 to disable)
+* This setting only applies if AUR packages are updated with `pikaur`
+</details>
+
+<details>
+<summary><a name="cln_1enable_bool"></a>cln_1enable_bool</summary>
+
+* Default: `1` (True)
+* If set to false, disables all cleanup steps
+</details>
+
+<details>
+<summary><a name="cln_aurpkg_bool"></a>cln_aurpkg_bool</summary>
+
+* Default: `1` (True)
+* If this is True, all packages built from the AUR will be deleted when finished
+</details>
+
+<details>
+<summary><a name="cln_aurbuild_bool"></a>cln_aurbuild_bool</summary>
+
+* Default: `1` (True)
+* If this is True, all AUR package build folders will be deleted when finished
+</details>
+
+<details>
+<summary><a name="cln_orphan_bool"></a>cln_orphan_bool</summary>
+
+* Default: `1` (True)
+* If this is True, obsolete dependencies will be uninstalled when finished
+</details>
+
+<details>
+<summary><a name="cln_paccache_num"></a>cln_paccache_num</summary>
+
+* Default: `0`
+* Specifies the number of official built packages to keep in cache
+* If set to "-1" all official packages will be kept (cache is usually `/var/cache/pacman/pkg`)
+</details>
+
+<details>
+<summary><a name="flatpak_update_freq"></a>flatpak_update_freq</summary>
+
+ * Default: `3`
+ * Every X days, check for Flatpak package updates (-1 to disable)
+</details>
+
+<details>
+<summary><a name="notify_1enable_bool"></a>notify_1enable_bool</summary>
+
+* Default: `1` (True)
+* If true, enables status notifications via `notify-send` to active users
+</details>
+
+<details>
+<summary><a name="notify_function_str"></a>notify_function_str</summary>
+
+* Default: `auto`
+* Specifies which notification method to use
+* Current valid values are: `auto`,`gdbus`,`desk`,`send`
+  * `auto`: will automatically select the best method
+  * `gdbus`: uses `gdbus` to create notifications (works on Xfce, Gnome)
+  * `desk`: uses `notify-desktop` to create notifications (works on Xfce, KDE, and Gnome)
+  * `send`: uses legacy `notify-send` to create notifications (works on Xfce)
+* Note: if `auto` or `desk` is specified, and an AUR helper is configured, and KDE is detected, script will attempt to install [`notify-desktop-git`](https://aur.archlinux.org/packages/notify-desktop-git "") to provide this functionality
+</details>
+
+<details>
+<summary><a name="notify_lastmsg_num"></a>notify_lastmsg_num</summary>
+
+* Default: `20`
+* Specifies how long (in seconds) the final "System update finished" notification is visible before it expires.
+* The "Kernel and/or drivers were updated" message does not expire, regardless of this setting
+* Requires `notify_1enable_bool` to be True
+</details>
+
+<details>
+<summary><a name="notify_errors_bool"></a>notify_errors_bool</summary>
+
+* Default: `1` (True)
+* If true, script attempts to detect errors. If any, includes message "Some packages encountered errors" in notification
+</details>
+
+<details>
+<summary><a name="notify_vsn_bool"></a>notify_vsn_bool</summary>
+
+* Default: `0` (False)
+* If true, the version number of the script will be included in notifications
+</details>
+
+<details>
+<summary><a name="main_ignorepkgs_str"></a>main_ignorepkgs_str</summary>
+
+* Default: (blank)
+* Packages (if any) to ignore, separated by spaces (these are in addition to those stored in pacman.conf)
+</details>
+
+<details>
+<summary><a name="main_logdir_str"></a>main_logdir_str</summary>
+
+* Default: `/var/log/xs`
+* Defines the directory where the log will be output
+</details>
+
+<details>
+<summary><a name="main_perstdir_str"></a>main_perstdir_str</summary>
+
+* Default: (blank)
+* Defines the directory where persistant timestamps are stored. If blank, uses main_logdir_str
+</details>
+
+<details>
+<summary><a name="main_country_str"></a>main_country_str</summary>
+
+* Default: (blank)
+* If blank, `pacman-mirrors --geoip` is used
+* Countries separated by commas from which to pull updates
+* See output of `pacman-mirrors -l` for supported values
+</details>
+
+<details>
+<summary><a name="reboot_1enable_num"></a>reboot_1enable_num</summary>
+
+ * Default: `0`
+ * -1: Disable script reboot in all cases
+ *  0: Allow script reboot only if rebooting normally may not be possible (system may be in critical state after systemd update)
+ *  1: Always allow script to reboot after critical system packages have been updated
+</details>
+
+<details>
+<summary><a name="reboot_delayiflogin_bool"></a>reboot_delayiflogin_bool</summary>
+
+ * Default: `1` (True)
+ * If true, the reboot will be delayed *only if* a user is logged in. If false, there will always be a delay
+</details>
+
+<details>
+<summary><a name="reboot_delay_num"></a>reboot_delay_num</summary>
+
+ * Default: `120`
+ * Delay in seconds to wait before rebooting the computer
+</details>
+
+<details>
+<summary><a name="reboot_notifyrep_num"></a>reboot_notifyrep_num</summary>
+
+ * Default: `10`
+ * Reboot notification is updated every X seconds
+ * Works best if reboot_delay_num is evenly divisible by this
+</details>
+
+<details>
+<summary><a name="reboot_ignoreusers_str"></a>reboot_ignoreusers_str</summary>
+
+ * Default: `nobody lightdm sddm gdm`
+ * List of users separated by spaces
+ * These users will not trigger the reboot delay even if they are logged on
+</details>
+
+<details>
+<summary><a name="repair_db01_bool"></a>repair_db01_bool</summary>
+
+ * Default: `1` (True)
+ * If true, the script will detect and attempt to repair missing "desc"/"files" files in package database
+ * NOTE: It does this by creating the missing files and re-installing the package(s) with `overwrite=*` specified
+
+</details>
+
+<details>
+<summary><a name="repair_manualpkg_bool"></a>repair_manualpkg_bool</summary>
+
+ * Default: `1` (True)
+ * If true, script will check for and perform critical package changes required for continued updates
+ * See [Automatic Repair](#automatic-repair-and-manual-changes "") for specific package changes the script supports
+</details>
+
+<details>
+<summary><a name="repair_pikaur01_bool"></a>repair_pikaur01_bool</summary>
+
+ * Default: `1` (True)
+ * If true, the script will attempt to re-install pikaur if it is not functioning
+ * NOTE: Specifically needed if python is updated
+</details>
+
+<details>
+<summary><a name="self_1enable_bool"></a>self_1enable_bool</summary>
+
+* Default: `1` (True)
+* If true, script checks for updates for itself ("self-updates")
+</details>
+
+<details>
+<summary><a name="self_branch_str"></a>self_branch_str</summary>
+
+* Default: `stable`
+* Script update branch (requires `self_1enable_bool` be True)
+* Current valid values are: `stable`, `beta`
+</details>
+
+<details>
+<summary><a name="main_testsite_str"></a>main_testsite_str</summary>
+
+* Default: `www.google.com`
+* Script checks if there is internet access by attempting to ping this address
+* Can also be an IP address
+</details>
+
+<details>
+<summary><a name="update_downgrades_bool"></a>update_downgrades_bool</summary>
+
+* Default: `1` (True)
+* If true, allows pacman to downgrade packages if remote packages are a lesser version than installed
+</details>
+
+<details>
+<summary><a name="update_mirrors_freq"></a>update_mirrors_freq</summary>
+
+* Default: `0`
+* Every X days, refreshes mirror list before checking for package updates (-1 to disable)
+</details>
+
+<details>
+<summary><a name="update_keys_freq"></a>update_keys_freq</summary>
+
+* Default: `30`
+* Every X days, runs `pacman-key --refresh-keys` before checking for package updates (-1 to disable)
+</details>
 
 
 

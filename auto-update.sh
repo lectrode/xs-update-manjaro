@@ -1,8 +1,8 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.4.0-rc5"; vsndsp="$vsn 2020-06-10"
+vsn="v3.4.0-rc6"; vsndsp="$vsn 2020-06-13"
 #-Downloads and Installs new updates
-#-Depends: pacman, paccache
+#-Depends: coreutils, pacman, pacman-mirrors, grep, ping
 #-Optional Depends: notification daemon, notify-desktop, pikaur, apacman (deprecated)
 true=0; false=1; ctrue=1; cfalse=0
 if [ $# -eq 0 ]; then "$0" "XS"& exit 0; fi # start in background
@@ -72,10 +72,12 @@ get_pkgfilename(){
 regex="^$1-([0-9\.+:a-z]+-[0-9\.]+)-[0-9a-z_]+.pkg.[0-9a-z]+.[0-9a-z]+$"
 i=-1; while IFS= read -r gpfn_t1; do
     if [[ "$gpfn_t1" =~ $regex ]]; then
-        if [[ "$(vercmp ${BASH_REMATCH[1]} $(cnvrt2_int "$($pcmbin -Q $1 | grep "$1 " -m1 | cut -d' ' -f2)"))" -ge 0 ]]; then gpfn_t2+=("$(get_pacmancfg CacheDir)$gpfn_t1"); break; fi
+        gpfn_t3="$($pcmbin -Q $1 | grep "$1 " -m1 | cut -d' ' -f2)"
+        if [[ "$(vercmp ${BASH_REMATCH[1]} ${gpfn_t3:-0})" -ge 0 ]]; then
+            gpfn_t2+=("$(get_pacmancfg CacheDir)$gpfn_t1"); break; fi
     fi
 done< <(ls "$(get_pacmancfg CacheDir)"|grep -E "^$1-[0-9]"|sort -r)
-echo "$gpfn_t2"; unset gpfn_t1 i regex gpfn_t2
+echo "$gpfn_t2"; unset gpfn_t1 gpfn_t2 gpfn_t3 i regex
 }
 
 get_pacmancfg(){
@@ -593,8 +595,8 @@ if [[ "${conf_a[self_1enable_bool]}" = "$ctrue" ]]; then
             troublem "==================================="
             mv -f '/tmp/xs-autmp-selfupdate/auto-update.sh' "$0"
             chmod +x "$0"; "$0" "XS"& exit 0
-        fi; dl_clean "selfupdate"
-    fi; unset vsn_new
+        fi
+    fi; unset vsn_new; dl_clean "selfupdate"
 fi
 
 #wait up to 5 minutes for running instances of pacman/apacman/pikaur
@@ -650,8 +652,7 @@ if chk_pkgisinst "xproto" && [[ "$(chk_pkgvsndiff "xproto" "7.0.31-1")" -le 0 ]]
     trouble "ERR: Critical: old xproto installed - system too old for script to update"; err_repo=1; break; fi
 
 trouble "Downloading packages from main repos..."
-#pacman -Syyuw$pacdown --needed --noconfirm $pacignore 2>&1 |tee -a $log_f
-pacman -Syy 2>&1 |tee -a $log_f
+pacman -Syyuw$pacdown --needed --noconfirm $pacignore 2>&1 |tee -a $log_f
 err_repodl=${PIPESTATUS[0]}; if [[ $err_repodl -ne 0 ]]; then trouble "ERR: pacman exited with code $err_repodl"; fi
 
 #Required manual pkg changes
@@ -660,8 +661,8 @@ if [[ "${conf_a[repair_manualpkg_bool]}" = "$ctrue" ]]; then
 #Fix for pacman<5.2 (18.1.1 and earlier)
 if [[ "$(chk_pkgvsndiff "pacman" "5.2.0-1")" -lt 0 ]]; then
     trouble "Old pacman detected, attempting to use pacman-static..."
-    pacman -Sw --noconfirm pacman-static
-    pacman -U --noconfirm "$(get_pkgfilename "pacman-static")" && pcmbin="pacman-static"
+    pacman -Sw --noconfirm pacman-static 2>&1 |tee -a $log_f
+    pacman -U --noconfirm "$(get_pkgfilename "pacman-static")" 2>&1 |tee -a $log_f && pcmbin="pacman-static"
     if ! chk_pkgisinst "pacman-static"; then
         if dl_verify "pacmanstatic" "$self_repo/master/external/hash_pacman-static" "$self_repo/master/external/pacman-static"; then
             chmod +x /tmp/xs-autmp-pacmanstatic/pacman-static && pcmbin="/tmp/xs-autmp-pacmanstatic/pacman-static"; fi; fi
