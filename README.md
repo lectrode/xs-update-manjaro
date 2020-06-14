@@ -10,7 +10,7 @@
 * [Suggested usage / Disclaimer](#suggested-usage-and-disclaimer "")
 * [Execution Overview](#execution-overview "")
 * [Supported Automatic Repair / Manual Changes](#supported-automatic-repair-and-manual-changes "")
-* [Installation/Requrements](#installation-requrements "")
+* [Installation/Requirements](#installation-and-requirements "")
 * [Supported AUR Helpers](#supported-aur-helpers "")
 * [Configuration](#configuration "")
   * [aur_1helper_str](#aur_1helper_str "")
@@ -197,7 +197,7 @@ The oldest fresh install this script has successfully updated is Manjaro Xfce 17
 
 </details>
 
-## Installation/Requrements:
+## Installation and Requirements
 <details>
 <summary>↕</summary>
 
@@ -497,7 +497,7 @@ zflag:dropbox,tor-browser=--skippgpcheck
 <summary><a name="main_perstdir_str"></a>main_perstdir_str</summary>
 
 * Default: (blank)
-* Defines the directory where persistant timestamps are stored. If blank, uses main_logdir_str
+* Defines the directory where persistent timestamps are stored. If blank, uses main_logdir_str
 </details>
 
 <details>
