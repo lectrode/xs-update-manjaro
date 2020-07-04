@@ -1,6 +1,6 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.4.0-rc6"; vsndsp="$vsn 2020-06-13"
+vsn="v3.4.0-rc7"; vsndsp="$vsn 2020-07-04"
 #-Downloads and Installs new updates
 #-Depends: coreutils, pacman, pacman-mirrors, grep, ping
 #-Optional Depends: notification daemon, notify-desktop, pikaur, apacman (deprecated)
@@ -690,7 +690,7 @@ if [[ "${conf_a[repair_db01_bool]}" = "$ctrue" ]]; then
     i=-1; while IFS= read -r rp_errmsg; do
         if [[ ! "$rp_errmsg" = "" ]]; then
             ((i++))
-            rp_pathf[$i]="$(echo "$rp_errmsg" | grep -o "/[[:alnum:]\./-]*")"
+            rp_pathf[$i]="$(echo "$rp_errmsg" | grep -o "/[[:alnum:]\.@_\/-]*")"
             troublem "Missing file: ${rp_pathf[$i]}"
             rp_pathd[$i]="$(dirname "${rp_pathf[$i]}")"
             troublem "detected dir: ${rp_pathd[$i]}"
@@ -700,7 +700,7 @@ if [[ "${conf_a[repair_db01_bool]}" = "$ctrue" ]]; then
             touch "${rp_pathd[$i]}/files"; touch "${rp_pathd[$i]}/desc"
             if [[ ! -f "${rp_pathd[$i]}/files" ]] || [[ ! -f "${rp_pathd[$i]}/desc" ]]; then trouble "Err: could not touch files and/or desc"; continue; fi
         fi
-    done< <($pcmbin -Qo pacman 2>&1 | grep -Ei "error: could not open file [[:alnum:]\./-]*/(files|desc): No such file or directory")
+    done< <($pcmbin -Qo pacman 2>&1 | grep -Ei "error: could not open file [[:alnum:]\.@_\/-]*\/(files|desc): No such file or directory")
     unset rp_errmsg; IFS=$DEFAULTIFS
     m=$i; i=-1; while [[ $i -lt $m ]]; do
         ((i++))
@@ -734,14 +734,15 @@ if [ "$use_pikaur" = "1" ]; then
         if echo "${conf_a[aur_1helper_str]}" | grep 'pikaur' >/dev/null; then
             trouble "Warning: AURHelper: pikaur specified but not found..."; fi
     else
-        pikaur -S --needed --noconfirm "$($pcmbin -Qq pikaur)" 2>&1 |tee -a $log_f
+        pikpkg="$($pcmbin -Qq pikaur)"
+        pikaur -S --needed --noconfirm ${pikpkg:-pikaur} 2>&1 |tee -a $log_f
         if [[ ! "${PIPESTATUS[0]}" = "0" ]]; then
             trouble "Warning: AURHelper: pikaur not functioning"
             if [[ "${conf_a[repair_pikaur01_bool]}" = "$ctrue" ]] && $pcmbin -Q pikaur >/dev/null 2>&1; then
-                troublem "Attempting to re-install pikaur..."
+                troublem "Attempting to re-install ${pikpkg:-pikaur}..."
                 mkdir "/tmp/xs-autmp-2delete"; pushd "/tmp/xs-autmp-2delete"
                 git clone https://github.com/actionless/pikaur.git && cd pikaur
-                python3 ./pikaur.py -S pikaur --noconfirm 2>&1 |tee -a $log_f
+                python3 ./pikaur.py -S --rebuild --noconfirm ${pikpkg:-pikaur} 2>&1 |tee -a $log_f
                 sync; popd; rm -rf /tmp/xs-autmp-2delete
             fi
             if ! pikaur --help >/dev/null 2>&1; then
@@ -750,7 +751,7 @@ if [ "$use_pikaur" = "1" ]; then
     fi
 fi
 
-if [ "$use_apacman" = "1" ]; then if ! type apacman >/dev/null 2>&1; then
+if [ "$use_apacman" = "1" ]; then if ! apacman --help >/dev/null 2>&1; then
     use_apacman=0
     if echo "${conf_a[aur_1helper_str]}" | grep 'apacman' >/dev/null; then
         trouble "Warning: AURHelper: apacman specified but not found..."
@@ -836,7 +837,7 @@ if [[ "$pcmbin" = "pacman-static" ]]; then $pcmbin -Rdd --noconfirm pacman-stati
 
 #Update Flatpak
 if perst_isneeded "${conf_a[flatpak_update_freq]}" "${perst_a[last_flatpak_update]}"; then
-    if type flatpak >/dev/null 2>&1; then
+    if flatpak --help >/dev/null 2>&1; then
         trouble "Updating flatpak..."
         flatpak update -y | grep -Fv "[" 2>&1 |tee -a $log_f
         err_fpak=${PIPESTATUS[0]}; if [[ $err_fpak -eq 0 ]]; then

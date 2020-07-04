@@ -13,6 +13,8 @@
 * [Installation/Requirements](#installation-and-requirements "")
 * [Supported AUR Helpers](#supported-aur-helpers "")
 * [Configuration](#configuration "")
+  * [=Sample Configuration=](#sample-config "")
+  * [=Custom `makepkg` flags=](#custom-flags "")
   * [aur_1helper_str](#aur_1helper_str "")
   * [aur_aftercritical_bool](#aur_aftercritical_bool "")
   * [aur_update_freq](#aur_update_freq "")
@@ -46,8 +48,6 @@
   * [update_downgrades_bool](#update_downgrades_bool "")
   * [update_mirrors_freq](#update_mirrors_freq "")
   * [update_keys_freq](#update_keys_freq "")
-* [Custom makepkg flags for specific AUR packages](#custom-makepkg-flags-for-specific-aur-packages "")
-* [Sample configuration file](#sample-configuration-file "")
 </details>
 
 ## Summary
@@ -100,6 +100,7 @@ Overview of what the script does from start to finish. Some steps may be slightl
   * Wait up to 5 minutes for any already running instances of pacman/pikaur/apacman
   * Check for and remove db.lck
 * Start background notification process
+* Package cache cleanup (see [Cleanup Tasks](#cleanup-tasks "") for details)
 </details>
 
 ### Update Official Repos
@@ -115,13 +116,13 @@ Overview of what the script does from start to finish. Some steps may be slightl
   * `pacman-key --refresh-keys`
 
 * Check if packages are too old for script to update
-  * Does not support installs with xproto<=7.0.31-1
+  * Does not support installs with `xproto`<=7.0.31-1
 
 * Update repo databases, download package updates
   * `pacman -Syyu[`[`u`](#update_downgrades_bool "")`]w --needed --noconfirm [--ignore `[`$main_ignorepkgs_str`](#main_ignorepkgs_str "")`]`
 
 * Apply manual package changes (*config: [enable](#repair_manualpkg_bool "")*)
-  * If pacman<5.2, switch to pacman-static
+  * If `pacman`<5.2, switch to `pacman-static`
   * Required removal of known conflicting packages
   * If these actions fail, remaining repo and AUR packages are skipped
 
@@ -130,7 +131,7 @@ Overview of what the script does from start to finish. Some steps may be slightl
 
 * Check for package database errors (*config: [enable](#repair_db01_bool "")*)
   * For every package with errors:
-    * create missing files/desc
+    * create missing `files`/`desc`
     * reinstall with `pacman -S --noconfirm --overwrite=* packagename`
 
 
@@ -159,18 +160,47 @@ Overview of what the script does from start to finish. Some steps may be slightl
 
 </details>
 
+### Cleanup Tasks
+<details>
+ <summary>↕</summary>
+
+* All cleanup operations (*config: [enable](#cln_1enable_bool "")*)
+
+  * Remove orphan packages (*config: [enable](#cln_orphan_bool "")*)
+    * `pacman -Rnsc $(pacman -Qtdq) --noconfirm`
+
+  * Package cache cleanup
+    * Clean AUR package cache (*config: [enable](#cln_aurpkg_bool "")*)
+      * `rm -rf /var/cache/apacman/pkg/*`
+      * `rm -rf /var/cache/pikaur/pkg/*`
+    * Clean AUR build cache (*config: [enable](#cln_aurbuild_bool "")*)
+      * `rm -rf /var/cache/pikaur/aur_repos/*`
+      * `rm -rf /var/cache/pikaur/build/*`
+    * Clean pacman package cache
+      * `paccache -rfqk`[`$cln_paccache_num`](#cln_paccache_num "")
+
+</details>
+
 ### Update Flatpak
 <details>
  <summary>↕</summary>
 
-flatpak update -y # Update Flatpak packages
+* Update `flatpak` packages (*config: [frequency](#flatpak_update_freq "")*)
+  * `flatpak update -y`
 </details>
 
-### Post-Update Tasks
+### Final Actions
 <details>
  <summary>↕</summary>
 
-pacman -Rnsc $(pacman -Qtdq) --noconfirm # Removes orphan packages no longer required
+* Stop background notification process
+* Determine final message
+* Reboot proceedure if critical system packages were updated (*config: [enable](#reboot_1enable_num "")*)
+  * Delay reboot if users are logged in (*config: [enable](#reboot_delayiflogin_bool ""), [ignore these users](#reboot_ignoreusers_str "")*)
+    * Countdown to reboot (*config: [duration](#reboot_delay_num ""), [notification frequency](#reboot_notifyrep_num "")*)
+  * `sync; reboot || systemctl --force reboot || systemctl --force --force reboot`
+* Final message after non-critical update (*config: [duration](#notify_lastmsg_num "")*)
+* Stop auto-update service and quit
 </details>
 
 ----
@@ -188,8 +218,8 @@ This script supports detecting and repairing the following potential issues:
 
 ### Manual Changes
 Every once in a while, updating Manjaro requires manual package changes to allow updates to succeed. This script [supports](#repair_manualpkg_bool "") automatically performing the following:
-* Removal: pyqt5-common<=5.13.2-1, engrampa-thunar-plugin<=1.0-2
-* Update: pacman<5.2
+* Removal: `pyqt5-common`<=5.13.2-1, `engrampa-thunar-plugin`<=1.0-2
+* Setup and use `pacman-static` if `pacman`<5.2
 
 The oldest fresh install this script has successfully updated is Manjaro Xfce 17.1.7 (as of June of 2020)
 
@@ -204,7 +234,7 @@ The oldest fresh install this script has successfully updated is Manjaro Xfce 17
 ### Dependencies:
 
 This script requires these external tools/commands:
-coreutils, pacman, pacman-mirrors, grep, ping
+ * `coreutils`, `pacman`, `pacman-mirrors`, `grep`, `ping`
 
 ### Installation
 
@@ -216,15 +246,14 @@ xs-autoupdate.service   -> /etc/systemd/system/
 xs-updatehelper.desktop -> /etc/xdg/autostart/
 ````
 
-2) Make sure auto-update.sh is allowed to execute as a program
+2) Make sure `auto-update.sh` is allowed to execute as a program
 
-3) Enable running the auto-update script at startup: (optional)
-`sudo systemctl enable xs-autoupdate`
+3) Enable running the auto-update script at startup (optional):
+  * `sudo systemctl enable xs-autoupdate`
 
-4) You can manually run the script with:
-`sudo systemctl start xs-autoupdate` (start in background)
-OR
-`sudo /usr/share/xs/auto-update.sh` (to watch logs in real-time)
+4) You can manually run the script with either:
+  * `sudo systemctl start xs-autoupdate` (start in background)
+  * `sudo /usr/share/xs/auto-update.sh` (watch logs in real-time)
 
 ----
 
@@ -258,13 +287,13 @@ Features:
 
 Drawbacks:
 * Does not support automatically importing PGP keys
- * (workaround: pass `--skippgpcheck` to packages that need it)
+ * (workaround: pass `--skippgpcheck` [custom flag](#custom-flags "") to packages that need it)
 </details>
 
 <details>
 <summary>apacman (deprecated)</summary>
 
-You can install `apacman` (deprecated) with the following:
+You can install [`apacman`](https://github.com/oshazard/apacman) (deprecated) with the following:
 ````
 git clone https://aur.archlinux.org/apacman.git
 pushd apacman
@@ -286,14 +315,13 @@ Drawbacks:
 </details>
 </details>
 
-
 ----
 
 ## Configuration
 <details>
  <summary>=Overview=</summary>
 
-* By default settings are located at /etc/xs/auto-update.conf
+* By default settings are located at `/etc/xs/auto-update.conf`
 * Settings file is (re)generated on every run
 * Older settings will be converted to preserve preferences
 * True and False are 1 and 0 respectively
@@ -304,9 +332,9 @@ Drawbacks:
 </details>
 
 <details>
-<summary>=Sample configuration file=</summary>
+<summary><a name="sample-config"></a>=Sample configuration file=</summary>
 
-* NOTE: Blank line at end is required for last line to be parsed
+* NOTE: Blank line at end may be required for last line to be parsed
 ````
 aur_1helper_str=auto
 aur_aftercritical_bool=0
@@ -348,7 +376,7 @@ zflag:dropbox,tor-browser=--skippgpcheck
 </details>
 
 <details>
-<summary>=Custom makepkg flags for specific AUR packages=</summary>
+<summary><a name="custom-flags"></a>=Custom makepkg flags for specific AUR packages=</summary>
 
 * Requires pikaur
 * You can add as many entries as you need
@@ -616,6 +644,9 @@ zflag:dropbox,tor-browser=--skippgpcheck
 * Default: `30`
 * Every X days, runs `pacman-key --refresh-keys` before checking for package updates (-1 to disable)
 </details>
+
+
+
 
 
 
