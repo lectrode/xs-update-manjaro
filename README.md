@@ -221,7 +221,8 @@ Every once in a while, updating Manjaro requires manual package changes to allow
 * Removal: `pyqt5-common`<=5.13.2-1, `engrampa-thunar-plugin`<=1.0-2
 * Setup and use `pacman-static` if `pacman`<5.2
 
-The oldest fresh install this script has successfully updated is Manjaro Xfce 17.1.7 (as of June of 2020)
+The oldest fresh install this script has successfully updated is Manjaro Xfce 17.1.7 (as of July of 2020). 
+Oldest KDE and Gnome fresh installs are unknown, and not tested.
 
 ----
 
@@ -238,7 +239,7 @@ This script requires these external tools/commands:
 
 ### Installation
 
-1) Move the files to the proper locations:
+1) Move script files to these locations:
 ````
 ElectrodeXS.png         -> /usr/share/pixmaps/
 auto-update.sh          -> /usr/share/xs/
@@ -421,6 +422,8 @@ zflag:dropbox,tor-browser=--skippgpcheck
 * This setting only applies if AUR packages are updated with `pikaur`
 </details>
 
+----
+
 <details>
 <summary><a name="cln_1enable_bool"></a>cln_1enable_bool</summary>
 
@@ -457,12 +460,16 @@ zflag:dropbox,tor-browser=--skippgpcheck
 * If set to "-1" all official packages will be kept (cache is usually `/var/cache/pacman/pkg`)
 </details>
 
+----
+
 <details>
 <summary><a name="flatpak_update_freq"></a>flatpak_update_freq</summary>
 
  * Default: `3`
  * Every X days, check for Flatpak package updates (-1 to disable)
 </details>
+
+----
 
 <details>
 <summary><a name="notify_1enable_bool"></a>notify_1enable_bool</summary>
@@ -507,6 +514,8 @@ zflag:dropbox,tor-browser=--skippgpcheck
 * If true, the version number of the script will be included in notifications
 </details>
 
+----
+
 <details>
 <summary><a name="main_ignorepkgs_str"></a>main_ignorepkgs_str</summary>
 
@@ -536,6 +545,16 @@ zflag:dropbox,tor-browser=--skippgpcheck
 * Countries separated by commas from which to pull updates
 * See output of `pacman-mirrors -l` for supported values
 </details>
+
+<details>
+<summary><a name="main_testsite_str"></a>main_testsite_str</summary>
+
+* Default: `www.google.com`
+* Script checks if there is internet access by attempting to ping this address
+* Can also be an IP address
+</details>
+
+----
 
 <details>
 <summary><a name="reboot_1enable_num"></a>reboot_1enable_num</summary>
@@ -576,6 +595,8 @@ zflag:dropbox,tor-browser=--skippgpcheck
  * These users will not trigger the reboot delay even if they are logged on
 </details>
 
+----
+
 <details>
 <summary><a name="repair_db01_bool"></a>repair_db01_bool</summary>
 
@@ -590,7 +611,7 @@ zflag:dropbox,tor-browser=--skippgpcheck
 
  * Default: `1` (True)
  * If true, script will check for and perform critical package changes required for continued updates
- * See [Automatic Repair](#automatic-repair-and-manual-changes "") for specific package changes the script supports
+ * See [Automatic Repair](#supported-automatic-repair-and-manual-changes "") for specific package changes the script supports
 </details>
 
 <details>
@@ -600,6 +621,8 @@ zflag:dropbox,tor-browser=--skippgpcheck
  * If true, the script will attempt to re-install pikaur if it is not functioning
  * NOTE: Specifically needed if python is updated
 </details>
+
+----
 
 <details>
 <summary><a name="self_1enable_bool"></a>self_1enable_bool</summary>
@@ -616,13 +639,7 @@ zflag:dropbox,tor-browser=--skippgpcheck
 * Current valid values are: `stable`, `beta`
 </details>
 
-<details>
-<summary><a name="main_testsite_str"></a>main_testsite_str</summary>
-
-* Default: `www.google.com`
-* Script checks if there is internet access by attempting to ping this address
-* Can also be an IP address
-</details>
+----
 
 <details>
 <summary><a name="update_downgrades_bool"></a>update_downgrades_bool</summary>
@@ -644,6 +661,7 @@ zflag:dropbox,tor-browser=--skippgpcheck
 * Default: `30`
 * Every X days, runs `pacman-key --refresh-keys` before checking for package updates (-1 to disable)
 </details>
+
 
 
 
