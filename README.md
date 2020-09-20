@@ -475,7 +475,7 @@ zflag:dropbox,tor-browser=--skippgpcheck
 <summary><a name="notify_1enable_bool"></a>notify_1enable_bool</summary>
 
 * Default: `1` (True)
-* If true, enables status notifications via `notify-send` to active users
+* If true, enables status notifications to active users
 </details>
 
 <details>
@@ -487,24 +487,23 @@ zflag:dropbox,tor-browser=--skippgpcheck
   * `auto`: will automatically select the best method
   * `gdbus`: uses `gdbus` to create notifications (works on Xfce, Gnome)
   * `desk`: uses `notify-desktop` to create notifications (works on Xfce, KDE, and Gnome)
-  * `send`: uses legacy `notify-send` to create notifications (works on Xfce)
-* Note: if `auto` or `desk` is specified, and an AUR helper is configured, and KDE is detected, script will attempt to install [`notify-desktop-git`](https://aur.archlinux.org/packages/notify-desktop-git "") to provide this functionality
+  * `send`: uses `notify-send` to create notifications (works on Xfce, partial KDE support)
+* Note: if `desk` is specified (or if `auto` is specified and KDE is detected), and an AUR helper is configured, script will attempt to install [`notify-desktop-git`](https://aur.archlinux.org/packages/notify-desktop-git "") to provide this functionality
 </details>
 
 <details>
 <summary><a name="notify_lastmsg_num"></a>notify_lastmsg_num</summary>
 
 * Default: `20`
-* Specifies how long (in seconds) the final "System update finished" notification is visible before it expires.
+* Specifies how long (in seconds) the "System update finished" notification is visible before it expires.
 * The "Kernel and/or drivers were updated" message does not expire, regardless of this setting
-* Requires `notify_1enable_bool` to be True
 </details>
 
 <details>
 <summary><a name="notify_errors_bool"></a>notify_errors_bool</summary>
 
 * Default: `1` (True)
-* If true, script attempts to detect errors. If any, includes message "Some packages encountered errors" in notification
+* If true, script will state which tasks failed in the "System update finished" notification
 </details>
 
 <details>
@@ -664,7 +663,61 @@ zflag:dropbox,tor-browser=--skippgpcheck
 
 
 
-
+<br />
+<br />
+<br />
+<br />
+<br />
+<br />
+<br />
+<br />
+<br />
+<br />
+<br />
+<br />
+<br />
+<br />
+<br />
+<br />
+<br />
+<br />
+<br />
+<br />
+<br />
+<br />
+<br />
+<br />
+<br />
+<br />
+<br />
+<br />
+<br />
+<br />
+<br />
+<br />
+<br />
+<br />
+<br />
+<br />
+<br />
+<br />
+<br />
+<br />
+<br />
+<br />
+<br />
+<br />
+<br />
+<br />
+<br />
+<br />
+<br />
+<br />
+<br />
+<br />
+<br />
+<br />
+<br />
 
 
 
