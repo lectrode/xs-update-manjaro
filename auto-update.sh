@@ -1,6 +1,6 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.4.1"; vsndsp="$vsn 2020-07-05"
+vsn="v3.4.3"; vsndsp="$vsn 2020-09-28"
 #-Downloads and Installs new updates
 #-Depends: coreutils, pacman, pacman-mirrors, grep, ping
 #-Optional Depends: notification daemon, notify-desktop, pikaur, apacman (deprecated)
@@ -9,6 +9,7 @@ if [ $# -eq 0 ]; then "$0" "XS"& exit 0; fi # start in background
 
 
 [[ "$xs_autoupdate_conf" = "" ]] && xs_autoupdate_conf='/etc/xs/auto-update.conf'
+[[ "$DEFAULTIFS" = "" ]] && DEFAULTIFS="$IFS"
 debgn=+x; # -x =debugging | +x =no debugging
 set $debgn; pcmbin="pacman"
 
@@ -114,7 +115,7 @@ echo '# Notification Settings #' >> "$xs_autoupdate_conf"
 echo '#notify_1enable_bool:      Enable/Disable nofications' >> "$xs_autoupdate_conf"
 echo '#notify_function_str:      Valid options are auto,gdbus,desk,send' >> "$xs_autoupdate_conf"
 echo '#notify_lastmsg_num:       Seconds before final normal notification expires (0=never)' >> "$xs_autoupdate_conf"
-echo '#notify_errors_bool:       Include possible errors in notifications' >> "$xs_autoupdate_conf"
+echo '#notify_errors_bool:       Include failed tasks in summary notification' >> "$xs_autoupdate_conf"
 echo '#notify_vsn_bool:          Include version number in notifications' >> "$xs_autoupdate_conf"
 echo '#' >> "$xs_autoupdate_conf"
 echo '# Main Settings #' >> "$xs_autoupdate_conf"
@@ -149,8 +150,7 @@ echo '# Custom Makepkg Flags for AUR packages (requires pikaur)' >> "$xs_autoupd
 echo '#zflag:packagename1,packagename2=--flag1,--flag2,--flag3' >> "$xs_autoupdate_conf"
 echo '#' >> "$xs_autoupdate_conf"
 echo '#' >> "$xs_autoupdate_conf"
-DEFAULTIFS=$IFS; IFS=$'\n'
-for i in $(sort <<< "${!conf_a[*]}"); do
+IFS=$'\n'; for i in $(sort <<< "${!conf_a[*]}"); do
 	echo "$i=${conf_a[$i]}" >> "$xs_autoupdate_conf"
 done; IFS=$DEFAULTIFS
 }
@@ -184,8 +184,7 @@ perst_export(){
     touch "$perst_f"
     echo "#Last day specific tasks were performed" > "$perst_f"
 
-    DEFAULTIFS=$IFS; IFS=$'\n'
-    for i in $(sort <<< "${!perst_a[*]}"); do
+    IFS=$'\n'; for i in $(sort <<< "${!perst_a[*]}"); do
         echo "$i=${perst_a[$i]}" >> "$perst_f"
     done; IFS=$DEFAULTIFS
 }
@@ -238,8 +237,7 @@ sendmsg(){
 }
 
 getsessions(){
-    DEFAULTIFS=$IFS; IFS=$'\n\b';
-    unset s_usr[@] s_disp[@] s_home[@]
+    IFS=$'\n\b'; unset s_usr[@] s_disp[@] s_home[@]
     i=0; for sssn in $(loginctl list-sessions --no-legend); do
         IFS=' '; sssnarr=($sssn)
         actv="$(loginctl show-session -p Active ${sssnarr[0]}|cut -d'=' -f2)"
@@ -463,8 +461,7 @@ esac
 [[ "${conf_a[flatpak_1enable_bool]}" = "0" ]] && conf_a[flatpak_update_freq]="-1"
 [[ ! "${conf_a[reboot_1enable_bool]}" = "" ]] && conf_a[reboot_1enable_num]="${conf_a[reboot_1enable_bool]}"
 
-DEFAULTIFS=$IFS; IFS=$' '
-for i in $(sort <<< "$conf_legacy"); do
+IFS=$' '; for i in $(sort <<< "$conf_legacy"); do
 	unset conf_a[$i]
 done; IFS=$DEFAULTIFS
 
@@ -781,10 +778,14 @@ if [[ "$use_pikaur" = "1" ]]; then
     if [[ ! "${#flag_a[@]}" = "0" ]]; then
         trouble "Updating AUR packages with custom flags [pikaur]..."
         for i in ${!flag_a[*]}; do
-            if ! test_online; then trouble "Not online - skipping pikaur command"; break; fi
-            if $pcmbin -Q $(echo "$i" | tr ',' ' ') >/dev/null 2>&1; then
-                pikaur -S --needed --noconfirm --noprogressbar --mflags=${flag_a[$i]} $(echo "$i" | tr ',' ' ') 2>&1 |tee -a $log_f
-                let "err_aur=err_aur+${PIPESTATUS[0]}"
+            for j in $(echo "$i" | tr ',' ' '); do
+                $pcmbin -Q $j >/dev/null 2>&1 && custpkg+=" $j"; done
+            if [[ ! "$custpkg" = "" ]]; then
+                if test_online; then
+                    troublem "Updating: $custpkg"
+                    pikaur -S --needed --noconfirm --noprogressbar --mflags=${flag_a[$i]} $custpkg 2>&1 |tee -a $log_f
+                    let "err_aur=err_aur+${PIPESTATUS[0]}"; unset custpkg
+                else trouble "Not online - skipping pikaur command"; unset custpkg; break; fi
             fi
         done
     fi
