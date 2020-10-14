@@ -1,6 +1,6 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.4.3"; vsndsp="$vsn 2020-09-28"
+vsn="v3.4.5"; vsndsp="$vsn 2020-10-13"
 #-Downloads and Installs new updates
 #-Depends: coreutils, pacman, pacman-mirrors, grep, ping
 #-Optional Depends: notification daemon, notify-desktop, pikaur, apacman (deprecated)
@@ -197,10 +197,10 @@ iconwarn(){ icon=important; }
 iconcritical(){ icon=system-shutdown; }
 
 sendmsg(){
-#$1=user; $2=display; $3=msg; [$4=timeout]
+#$1=user; $2=msg; [$3=timeout]
     if [[ "${conf_a[notify_1enable_bool]}" = "$ctrue" ]] && [[ "$(($noti_desk+$noti_send+$noti_gdbus))" -le 2 ]]; then
         noti_id["$1"]="$(cnvrt2_int "${noti_id["$1"]}")"
-        tmp_t0="$(cnvrt2_int "$4")"
+        tmp_t0="$(cnvrt2_int "$3")"
         if [ "$tmp_t0" = "0" ]; then
             tmp_t1="-u critical"
         else
@@ -208,27 +208,26 @@ sendmsg(){
             tmp_t1="-t $tmp_t0"
         fi
         if [ "$noti_desk" = "$true" ]; then
-            if [[ "$3" = "dismiss" ]]; then
-                noti_id["$1"]="$(DISPLAY=$2 su $1 -c "notify-desktop -u normal -r ${noti_id["$1"]} \" \" -t 1")"
+            if [[ "$2" = "dismiss" ]]; then
+                noti_id["$1"]="$(su $1 -c "notify-desktop -u normal -r ${noti_id["$1"]} \" \" -t 1")"
             else
-                tmp_m1="$(echo "$3"|sed 's/\\n/\n/g')"
-                noti_id["$1"]="$(DISPLAY=$2 su $1 -c "notify-desktop -i $icon $tmp_t1 -r ${noti_id["$1"]} xs-update-manjaro \"$notifyvsn$tmp_m1\" 2>/dev/null || echo error")"
+                tmp_m1="$(echo "$2"|sed 's/\\n/\n/g')"
+                noti_id["$1"]="$(su $1 -c "notify-desktop -i $icon $tmp_t1 -r ${noti_id["$1"]} xs-update-manjaro \"$notifyvsn$tmp_m1\" 2>/dev/null || echo error")"
             fi
         fi
         if [ "$noti_send" = "$true" ]; then
-            if [[ ! "$3" = "dismiss" ]]; then
-                killall xfce4-notifyd 2>/dev/null
-                noti_id["$1"]="$(DISPLAY=$2 su $1 -c "notify-send -i $icon $tmp_t1 xs-update-manjaro \"$notifyvsn$3\" 2>/dev/null || echo error")"
+            if [[ ! "$2" = "dismiss" ]]; then
+                noti_id["$1"]="$(su $1 -c "notify-send -i $icon $tmp_t1 xs-update-manjaro \"$notifyvsn$2\" 2>/dev/null || echo error")"
             fi
         fi
         if [ "$noti_gdbus" = "$true" ]; then
-            if [[ "$3" = "dismiss" ]]; then
-                noti_id["$1"]="$(DISPLAY=$2 su $1 -c "gdbus call --session --dest org.freedesktop.Notifications \
+            if [[ "$2" = "dismiss" ]]; then
+                noti_id["$1"]="$(su $1 -c "gdbus call --session --dest org.freedesktop.Notifications \
                     --object-path /org/freedesktop/Notifications --method org.freedesktop.Notifications.CloseNotification ${noti_id["$1"]}")"
             else
-                noti_id["$1"]="$(DISPLAY=$2 su $1 -c "gdbus call --session --dest org.freedesktop.Notifications \
+                noti_id["$1"]="$(su $1 -c "gdbus call --session --dest org.freedesktop.Notifications \
                     --object-path /org/freedesktop/Notifications --method org.freedesktop.Notifications.Notify \
-                    xs-update-manjaro ${noti_id["$1"]} $icon xs-update-manjaro \"$notifyvsn$3\" [] {} $tmp_t0 2>/dev/null || echo error"|cut -d' ' -f2|cut -d',' -f1)"
+                    xs-update-manjaro ${noti_id["$1"]} $icon xs-update-manjaro \"$notifyvsn$2\" [] {} $tmp_t0 2>/dev/null || echo error"|cut -d' ' -f2|cut -d',' -f1)"
             fi
         fi
         unset tmp_t0 tmp_t1; if [[ "${noti_id["$1"]}" = "error" ]]; then noti_id["$1"]=0; return 1; fi
@@ -256,7 +255,11 @@ getsessions(){
 sendall(){
     if [ "${conf_a[notify_1enable_bool]}" = "$ctrue" ]; then
         sa_err=0; getsessions; i=0; while [ $i -lt ${#s_usr[@]} ]; do
-            sendmsg "${s_usr[$i]}" "${s_disp[$i]}" "$1" "$2" || sa_err=1; i=$(($i+1))
+            if [[ -f "${s_home[$i]}/.Xauthority" ]]; then
+                DISPLAY=${s_disp[$i]} XAUTHORITY="${s_home[$i]}/.Xauthority" \
+                    DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u ${s_usr[$i]})/bus" \
+                    sendmsg "${s_usr[$i]}" "$1" "$2" || sa_err=1
+            fi; i=$(($i+1))
         done; unset i; return $sa_err
     fi
 }
@@ -300,14 +303,17 @@ while : ; do
         rm -f "${perst_d}\auto-update_termnotify.dat" >/dev/null 2>&1; sendall "dismiss"; exit 0; fi
     getsessions; i=0; while [ $i -lt ${#s_usr[@]} ]; do
         if [ -f "${s_home[$i]}/.cache/xs/logonnotify" ]; then
-            iconwarn; sleep 5; sendmsg "${s_usr[$i]}" "${s_disp[$i]}" \
-                "System is updating (please do not turn off the computer)\nDetails: $log_f"
+            iconwarn; sleep 5
+            DISPLAY=${s_disp[$i]} XAUTHORITY="${s_home[$i]}/.Xauthority" \
+                DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u ${s_usr[$i]})/bus" \
+                sendmsg "${s_usr[$i]}" "System is updating (please do not turn off the computer)\nDetails: $log_f"
             rm -f "${s_home[$i]}/.cache/xs/logonnotify"
         fi; i=$(($i+1)); sleep 2
     done
 done; }
 
 userlogon(){
+    #This uses notify-send directly as it is run directly in user session for final message only
     sleep 5; if [ ! -d "$HOME/.cache/xs" ]; then mkdir -p "$HOME/.cache/xs"; fi
     if [ ! -f "${conf_a[main_logdir_str]}/auto-update.log" ]; then
     if [[ $(ls "${conf_a[main_logdir_str]}" | grep -F "auto-update.log_" 2>/dev/null) ]]; then
@@ -870,8 +876,7 @@ if [ ! "$msg" = "System update finished; no changes made" ]; then
     msg="$msg\nDetails: $log_f"
 fi
 
-normcrit=norm; grep -Ei "(up|down)(grad|dat)ing (linux[0-9]{2,3}|systemd)(\.|-| )" $log_f >/dev/null && normcrit=crit
+sleep 5; normcrit=norm; grep -Ei "(up|down)(grad|dat)ing (linux[0-9]{2,3}|systemd)(\.|-| )" $log_f >/dev/null && normcrit=crit
 if [[ "$normcrit" = "norm" ]]; then finalmsg_normal; else finalmsg_critical; fi
 trouble "XS-done"; sync; disown -a; sleep 1; systemctl stop xs-autoupdate.service >/dev/null 2>&1; exit 0
-
 

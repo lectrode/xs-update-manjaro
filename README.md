@@ -71,6 +71,7 @@ Please do not use this script blindly. You should have a firm understanding of h
 You can learn about updating your computer at the following:
 * [Manjaro Wiki](https://wiki.manjaro.org/index.php?title=Main_Page#Software_Management_.2F_Applications)
 * [Manjaro User Guide](https://manjaro.org/support/userguide/)
+* [Tips for Updating Manjaro](https://forum.manjaro.org/t/root-tip-update-manjaro-the-smart-way/30979)
 
 This is not a replacement for manually updating/maintaining your own computer, but a supplement. This script automates what it can, but updates needing manual steps (for example, merging .pacnew files) will still need those.
 Some of the manual steps have been incorporated into this script, but your system(s) may require additional manual steps depending on what packages you have installed.
@@ -487,7 +488,7 @@ zflag:dropbox,tor-browser=--skippgpcheck
   * `auto`: will automatically select the best method
   * `gdbus`: uses `gdbus` to create notifications (works on Xfce, Gnome)
   * `desk`: uses `notify-desktop` to create notifications (works on Xfce, KDE, and Gnome)
-  * `send`: uses `notify-send` to create notifications (works on Xfce, partial KDE support)
+  * `send`: uses `notify-send` to create notifications (partial Xfce and KDE support - does not support replacing/dismissing existing notifications, which may result in notification spam)
 * Note: if `desk` is specified (or if `auto` is specified and KDE is detected), and an AUR helper is configured, script will attempt to install [`notify-desktop-git`](https://aur.archlinux.org/packages/notify-desktop-git "") to provide this functionality
 </details>
 
