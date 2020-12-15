@@ -1,6 +1,6 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.5.0-rc1"; vsndsp="$vsn 2020-12-13"
+vsn="v3.5.0-rc2"; vsndsp="$vsn 2020-12-14"
 #-Downloads and Installs new updates
 #-Depends: coreutils, pacman, pacman-mirrors, grep, ping
 #-Optional Depends: notification daemon, notify-desktop, pikaur, apacman (deprecated)
@@ -90,6 +90,11 @@ if [[ -f /etc/pacman.conf ]]; then
     if [[ ! "$gpcc" = "" ]]; then echo "$gpcc/"|sed -r 's_/+_/_g'; unset gpcc; return; fi; unset gpcc; fi
 if [[ "$1" = "DBPath" ]]; then echo "/var/lib/pacman/"; fi
 if [[ "$1" = "CacheDir" ]]; then echo "/var/cache/pacman/pkg/"; fi
+}
+
+chk_crit(){
+if grep -Ei "(up|down)(grad|dat)ing (linux[0-9]{2,3}|systemd|mesa|(intel|amd)-ucode|cryptsetup|xf86-video)(\.|-| )" $log_f >/dev/null;
+then echo crit; else echo norm; fi
 }
 
 conf_export(){
@@ -725,8 +730,7 @@ sync; trouble "Updating packages from main repos..."
 $pcmbin -Su$pacdown --needed --noconfirm $pacignore 2>&1 |tee -a $log_f
 err_repo=${PIPESTATUS[0]}; if [[ $err_repo -ne 0 ]]; then trouble "ERR: pacman exited with code $err_repo"; break; fi
 if [[ "${conf_a[aur_aftercritical_bool]}" = "$cfalse" ]]; then
-    normcrit=norm; grep -Ei "(up|down)(grad|dat)ing (linux[0-9]{2,3}|systemd)(\.|-| )" $log_f >/dev/null && normcrit=crit
-    [[ "$normcrit" = "crit" ]] && break
+    [[ "$(chk_crit)" = "crit" ]] && break
 fi
 
 
@@ -809,25 +813,23 @@ fi
 if [ "${conf_a[repair_pythonrebuild_bool]}" = "$ctrue" ] && [[ $(($use_pikaur+$use_apacman)) -ge 1 ]]; then
     if [[ ! "$pyaur_rebuild" = "" ]]; then
         trouble "Rebuilding any AUR python packages..."
-        rebuiltpkg=1; while [ "$rebuiltpkg" = "1" ]; do
+        rebuiltpkg=1; pypkgstat=0; while [ "$rebuiltpkg" = "1" ]; do
             rebuiltpkg=0; for fol in $(ls -d /usr/lib/python3.*); do
                 if [[ ! "$fol" = "/usr/lib/python$python_vsn" ]]; then
                     for pkg in $($pcmbin -Qqo "$fol/site-packages"  2>/dev/null); do
                         if [ "$use_pikaur" = "1" ]; then
                             test_online && pikaur -S --noconfirm $pkg 2>&1 |tee -a $log_f
                             pypkgstat=${PIPESTATUS[0]}; if [ $pypkgstat -eq 0 ]; then rebuiltpkg=1; fi
-                            let "err_aur=err_aur+$pypkgstat"
                         elif [ "$use_apacman" = "1" ]; then
                             apacman -S --noconfirm $pkg 2>&1 |tee -a $log_f
                             pypkgstat=${PIPESTATUS[0]}; if [ $pypkgstat -eq 0 ]; then rebuiltpkg=1; fi
-                            let "err_aur=err_aur+$pypkgstat"
                         fi
                     done
                 fi
             done
-        done; unset pypkgstat
+        done; let "err_aur=err_aur+pypkgstat"
     fi
-fi
+fi; unset pypkgstat rebuiltpkg pyaur_rebuild python_vsn
 
 if [[ "$use_pikaur" = "1" ]]; then
     if [[ ! "${#flag_a[@]}" = "0" ]]; then
@@ -925,7 +927,6 @@ if [ ! "$msg" = "System update finished; no changes made" ]; then
     msg="$msg\nDetails: $log_f"
 fi
 
-normcrit=norm; grep -Ei "(up|down)(grad|dat)ing (linux[0-9]{2,3}|systemd)(\.|-| )" $log_f >/dev/null && normcrit=crit
-if [[ "$normcrit" = "norm" ]]; then finalmsg_normal; else finalmsg_critical; fi
+if [[ "$(chk_crit)" = "norm" ]]; then finalmsg_normal; else finalmsg_critical; fi
 trouble "XS-done"; sync; disown -a; sleep 1; systemctl stop xs-autoupdate.service >/dev/null 2>&1; exit 0
 
