@@ -43,6 +43,7 @@
   * [repair_db01_bool](#repair_db01_bool "")
   * [repair_manualpkg_bool](#repair_manualpkg_bool "")
   * [repair_pikaur01_bool](#repair_pikaur01_bool "")
+  * [repair_pythonrebuild_bool](#repair_pythonrebuild_bool "")
   * [self_1enable_bool](#self_1enable_bool "")
   * [self_branch_str](#self_branch_str "")
   * [update_downgrades_bool](#update_downgrades_bool "")
@@ -151,6 +152,8 @@ Overview of what the script does from start to finish. Some steps may be slightl
 * Determine available AUR helpers (*config: [frequency](#aur_update_freq ""), [manual selection](#aur_1helper_str "")*)
   * Check if pikaur is functional (*config: [enable repair](#repair_pikaur01_bool "")*)
 
+* If AUR helper available/enabled, detect and rebuild AUR python packages that need it (*config: [enable python pkg rebuild](#repair_pythonrebuild_bool "")*)
+
 * If selected, update AUR packages with `pikaur`
   * Update AUR packages with [custom flags](#custom-makepkg-flags-for-specific-aur-packages "") specified
   * Update remaining AUR packages
@@ -216,6 +219,7 @@ Overview of what the script does from start to finish. Some steps may be slightl
 This script supports detecting and repairing the following potential issues:
 * [Package database errors](#repair_db01_bool "")
 * [Non-functioning Pikaur](#repair_pikaur01_bool "")
+* [AUR Python packages requiring rebuild after python 3.x update](#repair_pythonrebuild_bool "")
 
 ### Manual Changes
 Every once in a while, updating Manjaro requires manual package changes to allow updates to succeed. This script [supports](#repair_manualpkg_bool "") automatically performing the following:
@@ -302,7 +306,7 @@ pushd apacman
 makepkg -si --noconfirm
 popd
 rm -rf apacman
-#Replace old apacman with my fork with fixes
+#Replace old apacman with my fork with some fixes (not currently maintained)
 sudo wget "https://raw.githubusercontent.com/lectrode/apacman/master/apacman" -O "/usr/bin/apacman"
 sudo chmod +x "/usr/bin/apacman"
 ````
@@ -366,6 +370,7 @@ reboot_notifyrep_num=10
 repair_db01_bool=1
 repair_manualpkg_bool=1
 repair_pikaur01_bool=1
+repair_pythonrebuild_bool=1
 self_1enable_bool=1
 self_branch_str=stable
 update_downgrades_bool=1
@@ -561,7 +566,7 @@ zflag:dropbox,tor-browser=--skippgpcheck
 
  * Default: `0`
  * -1: Disable script reboot in all cases
- *  0: Allow script reboot only if rebooting normally may not be possible (system may be in critical state after systemd update)
+ *  0: Allow script reboot only if rebooting normally may not be possible (system may be in critical state after critical package update)
  *  1: Always allow script to reboot after critical system packages have been updated
 </details>
 
@@ -620,6 +625,13 @@ zflag:dropbox,tor-browser=--skippgpcheck
  * Default: `1` (True)
  * If true, the script will attempt to re-install pikaur if it is not functioning
  * NOTE: Specifically needed if python is updated
+</details>
+
+<details>
+<summary><a name="repair_pythonrebuild_bool"></a>repair_pythonrebuild_bool</summary>
+
+ * Default: `1` (True)
+ * If true, the script will attempt to rebuild AUR python packages after python update
 </details>
 
 ----

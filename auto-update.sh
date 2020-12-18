@@ -1,6 +1,6 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.4.5"; vsndsp="$vsn 2020-10-13"
+vsn="v3.5.1"; vsndsp="$vsn 2020-12-18"
 #-Downloads and Installs new updates
 #-Depends: coreutils, pacman, pacman-mirrors, grep, ping
 #-Optional Depends: notification daemon, notify-desktop, pikaur, apacman (deprecated)
@@ -54,7 +54,8 @@ fi
 }
 
 chk_pkgisinst(){ [[ "$($pcmbin -Qq $1 2>/dev/null | grep -m1 -x $1)" == "$1" ]] && return 0; return 1; }
-chk_pkgvsndiff(){ cpvd_t1="$($pcmbin -Q $1 | grep "$1 " -m1 | cut -d' ' -f2)"; echo "$(vercmp ${cpvd_t1:-0} $2)"; unset cpvd_t1; }
+get_pkgvsn(){ echo "$($pcmbin -Q $1 | grep "$1 " -m1 | cut -d' ' -f2)"; }
+chk_pkgvsndiff(){ cpvd_t1="$(get_pkgvsn $1)"; echo "$(vercmp ${cpvd_t1:-0} $2)"; unset cpvd_t1; }
 
 chk_sha256(){ [[ "$(sha256sum "$1" |cut -d ' ' -f 1 |tr -cd [:alnum:])" = "$2" ]] && return 0; return 1; }
 
@@ -89,6 +90,11 @@ if [[ -f /etc/pacman.conf ]]; then
     if [[ ! "$gpcc" = "" ]]; then echo "$gpcc/"|sed -r 's_/+_/_g'; unset gpcc; return; fi; unset gpcc; fi
 if [[ "$1" = "DBPath" ]]; then echo "/var/lib/pacman/"; fi
 if [[ "$1" = "CacheDir" ]]; then echo "/var/cache/pacman/pkg/"; fi
+}
+
+chk_crit(){
+if grep -Ei "(up|down)(grad|dat)ing (linux[0-9]{2,3}|systemd|mesa|(intel|amd)-ucode|cryptsetup|xf86-video)(\.|-| )" $log_f >/dev/null;
+then echo crit; else echo norm; fi
 }
 
 conf_export(){
@@ -136,6 +142,7 @@ echo '# Automatic Repair Settings #' >> "$xs_autoupdate_conf"
 echo '#repair_db01_bool:         Enable/Disable Repair missing "desc"/"files" files in package database' >> "$xs_autoupdate_conf"
 echo '#repair_manualpkg_bool:    Enable/Disable Perform critical package changes required for continued updates' >> "$xs_autoupdate_conf"
 echo '#repair_pikaur01_bool:     Enable/Disable Re-install pikaur if not functioning' >> "$xs_autoupdate_conf"
+echo '#repair_pythonrebuild_bool:Enable/Disable Rebuild AUR python packages after python update (requires AUR helper enabled)' >> "$xs_autoupdate_conf"
 echo '#' >> "$xs_autoupdate_conf"
 echo '# Self-update Settings #' >> "$xs_autoupdate_conf"
 echo '#self_1enable_bool:        Enable/Disable updating self (this script)' >> "$xs_autoupdate_conf"
@@ -176,8 +183,12 @@ perst_isneeded(){
 
 perst_update(){
 #$1 = last_*
-    perst_a[$1]=$(date +'%Y%m%d')
-    echo "$1=$(date +'%Y%m%d')" >> "$perst_f"
+    perst_a[$1]=$(date +'%Y%m%d'); echo "$1=$(date +'%Y%m%d')" >> "$perst_f"
+}
+
+perst_reset(){
+#$1 = last_*
+    perst_a[$1]="20010101"; echo "$1=20010101" >> "$perst_f"
 }
 
 perst_export(){
@@ -298,17 +309,17 @@ finalmsg_critical(){
 }
 
 backgroundnotify(){
-while : ; do
+iconwarn; while : ; do
+    sleep 5
     if [[ -f "${perst_d}\auto-update_termnotify.dat" ]]; then 
         rm -f "${perst_d}\auto-update_termnotify.dat" >/dev/null 2>&1; sendall "dismiss"; exit 0; fi
     getsessions; i=0; while [ $i -lt ${#s_usr[@]} ]; do
         if [ -f "${s_home[$i]}/.cache/xs/logonnotify" ]; then
-            iconwarn; sleep 5
             DISPLAY=${s_disp[$i]} XAUTHORITY="${s_home[$i]}/.Xauthority" \
                 DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u ${s_usr[$i]})/bus" \
                 sendmsg "${s_usr[$i]}" "System is updating (please do not turn off the computer)\nDetails: $log_f"
             rm -f "${s_home[$i]}/.cache/xs/logonnotify"
-        fi; i=$(($i+1)); sleep 2
+        fi; i=$(($i+1))
     done
 done; }
 
@@ -363,6 +374,7 @@ typeset -A conf_a; conf_a=(
     [repair_db01_bool]=$ctrue
     [repair_manualpkg_bool]=$ctrue
     [repair_pikaur01_bool]=$ctrue
+    [repair_pythonrebuild_bool]=$ctrue
     #legacy
     [bool_detectErrors]=""
     [bool_Downgrades]=""
@@ -718,8 +730,7 @@ sync; trouble "Updating packages from main repos..."
 $pcmbin -Su$pacdown --needed --noconfirm $pacignore 2>&1 |tee -a $log_f
 err_repo=${PIPESTATUS[0]}; if [[ $err_repo -ne 0 ]]; then trouble "ERR: pacman exited with code $err_repo"; break; fi
 if [[ "${conf_a[aur_aftercritical_bool]}" = "$cfalse" ]]; then
-    normcrit=norm; grep -Ei "(up|down)(grad|dat)ing (linux[0-9]{2,3}|systemd)(\.|-| )" $log_f >/dev/null && normcrit=crit
-    [[ "$normcrit" = "crit" ]] && break
+    [[ "$(chk_crit)" = "crit" ]] && break
 fi
 
 
@@ -729,6 +740,21 @@ use_apacman=1; use_pikaur=1
 if echo "${conf_a[aur_1helper_str]}" | grep "none" >/dev/null; then conf_a[aur_1helper_str]="none"; use_apacman=0; use_pikaur=0; fi
 echo "${conf_a[aur_1helper_str]}" | grep 'all\|auto\|pikaur' >/dev/null || use_pikaur=0
 echo "${conf_a[aur_1helper_str]}" | grep 'all\|auto\|apacman' >/dev/null || use_apacman=0
+
+#check if AUR python pkgs need rebuild
+if [ "${conf_a[repair_pythonrebuild_bool]}" = "$ctrue" ] && [[ $(($use_pikaur+$use_apacman)) -ge 1 ]]; then
+    if chk_pkgisinst "python"; then
+        python_vsn="$(echo "$(get_pkgvsn "python")"|cut -d'.' -f1,2)"
+        for fol in $(ls -d /usr/lib/python3.*); do 
+            if [[ ! "$fol" = "/usr/lib/python$python_vsn" ]]; then
+                if $pcmbin -Qqo "$fol/site-packages" >/dev/null 2>&1; then
+                    trouble "Python Rebuilds required for $python_vsn; AUR timestamps have been reset"
+                    perst_reset "last_aur_update"; perst_reset "last_aurdev_update"; pyaur_rebuild=1; break; fi
+            fi
+        done
+    fi
+fi
+
 if ! perst_isneeded "${conf_a[aur_update_freq]}" "${perst_a[last_aur_update]}";  then use_apacman=0; use_pikaur=0; fi
 
 if [ "$use_pikaur" = "1" ]; then
@@ -738,8 +764,11 @@ if [ "$use_pikaur" = "1" ]; then
             trouble "Warning: AURHelper: pikaur specified but not found..."; fi
     else
         pikpkg="$($pcmbin -Qq pikaur)"
-        pikaur -S --needed --noconfirm ${pikpkg:-pikaur} 2>&1 |tee -a $log_f
-        if [[ ! "${PIPESTATUS[0]}" = "0" ]]; then
+        pikerr=0; pikaur -S --needed --noconfirm ${pikpkg:-pikaur} 2>&1 |tee -a $log_f
+        if [[ ! "${PIPESTATUS[0]}" = "0" ]]; then pikerr=1
+            else pikaur -Q pikaur 2>&1|grep "rebuild" >/dev/null && pikerr=1
+        fi
+        if [[ "$pikerr" = "1" ]]; then
             trouble "Warning: AURHelper: pikaur not functioning"
             if [[ "${conf_a[repair_pikaur01_bool]}" = "$ctrue" ]] && $pcmbin -Q pikaur >/dev/null 2>&1; then
                 troublem "Attempting to re-install ${pikpkg:-pikaur}..."
@@ -779,6 +808,28 @@ fi
 
 
 #Update AUR packages
+
+#rebuild python AUR packages
+if [ "${conf_a[repair_pythonrebuild_bool]}" = "$ctrue" ] && [[ $(($use_pikaur+$use_apacman)) -ge 1 ]]; then
+    if [[ ! "$pyaur_rebuild" = "" ]]; then
+        trouble "Rebuilding any AUR python packages..."
+        rebuiltpkg=1; pypkgstat=0; while [ "$rebuiltpkg" = "1" ]; do
+            rebuiltpkg=0; for fol in $(ls -d /usr/lib/python3.*); do
+                if [[ ! "$fol" = "/usr/lib/python$python_vsn" ]]; then
+                    for pkg in $($pcmbin -Qqo "$fol/site-packages"  2>/dev/null); do
+                        if [ "$use_pikaur" = "1" ]; then
+                            test_online && pikaur -S --noconfirm $pkg 2>&1 |tee -a $log_f
+                            pypkgstat=${PIPESTATUS[0]}; if [ $pypkgstat -eq 0 ]; then rebuiltpkg=1; fi
+                        elif [ "$use_apacman" = "1" ]; then
+                            apacman -S --noconfirm $pkg 2>&1 |tee -a $log_f
+                            pypkgstat=${PIPESTATUS[0]}; if [ $pypkgstat -eq 0 ]; then rebuiltpkg=1; fi
+                        fi
+                    done
+                fi
+            done
+        done; let "err_aur=err_aur+pypkgstat"
+    fi
+fi; unset pypkgstat rebuiltpkg pyaur_rebuild python_vsn
 
 if [[ "$use_pikaur" = "1" ]]; then
     if [[ ! "${#flag_a[@]}" = "0" ]]; then
@@ -876,7 +927,6 @@ if [ ! "$msg" = "System update finished; no changes made" ]; then
     msg="$msg\nDetails: $log_f"
 fi
 
-sleep 5; normcrit=norm; grep -Ei "(up|down)(grad|dat)ing (linux[0-9]{2,3}|systemd)(\.|-| )" $log_f >/dev/null && normcrit=crit
-if [[ "$normcrit" = "norm" ]]; then finalmsg_normal; else finalmsg_critical; fi
+if [[ "$(chk_crit)" = "norm" ]]; then finalmsg_normal; else finalmsg_critical; fi
 trouble "XS-done"; sync; disown -a; sleep 1; systemctl stop xs-autoupdate.service >/dev/null 2>&1; exit 0
 
