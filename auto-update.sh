@@ -1,6 +1,6 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.5.0-rc2"; vsndsp="$vsn 2020-12-14"
+vsn="v3.5.1"; vsndsp="$vsn 2020-12-18"
 #-Downloads and Installs new updates
 #-Depends: coreutils, pacman, pacman-mirrors, grep, ping
 #-Optional Depends: notification daemon, notify-desktop, pikaur, apacman (deprecated)
