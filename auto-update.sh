@@ -1,6 +1,6 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.5.2-rc1"; vsndsp="$vsn 2020-12-22"
+vsn="v3.5.3"; vsndsp="$vsn 2020-12-24"
 #-Downloads and Installs new updates
 #-Depends: coreutils, pacman, pacman-mirrors, grep, ping
 #-Optional Depends: notification daemon, notify-desktop, pikaur, apacman (deprecated)
@@ -97,7 +97,7 @@ if grep -Ei "(up|down)(grad|dat)ing (linux[0-9]{2,3}|systemd|mesa|(intel|amd)-uc
 then echo crit; else echo norm; fi
 }
 
-get_pyaur(){ $pcmbin -Qqo $(ls -d /usr/lib/python3.*/site-packages|grep -v "python$1") 2>/dev/null|tr ' ' '\n'|grep -Fx "$($pcmbin -Qqm|sort -u)"; }
+get_pyaur(){ $pcmbin -Qqo $(ls -d /usr/lib/python3.*/site-packages|grep -v "python$1") 2>/dev/null|tr ' ' '\n'|sort -u|grep -Fx "$($pcmbin -Qqm)"; }
 
 conf_export(){
 if [ ! -d "$(dirname $xs_autoupdate_conf)" ]; then mkdir "$(dirname $xs_autoupdate_conf)"; fi
@@ -748,8 +748,7 @@ if [ "${conf_a[repair_pythonrebuild_bool]}" = "$ctrue" ] && [[ $(($use_pikaur+$u
     if chk_pkgisinst "python"; then
         pyaur_vsn="$(echo "$(get_pkgvsn "python")"|cut -d'.' -f1,2)"
         pyaur_curpkg="$(get_pyaur "$pyaur_vsn")"
-        if [[ "$pyaur_curpkg" = "" ]]; then
-            unset pyaur_curpkg pyaur_vsn
+        if [[ "$pyaur_curpkg" = "" ]]; then unset pyaur_curpkg pyaur_vsn
         else
             trouble "Python Rebuilds required for $pyaur_vsn; AUR timestamps have been reset"
             perst_reset "last_aur_update"; perst_reset "last_aurdev_update"
