@@ -1,6 +1,6 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.5.1"; vsndsp="$vsn 2020-12-18"
+vsn="v3.5.3"; vsndsp="$vsn 2020-12-24"
 #-Downloads and Installs new updates
 #-Depends: coreutils, pacman, pacman-mirrors, grep, ping
 #-Optional Depends: notification daemon, notify-desktop, pikaur, apacman (deprecated)
@@ -96,6 +96,8 @@ chk_crit(){
 if grep -Ei "(up|down)(grad|dat)ing (linux[0-9]{2,3}|systemd|mesa|(intel|amd)-ucode|cryptsetup|xf86-video)(\.|-| )" $log_f >/dev/null;
 then echo crit; else echo norm; fi
 }
+
+get_pyaur(){ $pcmbin -Qqo $(ls -d /usr/lib/python3.*/site-packages|grep -v "python$1") 2>/dev/null|tr ' ' '\n'|sort -u|grep -Fx "$($pcmbin -Qqm)"; }
 
 conf_export(){
 if [ ! -d "$(dirname $xs_autoupdate_conf)" ]; then mkdir "$(dirname $xs_autoupdate_conf)"; fi
@@ -744,14 +746,13 @@ echo "${conf_a[aur_1helper_str]}" | grep 'all\|auto\|apacman' >/dev/null || use_
 #check if AUR python pkgs need rebuild
 if [ "${conf_a[repair_pythonrebuild_bool]}" = "$ctrue" ] && [[ $(($use_pikaur+$use_apacman)) -ge 1 ]]; then
     if chk_pkgisinst "python"; then
-        python_vsn="$(echo "$(get_pkgvsn "python")"|cut -d'.' -f1,2)"
-        for fol in $(ls -d /usr/lib/python3.*); do 
-            if [[ ! "$fol" = "/usr/lib/python$python_vsn" ]]; then
-                if $pcmbin -Qqo "$fol/site-packages" >/dev/null 2>&1; then
-                    trouble "Python Rebuilds required for $python_vsn; AUR timestamps have been reset"
-                    perst_reset "last_aur_update"; perst_reset "last_aurdev_update"; pyaur_rebuild=1; break; fi
-            fi
-        done
+        pyaur_vsn="$(echo "$(get_pkgvsn "python")"|cut -d'.' -f1,2)"
+        pyaur_curpkg="$(get_pyaur "$pyaur_vsn")"
+        if [[ "$pyaur_curpkg" = "" ]]; then unset pyaur_curpkg pyaur_vsn
+        else
+            trouble "Python Rebuilds required for $pyaur_vsn; AUR timestamps have been reset"
+            perst_reset "last_aur_update"; perst_reset "last_aurdev_update"
+        fi
     fi
 fi
 
@@ -811,25 +812,22 @@ fi
 
 #rebuild python AUR packages
 if [ "${conf_a[repair_pythonrebuild_bool]}" = "$ctrue" ] && [[ $(($use_pikaur+$use_apacman)) -ge 1 ]]; then
-    if [[ ! "$pyaur_rebuild" = "" ]]; then
-        trouble "Rebuilding any AUR python packages..."
-        rebuiltpkg=1; pypkgstat=0; while [ "$rebuiltpkg" = "1" ]; do
-            rebuiltpkg=0; for fol in $(ls -d /usr/lib/python3.*); do
-                if [[ ! "$fol" = "/usr/lib/python$python_vsn" ]]; then
-                    for pkg in $($pcmbin -Qqo "$fol/site-packages"  2>/dev/null); do
-                        if [ "$use_pikaur" = "1" ]; then
-                            test_online && pikaur -S --noconfirm $pkg 2>&1 |tee -a $log_f
-                            pypkgstat=${PIPESTATUS[0]}; if [ $pypkgstat -eq 0 ]; then rebuiltpkg=1; fi
-                        elif [ "$use_apacman" = "1" ]; then
-                            apacman -S --noconfirm $pkg 2>&1 |tee -a $log_f
-                            pypkgstat=${PIPESTATUS[0]}; if [ $pypkgstat -eq 0 ]; then rebuiltpkg=1; fi
-                        fi
-                    done
+    if [[ ! "$pyaur_curpkg" = "" ]] && [[ ! "$pyaur_vsn" = "" ]]; then
+        trouble "Rebuilding AUR python packages..."
+        err_pyaur=0; while [[ ! "$pyaur_curpkg" = "$pyaur_oldpkg" ]]; do
+            for pkg in $pyaur_curpkg; do
+                if [ "$use_pikaur" = "1" ]; then
+                    test_online && pikaur -Sa --noconfirm $pkg 2>&1 |tee -a $log_f
+                    err_pyaur=${PIPESTATUS[0]}
+                elif [ "$use_apacman" = "1" ]; then
+                    apacman -S --auronly --noconfirm $pkg 2>&1 |tee -a $log_f
+                    err_pyaur=${PIPESTATUS[0]}
                 fi
             done
-        done; let "err_aur=err_aur+pypkgstat"
+        pyaur_oldpkg="$pyaur_curpkg"; pyaur_curpkg="$(get_pyaur "$pyaur_vsn")"
+        done; let "err_aur=err_aur+err_pyaur"
     fi
-fi; unset pypkgstat rebuiltpkg pyaur_rebuild python_vsn
+fi; unset err_pyaur pyaur_vsn pyaur_curpkg pyaur_oldpkg
 
 if [[ "$use_pikaur" = "1" ]]; then
     if [[ ! "${#flag_a[@]}" = "0" ]]; then
