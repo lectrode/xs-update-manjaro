@@ -362,7 +362,7 @@ notify_errors_bool=1
 notify_function_str=auto
 notify_lastmsg_num=20
 notify_vsn_bool=0
-reboot_1enable_num=0
+reboot_1enable_num=1
 reboot_delayiflogin_bool=1
 reboot_delay_num=120
 reboot_ignoreusers_str=nobody lightdm sddm gdm
@@ -564,7 +564,7 @@ zflag:dropbox,tor-browser=--skippgpcheck
 <details>
 <summary><a name="reboot_1enable_num"></a>reboot_1enable_num</summary>
 
- * Default: `0`
+ * Default: `1`
  * -1: Disable script reboot in all cases
  *  0: Allow script reboot only if rebooting normally may not be possible (system may be in critical state after critical package update)
  *  1: Always allow script to reboot after critical system packages have been updated
