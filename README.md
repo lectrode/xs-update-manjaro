@@ -239,8 +239,17 @@ Oldest KDE and Gnome fresh installs are unknown, and not tested.
 
 ### Dependencies:
 
-This script requires these external tools/commands:
+Required:
  * `coreutils`, `pacman`, `pacman-mirrors`, `grep`, `ping`
+
+Optional:
+<table>
+  <tr><td><a href="#supported-aur-helpers">AUR Helper</a></td><td>for AUR package support</td></tr>
+  <tr><td><code>flatpak</code></td><td>for flatpak support</td></tr>
+  <tr><td>notification daemon</td><td>usually a part of the desktop environment; for notification support</td></tr>
+  <tr><td><a href="https://aur.archlinux.org/packages/notify-desktop-git"><code>notify-desktop</code></a></td><td>required for KDE notifications, optional alternative for Xfce, Gnome</td></tr>
+  <tr><td><code>wget</code></td><td>if available, will use instead of <code>curl</code></td></tr>
+</table>
 
 ### Installation
 
@@ -362,7 +371,7 @@ notify_errors_bool=1
 notify_function_str=auto
 notify_lastmsg_num=20
 notify_vsn_bool=0
-reboot_1enable_num=0
+reboot_1enable_num=1
 reboot_delayiflogin_bool=1
 reboot_delay_num=120
 reboot_ignoreusers_str=nobody lightdm sddm gdm
@@ -564,7 +573,7 @@ zflag:dropbox,tor-browser=--skippgpcheck
 <details>
 <summary><a name="reboot_1enable_num"></a>reboot_1enable_num</summary>
 
- * Default: `0`
+ * Default: `1`
  * -1: Disable script reboot in all cases
  *  0: Allow script reboot only if rebooting normally may not be possible (system may be in critical state after critical package update)
  *  1: Always allow script to reboot after critical system packages have been updated

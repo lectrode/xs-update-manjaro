@@ -1,9 +1,9 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.5.3"; vsndsp="$vsn 2020-12-24"
+vsn="v3.5.5"; vsndsp="$vsn 2021-04-04"
 #-Downloads and Installs new updates
-#-Depends: coreutils, pacman, pacman-mirrors, grep, ping
-#-Optional Depends: notification daemon, notify-desktop, pikaur, apacman (deprecated)
+#-Depends: coreutils, grep, pacman, pacman-mirrors, ping
+#-Optional Depends: flatpak, notification daemon, notify-desktop, pikaur, wget
 true=0; false=1; ctrue=1; cfalse=0
 if [ $# -eq 0 ]; then "$0" "XS"& exit 0; fi # start in background
 
@@ -12,6 +12,7 @@ if [ $# -eq 0 ]; then "$0" "XS"& exit 0; fi # start in background
 [[ "$DEFAULTIFS" = "" ]] && DEFAULTIFS="$IFS"
 debgn=+x; # -x =debugging | +x =no debugging
 set $debgn; pcmbin="pacman"
+device="device"; [[ "$(uname -m)" = "x86_64" ]] && device="computer"
 
 #---Define Functions---
 
@@ -59,12 +60,25 @@ chk_pkgvsndiff(){ cpvd_t1="$(get_pkgvsn $1)"; echo "$(vercmp ${cpvd_t1:-0} $2)";
 
 chk_sha256(){ [[ "$(sha256sum "$1" |cut -d ' ' -f 1 |tr -cd [:alnum:])" = "$2" ]] && return 0; return 1; }
 
+dl_outstd(){
+#$1=url
+if wget --help >/dev/null 2>&1; then
+    wget -qO- "$1" && return 0; fi
+curl -s "$1" && return 0; return 1
+}
+dl_outfile(){
+#$1=url $2=output dir
+if [[ ! -d "$2" ]]; then mkdir "$2" || return 1; fi
+if wget --help >/dev/null 2>&1; then
+    wget -q "$1" -O "$2/$(basename "$1")" && return 0; fi
+curl -sZL "$1" -o "$(basename "$1")" --output-dir "$2" && return  0; return 1
+}
 dl_clean(){ [[ -d "/tmp/xs-autmp-$1" ]] && rm -rf "/tmp/xs-autmp-$1"; }
 dl_verify(){
 #$1=id; $2=remote hash; $3=remote file
-dl_hash="$(curl -s "$2" |tr -cd [:alnum:])"
+dl_hash="$(dl_outstd "$2" |tr -cd [:alnum:])"
 if [ "${#dl_hash}" = "64" ]; then
-    (mkdir /tmp/xs-autmp-$1; wget -q "$3" -P "/tmp/xs-autmp-$1/") 2>&1 |tee -a $log_f
+    (dl_outfile "$3" "/tmp/xs-autmp-$1/") 2>&1 |tee -a $log_f
     chk_sha256 "/tmp/xs-autmp-$1/$(basename $3)" "$dl_hash" && return 0
 fi; dl_clean $1; return 1
 }
@@ -93,7 +107,7 @@ if [[ "$1" = "CacheDir" ]]; then echo "/var/cache/pacman/pkg/"; fi
 }
 
 chk_crit(){
-if grep -Ei "(up|down)(grad|dat)ing (linux[0-9]{2,3}|systemd|mesa|(intel|amd)-ucode|cryptsetup|xf86-video)(\.|-| )" $log_f >/dev/null;
+if grep -Ei "(up|down)(grad|dat)ing (linux([0-9]{2,3}|-pinephone)|systemd|mesa|(intel|amd)-ucode|cryptsetup|xf86-video)(\.|-| )" $log_f >/dev/null;
 then echo crit; else echo norm; fi
 }
 
@@ -135,8 +149,8 @@ echo '#main_testsite_str:        URL (without protocol) used to test internet co
 echo '#' >> "$xs_autoupdate_conf"
 echo '# Reboot Settings #' >> "$xs_autoupdate_conf"
 echo '#reboot_1enable_num:       Automatic reboot after critical updates: (1=enabled) (-1=disabled) (0=only if normal reboot may be impossible)' >> "$xs_autoupdate_conf"
-echo '#reboot_delayiflogin_bool: Only delay rebooting computer if users are logged in' >> "$xs_autoupdate_conf"
-echo '#reboot_delay_num:         Delay in seconds to wait before rebooting the computer' >> "$xs_autoupdate_conf"
+echo "#reboot_delayiflogin_bool: Only delay rebooting $device if users are logged in" >> "$xs_autoupdate_conf"
+echo "#reboot_delay_num:         Delay in seconds to wait before rebooting the $device" >> "$xs_autoupdate_conf"
 echo '#reboot_notifyrep_num:     Reboot notification is updated every X seconds. Best if reboot_delay_num is evenly divisible by this' >> "$xs_autoupdate_conf"
 echo '#reboot_ignoreusers_str:   Ignore these users even if logged on. List users separated by spaces' >> "$xs_autoupdate_conf"
 echo '#' >> "$xs_autoupdate_conf"
@@ -268,11 +282,10 @@ getsessions(){
 sendall(){
     if [ "${conf_a[notify_1enable_bool]}" = "$ctrue" ]; then
         sa_err=0; getsessions; i=0; while [ $i -lt ${#s_usr[@]} ]; do
-            if [[ -f "${s_home[$i]}/.Xauthority" ]]; then
-                DISPLAY=${s_disp[$i]} XAUTHORITY="${s_home[$i]}/.Xauthority" \
-                    DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u ${s_usr[$i]})/bus" \
-                    sendmsg "${s_usr[$i]}" "$1" "$2" || sa_err=1
-            fi; i=$(($i+1))
+            DISPLAY=${s_disp[$i]} XAUTHORITY="${s_home[$i]}/.Xauthority" \
+                DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u ${s_usr[$i]})/bus" \
+                sendmsg "${s_usr[$i]}" "$1" "$2" || sa_err=1
+            i=$(($i+1))
         done; unset i; return $sa_err
     fi
 }
@@ -290,7 +303,7 @@ finalmsg_critical(){
 
     allowreboot=1; [[ "${conf_a[reboot_1enable_num]}" = "-1" ]] && allowreboot=0
     if [[ "${conf_a[reboot_1enable_num]}" = "0" ]] || [ "$allowreboot" = "0" ]; then
-        sendall "Kernel and/or drivers were updated. Please restart your computer to finish" || allowreboot=1; fi
+        sendall "Kernel and/or drivers were updated. Please restart your $device to finish" || allowreboot=1; fi
     if [ "$allowreboot" = "1" ]; then
         trouble "XS-done"
         secremain=${conf_a[reboot_delay_num]}
@@ -302,7 +315,7 @@ finalmsg_critical(){
             if [ "${conf_a[reboot_delayiflogin_bool]}" = "$ctrue" ]; then
                 if [ "$usersexist" = "$false" ]; then troublem "No logged-in users detected, rebooting now"; secremain=0; sleep 1; continue; fi; fi
             
-            if [[ "$usersexist" = "$true" ]]; then sendall "Kernel and/or drivers were updated.\nYour computer will automatically restart in \n$secremain seconds..."; fi
+            if [[ "$usersexist" = "$true" ]]; then sendall "Kernel and/or drivers were updated.\nYour $device will automatically restart in \n$secremain seconds..."; fi
             sleep ${conf_a[reboot_notifyrep_num]}
             let secremain-=${conf_a[reboot_notifyrep_num]}
         done
@@ -319,7 +332,7 @@ iconwarn; while : ; do
         if [ -f "${s_home[$i]}/.cache/xs/logonnotify" ]; then
             DISPLAY=${s_disp[$i]} XAUTHORITY="${s_home[$i]}/.Xauthority" \
                 DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u ${s_usr[$i]})/bus" \
-                sendmsg "${s_usr[$i]}" "System is updating (please do not turn off the computer)\nDetails: $log_f"
+                sendmsg "${s_usr[$i]}" "System is updating (please do not turn off the $device)\nDetails: $log_f"
             rm -f "${s_home[$i]}/.cache/xs/logonnotify"
         fi; i=$(($i+1))
     done
@@ -331,7 +344,7 @@ userlogon(){
     if [ ! -f "${conf_a[main_logdir_str]}/auto-update.log" ]; then
     if [[ $(ls "${conf_a[main_logdir_str]}" | grep -F "auto-update.log_" 2>/dev/null) ]]; then
         iconcritical; notify-send -i $icon XS-AutoUpdate -u critical \
-            "Kernel and/or drivers were updated. Please restart your computer to finish"
+            "Kernel and/or drivers were updated. Please restart your $device to finish"
     fi; else touch "$HOME/.cache/xs/logonnotify"; fi
 }
 
@@ -368,7 +381,7 @@ typeset -A conf_a; conf_a=(
     [update_downgrades_bool]=$ctrue
     [update_keys_freq]=30
     [update_mirrors_freq]=1
-    [reboot_1enable_num]=0
+    [reboot_1enable_num]=1
     [reboot_delayiflogin_bool]=$ctrue
     [reboot_delay_num]=120
     [reboot_notifyrep_num]=10
@@ -604,7 +617,7 @@ sleep 8 # In case connection just established
 #Check for updates for self
 if [[ "${conf_a[self_1enable_bool]}" = "$ctrue" ]]; then
     trouble "Checking for self-updates [branch: ${conf_a[self_branch_str]}]..."
-    vsn_new="$(curl -s "$self_repo/master/vsn_${conf_a[self_branch_str]}" | tr -cd '[:alnum:]+-.')"
+    vsn_new="$(dl_outstd "$self_repo/master/vsn_${conf_a[self_branch_str]}" | tr -cd '[:alnum:]+-.')"
     if [[ ! "$(echo $vsn_new | cut -d '+' -f 1)" = "$(printf "$(echo $vsn_new | cut -d '+' -f 1)\n$vsn" | sort -V | head -n1)" ]]; then
         if dl_verify "selfupdate" "$self_repo/${vsn_new}/hash_auto-update-sh" "$self_repo/${vsn_new}/auto-update.sh"; then
             troublem "==================================="
@@ -648,7 +661,7 @@ pacmirArgs="--geoip"
 pacclean
 
 if perst_isneeded "${conf_a[update_mirrors_freq]}" "${perst_a[last_mirrors_update]}"; then
-    trouble "Updating Mirrors..."
+    trouble "Updating Mirrors... [branch: $(pacman-mirrors -G 2>/dev/null)]"
     (pacman-mirrors $pacmirArgs || pacman-mirrors -g) 2>&1 |sed 's/\x1B\[[0-9;]\+[A-Za-z]//g' |tr -cd '\11\12\15\40-\176' |tee -a $log_f
     err_mirrors=${PIPESTATUS[0]}; if [[ $err_mirrors -eq 0 ]]; then
         perst_update "last_mirrors_update"; else trouble "ERR: pacman-mirrors exited with code $err_mirrors"; fi
