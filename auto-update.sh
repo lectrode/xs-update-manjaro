@@ -1,9 +1,9 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.5.4-rc1"; vsndsp="$vsn 2021-03-22"
+vsn="v3.5.5"; vsndsp="$vsn 2021-04-04"
 #-Downloads and Installs new updates
-#-Depends: coreutils, pacman, pacman-mirrors, grep, ping
-#-Optional Depends: notification daemon, notify-desktop, wget, pikaur, apacman (deprecated)
+#-Depends: coreutils, grep, pacman, pacman-mirrors, ping
+#-Optional Depends: flatpak, notification daemon, notify-desktop, pikaur, wget
 true=0; false=1; ctrue=1; cfalse=0
 if [ $# -eq 0 ]; then "$0" "XS"& exit 0; fi # start in background
 
@@ -11,7 +11,8 @@ if [ $# -eq 0 ]; then "$0" "XS"& exit 0; fi # start in background
 [[ "$xs_autoupdate_conf" = "" ]] && xs_autoupdate_conf='/etc/xs/auto-update.conf'
 [[ "$DEFAULTIFS" = "" ]] && DEFAULTIFS="$IFS"
 debgn=+x; # -x =debugging | +x =no debugging
-set $debgn; pcmbin="pacman"; device="device"; [[ "$(uname -m)" = "x86_64" ]] && device="computer"
+set $debgn; pcmbin="pacman"
+device="device"; [[ "$(uname -m)" = "x86_64" ]] && device="computer"
 
 #---Define Functions---
 

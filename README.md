@@ -239,8 +239,17 @@ Oldest KDE and Gnome fresh installs are unknown, and not tested.
 
 ### Dependencies:
 
-This script requires these external tools/commands:
+Required:
  * `coreutils`, `pacman`, `pacman-mirrors`, `grep`, `ping`
+
+Optional:
+<table>
+  <tr><td><a href="#supported-aur-helpers">AUR Helper</a></td><td>for AUR package support</td></tr>
+  <tr><td><code>flatpak</code></td><td>for flatpak support</td></tr>
+  <tr><td>notification daemon</td><td>usually a part of the desktop environment; for notification support</td></tr>
+  <tr><td><a href="https://aur.archlinux.org/packages/notify-desktop-git"><code>notify-desktop</code></a></td><td>required for KDE notifications, optional alternative for Xfce, Gnome</td></tr>
+  <tr><td><code>wget</code></td><td>if available, will use instead of <code>curl</code></td></tr>
+</table>
 
 ### Installation
 
