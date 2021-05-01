@@ -23,6 +23,7 @@
   * [cln_aurpkg_bool](#cln_aurpkg_bool "")
   * [cln_aurbuild_bool](#cln_aurbuild_bool "")
   * [cln_orphan_bool](#cln_orphan_bool "")
+  * [cln_flatpakorphan_bool](#cln_flatpakorphan_bool "")
   * [cln_paccache_num](#cln_paccache_num "")
   * [flatpak_update_freq](#flatpak_update_freq "")
   * [notify_1enable_bool](#notify_1enable_bool "")
@@ -31,6 +32,7 @@
   * [notify_errors_bool](#notify_errors_bool "")
   * [notify_vsn_bool](#notify_vsn_bool "")
   * [main_ignorepkgs_str](#main_ignorepkgs_str "")
+  * [main_systempkgs_str](#main_systempkgs_str "")
   * [main_logdir_str](#main_logdir_str "")
   * [main_perstdir_str](#main_perstdir_str "")
   * [main_country_str](#main_country_str "")
@@ -53,7 +55,7 @@
 
 ## Summary
 
-This is a highly configurable, **non-interactive** script for automating updates for Manjaro Linux. It supports updating the following:
+This is a highly configurable, **non-interactive** script for automating updates for Manjaro Linux, with basic support for other distributions based on Arch Linux. It supports updating the following:
 * Main system packages (via `pacman`)
 * AUR packages (via an [AUR helper](#supported-aur-helpers ""))
 * Flatpak packages
@@ -78,6 +80,11 @@ This is not a replacement for manually updating/maintaining your own computer, b
 Some of the manual steps have been incorporated into this script, but your system(s) may require additional manual steps depending on what packages you have installed.
 
 Always have external bootable media (like a flash drive with manjaro on it) available in case the system becomes unbootable.
+
+
+## Support of other distributions based on Arch Linux
+Most functions in this script are distro-agnostic and should work with any distro that uses pacman. Manjaro Linux continues to be the primary testing environment, but feel free to submit issues/pull requests concerning other distributions.
+
 
 ## Execution Overview
 <details>
@@ -129,7 +136,7 @@ Overview of what the script does from start to finish. Some steps may be slightl
   * If these actions fail, remaining repo and AUR packages are skipped
 
 * Update System packages
-  * `pacman -S --needed --noconfirm archlinux-keyring manjaro-keyring manjaro-system`
+  * `pacman -S --needed --noconfirm archlinux-keyring manjaro-keyring manjaro-system `[`$main_systempkgs_str`](#main_systempkgs_str "")
 
 * Check for package database errors (*config: [enable](#repair_db01_bool "")*)
   * For every package with errors:
@@ -191,6 +198,8 @@ Overview of what the script does from start to finish. Some steps may be slightl
 
 * Update `flatpak` packages (*config: [frequency](#flatpak_update_freq "")*)
   * `flatpak update -y`
+* Remove `flatpak` orphan packages (*config: [enable](#cln_flatpakorphan_bool "")*)
+  * `flatpak uninstall --unused -y`
 </details>
 
 ### Final Actions
@@ -240,7 +249,7 @@ Oldest KDE and Gnome fresh installs are unknown, and not tested.
 ### Dependencies:
 
 Required:
- * `coreutils`, `pacman`, `pacman-mirrors`, `grep`, `ping`
+ * `coreutils`, `pacman`, `pacman-mirrors`, `grep`, `iputils`
 
 Optional:
 <table>
@@ -358,6 +367,7 @@ aur_devel_freq=6
 cln_1enable_bool=1
 cln_aurbuild_bool=0
 cln_aurpkg_bool=1
+cln_flatpakorphan_bool=1
 cln_orphan_bool=1
 cln_paccache_num=1
 flatpak_update_freq=3
@@ -365,6 +375,7 @@ main_country_str=
 main_ignorepkgs_str=
 main_logdir_str=/var/log/xs
 main_perstdir_str=
+main_systempkgs_str=
 main_testsite_str=www.google.com
 notify_1enable_bool=1
 notify_errors_bool=1
@@ -464,7 +475,14 @@ zflag:dropbox,tor-browser=--skippgpcheck
 <summary><a name="cln_orphan_bool"></a>cln_orphan_bool</summary>
 
 * Default: `1` (True)
-* If this is True, obsolete dependencies will be uninstalled when finished
+* If this is True, obsolete dependencies from main repos will be uninstalled
+</details>
+
+<details>
+<summary><a name="cln_flatpakorphan_bool"></a>cln_flatpakorphan_bool</summary>
+
+* Default: `1` (True)
+* If this is True, obsolete flatpak dependencies will be uninstalled
 </details>
 
 <details>
@@ -534,7 +552,14 @@ zflag:dropbox,tor-browser=--skippgpcheck
 <summary><a name="main_ignorepkgs_str"></a>main_ignorepkgs_str</summary>
 
 * Default: (blank)
-* Packages (if any) to ignore, separated by spaces (these are in addition to those stored in pacman.conf)
+* Packages to ignore, separated by spaces (these are in addition to those stored in pacman.conf)
+</details>
+
+<details>
+<summary><a name="main_systempkgs_str"></a>main_systempkgs_str</summary>
+
+* Default: (blank)
+* Packages to update before any other packages (i.e. `archlinux-keyring`), separated by spaces
 </details>
 
 <details>

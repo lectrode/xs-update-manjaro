@@ -1,9 +1,9 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.5.5"; vsndsp="$vsn 2021-04-04"
+vsn="v3.6.0-rc1"; vsndsp="$vsn 2021-05-01"
 #-Downloads and Installs new updates
-#-Depends: coreutils, grep, pacman, pacman-mirrors, ping
-#-Optional Depends: flatpak, notification daemon, notify-desktop, pikaur, wget
+#-Depends: coreutils, grep, pacman, pacman-mirrors, iputils
+#-Optional Depends: flatpak, notify-desktop, pikaur, wget
 true=0; false=1; ctrue=1; cfalse=0
 if [ $# -eq 0 ]; then "$0" "XS"& exit 0; fi # start in background
 
@@ -54,7 +54,7 @@ if [[ "${conf_a[cln_paccache_num]}" -gt "-1" ]]; then
 fi
 }
 
-chk_pkgisinst(){ [[ "$($pcmbin -Qq $1 2>/dev/null | grep -m1 -x $1)" == "$1" ]] && return 0; return 1; }
+chk_pkgisinst(){ if [[ "$($pcmbin -Qq $1 2>/dev/null | grep -m1 -x $1)" == "$1" ]]; then [[ "$2" = "1" ]] && echo "$1"; return 0; else return 1; fi }
 get_pkgvsn(){ echo "$($pcmbin -Q $1 | grep "$1 " -m1 | cut -d' ' -f2)"; }
 chk_pkgvsndiff(){ cpvd_t1="$(get_pkgvsn $1)"; echo "$(vercmp ${cpvd_t1:-0} $2)"; unset cpvd_t1; }
 
@@ -127,7 +127,8 @@ echo '# Cleanup Settings #' >> "$xs_autoupdate_conf"
 echo '#cln_1enable_bool:         Enable/Disable ALL package cleanup (overrides following cleanup settings)' >> "$xs_autoupdate_conf"
 echo '#cln_aurpkg_bool:          Enable/Disable AUR package cleanup' >> "$xs_autoupdate_conf"
 echo '#cln_aurbuild_bool:        Enable/Disable AUR build cleanup' >> "$xs_autoupdate_conf"
-echo '#cln_orphan_bool:          Enable/Disable uninstall of uneeded packages' >> "$xs_autoupdate_conf"
+echo '#cln_flatpakorphan_bool:   Enable/Disable uninstall of uneeded flatpak packages' >> "$xs_autoupdate_conf"
+echo '#cln_orphan_bool:          Enable/Disable uninstall of uneeded repo packages' >> "$xs_autoupdate_conf"
 echo '#cln_paccache_num:         Number of official packages to keep (-1 to keep all)' >> "$xs_autoupdate_conf"
 echo '#' >> "$xs_autoupdate_conf"
 echo '# Flatpak Settings #' >> "$xs_autoupdate_conf"
@@ -142,6 +143,7 @@ echo '#notify_vsn_bool:          Include version number in notifications' >> "$x
 echo '#' >> "$xs_autoupdate_conf"
 echo '# Main Settings #' >> "$xs_autoupdate_conf"
 echo '#main_ignorepkgs_str:      List of packages to ignore separated by spaces (in addition to pacman.conf)' >> "$xs_autoupdate_conf"
+echo '#main_systempkgs_str:      List of packages to update before any other packages (i.e. archlinux-keyring)' >> "$xs_autoupdate_conf"
 echo '#main_logdir_str:          Path to the log directory' >> "$xs_autoupdate_conf"
 echo '#main_perstdir_str:        Path to the persistant timestamp directory (uses main_logdir_str if not defined)' >> "$xs_autoupdate_conf"
 echo '#main_country_str:         Countries separated by commas from which to pull updates. Default is automatic (geoip)' >> "$xs_autoupdate_conf"
@@ -363,6 +365,7 @@ typeset -A conf_a; conf_a=(
     [cln_1enable_bool]=$ctrue
     [cln_aurpkg_bool]=$ctrue
     [cln_aurbuild_bool]=$ctrue
+    [cln_flatpakorphan_bool]=$ctrue
     [cln_orphan_bool]=$ctrue
     [cln_paccache_num]=1
     [flatpak_update_freq]=3
@@ -372,6 +375,7 @@ typeset -A conf_a; conf_a=(
     [notify_errors_bool]=$ctrue
     [notify_vsn_bool]=$cfalse
     [main_ignorepkgs_str]=""
+    [main_systempkgs_str]=""
     [main_logdir_str]="/var/log/xs"
     [main_perstdir_str]=""
     [main_country_str]=""
@@ -660,7 +664,8 @@ pacmirArgs="--geoip"
 #Check for, download, and install main updates
 pacclean
 
-if perst_isneeded "${conf_a[update_mirrors_freq]}" "${perst_a[last_mirrors_update]}"; then
+if ! type pacman-mirrors >/dev/null 2>&1; then trouble "pacman-mirrors not found - skipping"
+elif perst_isneeded "${conf_a[update_mirrors_freq]}" "${perst_a[last_mirrors_update]}"; then
     trouble "Updating Mirrors... [branch: $(pacman-mirrors -G 2>/dev/null)]"
     (pacman-mirrors $pacmirArgs || pacman-mirrors -g) 2>&1 |sed 's/\x1B\[[0-9;]\+[A-Za-z]//g' |tr -cd '\11\12\15\40-\176' |tee -a $log_f
     err_mirrors=${PIPESTATUS[0]}; if [[ $err_mirrors -eq 0 ]]; then
@@ -711,7 +716,8 @@ if chk_pkgisinst "engrampa-thunar-plugin" && [[ "$(chk_pkgvsndiff "engrampa-thun
 fi
 
 trouble "Updating system packages..."
-$pcmbin -S --needed --noconfirm archlinux-keyring manjaro-keyring manjaro-system 2>&1 |tee -a $log_f
+$pcmbin -S --needed --noconfirm $(for p in archlinux-keyring manjaro-keyring manjaro-system \
+    ${conf_a[main_systempkgs_str]}; do chk_pkgisinst $p 1; done) 2>&1 |tee -a $log_f
 err_sys=${PIPESTATUS[0]}; if [[ $err_sys -ne 0 ]]; then trouble "ERR: pacman exited with code $err_sys"; fi
 
 #check for missing database files
@@ -911,6 +917,12 @@ if perst_isneeded "${conf_a[flatpak_update_freq]}" "${perst_a[last_flatpak_updat
         flatpak update -y | grep -Fv "[" 2>&1 |tee -a $log_f
         err_fpak=${PIPESTATUS[0]}; if [[ $err_fpak -eq 0 ]]; then
             perst_update "last_flatpak_update"; else trouble "ERR: flatpak exited with error code $err_fpak"; fi
+        if [[ "${conf_a[cln_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[cln_flatpakorphan_bool]}" = "$ctrue" ]] && [[ "$err_fpak" = "0" ]]; then
+            trouble "Removing unused flatpak packages..."
+            flatpak uninstall --unused -y | grep -Fv "[" 2>&1 |tee -a $log_f
+            err_fpakorphan=${PIPESTATUS[0]}; if [[ $err_fpakorphan -ne 0 ]]; then
+                trouble "ERR: flatpak orphan removal exited with error code $err_fpakorphan"; fi
+        fi
     fi
 fi
 
@@ -922,7 +934,7 @@ msg="System update finished"
 grep "Total Installed Size:\|new signatures:\|Total Removed Size:" $log_f >/dev/null || msg="$msg; no changes made"
 
 if [ "${conf_a[notify_errors_bool]}" = "$ctrue" ]; then 
-    trouble "error codes: [mirrors:$err_mirrors][sys:$err_sys][keys:$err_keys][repo:$err_repo][aur:$err_aur][fpak:$err_fpak][orphan:$err_orphan]"
+    trouble "error codes: [mirrors:$err_mirrors][sys:$err_sys][keys:$err_keys][repo:$err_repo][aur:$err_aur][fpak:$err_fpak][orphan:$err_orphan][fpakorphan:$err_fpakorphan]"
     [[ "$err_mirrors" -gt 0 ]] && errmsg="\n-Mirrors failed to update"
     [[ "$err_sys" -gt 0 ]] && errmsg="$errmsg \n-System packages failed to update"
     [[ "$err_keys" -gt 0 ]] && errmsg="$errmsg \n-Security signatures failed to update"
@@ -930,6 +942,7 @@ if [ "${conf_a[notify_errors_bool]}" = "$ctrue" ]; then
     [[ "$err_aur" -gt 0 ]] && errmsg="$errmsg \n-Packages from AUR failed to update"
     [[ "$err_fpak" -gt 0 ]] && errmsg="$errmsg \n-Packages from Flatpak failed to update"
     [[ "$err_orphan" -gt 0 ]] && errmsg="$errmsg \n-Failed to remove orphan packages"
+    [[ "$err_fpakorphan" -gt 0 ]] && errmsg="$errmsg \n-Failed to remove flatpak orphan packages"
     [[ "$errmsg" = "" ]] || msg="$msg \n\nSome update tasks encountered errors:$errmsg"
 fi
 
