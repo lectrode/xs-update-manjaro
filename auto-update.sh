@@ -1,6 +1,6 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.6.0-rc1"; vsndsp="$vsn 2021-05-01"
+vsn="v3.6.0-rc2"; vsndsp="$vsn 2021-05-09"
 #-Downloads and Installs new updates
 #-Depends: coreutils, grep, pacman, pacman-mirrors, iputils
 #-Optional Depends: flatpak, notify-desktop, pikaur, wget
@@ -16,7 +16,7 @@ device="device"; [[ "$(uname -m)" = "x86_64" ]] && device="computer"
 
 #---Define Functions---
 
-cnvrt2_int(){ if ! [[ "$1" =~ ^[0-9]+$ ]]; then echo 0; return; fi; echo $1; }
+cnvrt2_int(){ if ! [[ "$1" =~ ^[\-]?[0-9]+$ ]]; then echo 0; return; fi; echo $1; }
 
 trouble(){ (echo;echo "#XS# $(date) - $@") |tee -a $log_f; }
 troublem(){ echo "XS-$@" |tee -a $log_f; }
@@ -150,7 +150,8 @@ echo '#main_country_str:         Countries separated by commas from which to pul
 echo '#main_testsite_str:        URL (without protocol) used to test internet connection' >> "$xs_autoupdate_conf"
 echo '#' >> "$xs_autoupdate_conf"
 echo '# Reboot Settings #' >> "$xs_autoupdate_conf"
-echo '#reboot_1enable_num:       Automatic reboot after critical updates: (1=enabled) (-1=disabled) (0=only if normal reboot may be impossible)' >> "$xs_autoupdate_conf"
+echo '#reboot_1enable_num:       Perform system power action: 2=always, 1=only after critical updates, 0=only if normal reboot may not be possible, -1=never' >> "$xs_autoupdate_conf"
+echo '#reboot_action_str:        System power action. Valid options are reboot, halt, poweroff' >> "$xs_autoupdate_conf"
 echo "#reboot_delayiflogin_bool: Only delay rebooting $device if users are logged in" >> "$xs_autoupdate_conf"
 echo "#reboot_delay_num:         Delay in seconds to wait before rebooting the $device" >> "$xs_autoupdate_conf"
 echo '#reboot_notifyrep_num:     Reboot notification is updated every X seconds. Best if reboot_delay_num is evenly divisible by this' >> "$xs_autoupdate_conf"
@@ -292,39 +293,6 @@ sendall(){
     fi
 }
 
-finalmsg_normal(){
-    iconnormal
-    sendall "$msg" "${conf_a[notify_lastmsg_num]}"
-}
-
-finalmsg_critical(){
-    iconcritical
-    
-    orig_log="$log_f"
-    mv -f "$log_f" "${log_f}_$(date -I)"; log_f=${log_f}_$(date -I)
-
-    allowreboot=1; [[ "${conf_a[reboot_1enable_num]}" = "-1" ]] && allowreboot=0
-    if [[ "${conf_a[reboot_1enable_num]}" = "0" ]] || [ "$allowreboot" = "0" ]; then
-        sendall "Kernel and/or drivers were updated. Please restart your $device to finish" || allowreboot=1; fi
-    if [ "$allowreboot" = "1" ]; then
-        trouble "XS-done"
-        secremain=${conf_a[reboot_delay_num]}
-        echo "init">$orig_log
-        ignoreusers="$(echo "${conf_a[reboot_ignoreusers_str]}" |sed 's/ /\\\|/g')"
-        while [ $secremain -gt 0 ]; do
-            usersexist=$false; loginctl list-sessions --no-legend |grep -v "$ignoreusers" |grep "seat\|pts" >/dev/null && usersexist=$true
-            
-            if [ "${conf_a[reboot_delayiflogin_bool]}" = "$ctrue" ]; then
-                if [ "$usersexist" = "$false" ]; then troublem "No logged-in users detected, rebooting now"; secremain=0; sleep 1; continue; fi; fi
-            
-            if [[ "$usersexist" = "$true" ]]; then sendall "Kernel and/or drivers were updated.\nYour $device will automatically restart in \n$secremain seconds..."; fi
-            sleep ${conf_a[reboot_notifyrep_num]}
-            let secremain-=${conf_a[reboot_notifyrep_num]}
-        done
-        sync; reboot || systemctl --force reboot || systemctl --force --force reboot
-    fi
-}
-
 backgroundnotify(){
 iconwarn; while : ; do
     sleep 5
@@ -348,6 +316,30 @@ userlogon(){
         iconcritical; notify-send -i $icon XS-AutoUpdate -u critical \
             "Kernel and/or drivers were updated. Please restart your $device to finish"
     fi; else touch "$HOME/.cache/xs/logonnotify"; fi
+}
+
+exit_passive(){
+    trouble "XS-done"; sync; disown -a; sleep 1
+    systemctl stop xs-autoupdate.service >/dev/null 2>&1; exit 0
+}
+
+exit_active(){
+#$1 = reason
+    secremain=${conf_a[reboot_delay_num]}
+    actn_cmd="${conf_a[reboot_action_str]}"
+    ignoreusers="$(echo "${conf_a[reboot_ignoreusers_str]}" |sed 's/ /\\\|/g')"
+    iconcritical; trouble "Active Exit: $actn_cmd";trouble "XS-done"
+    while [ $secremain -gt 0 ]; do
+        usersexist=$false; loginctl list-sessions --no-legend |grep -v "$ignoreusers" |grep "seat\|pts" >/dev/null && usersexist=$true
+
+        if [ "${conf_a[reboot_delayiflogin_bool]}" = "$ctrue" ]; then
+            if [ "$usersexist" = "$false" ]; then troublem "No logged-in users detected; System will $actn_cmd now"; secremain=0; sleep 1; continue; fi; fi
+
+        if [[ "$usersexist" = "$true" ]]; then sendall "$1\nYour $device will $actn_cmd in \n$secremain seconds..."; fi
+        sleep ${conf_a[reboot_notifyrep_num]}
+        let secremain-=${conf_a[reboot_notifyrep_num]}
+    done
+    sync; $actn_cmd || systemctl --force $actn_cmd || systemctl --force --force $actn_cmd
 }
 
 
@@ -386,6 +378,7 @@ typeset -A conf_a; conf_a=(
     [update_keys_freq]=30
     [update_mirrors_freq]=1
     [reboot_1enable_num]=1
+    [reboot_action_str]="reboot"
     [reboot_delayiflogin_bool]=$ctrue
     [reboot_delay_num]=120
     [reboot_notifyrep_num]=10
@@ -444,6 +437,12 @@ if [[ -f "$xs_autoupdate_conf" ]]; then
                 #validate integers -1+
                 if echo "$conf_intn1" | grep "$varname" >/dev/null; then 
                     if [[ "$line" -lt "-1" ]]; then continue; fi; fi
+                #validate reboot_action_str
+                if [[ "$varname" = "reboot_action_str" ]]; then case "$line" in
+                        reboot|halt|poweroff) ;;
+                        shutdown) line="poweroff" ;;
+                        *) continue
+                esac; fi
                 #validate reboot_notifyrep_num
                 if [[ "$varname" = "reboot_notifyrep_num" ]]; then
                     if [[ "$line" -gt "${conf_a[reboot_delay_num]}" ]]; then
@@ -948,9 +947,32 @@ fi
 
 if [ ! "$msg" = "System update finished; no changes made" ]; then 
     [[ "$msg" = "System update finished" ]] || msg="$msg\n"
-    msg="$msg\nDetails: $log_f"
+    msg="$msg\nDetails: $log_f\n"
 fi
 
-if [[ "$(chk_crit)" = "norm" ]]; then finalmsg_normal; else finalmsg_critical; fi
-trouble "XS-done"; sync; disown -a; sleep 1; systemctl stop xs-autoupdate.service >/dev/null 2>&1; exit 0
+if [[ "$(chk_crit)" = "norm" ]]; then
+    if [[ "${conf_a[reboot_1enable_num]}" = "2" ]]; then
+        exit_active "$msg\n"
+    else
+        iconnormal; sendall "$msg" "${conf_a[notify_lastmsg_num]}"
+        exit_passive
+    fi
+else
+    orig_log="$log_f"
+    mv -f "$log_f" "${log_f}_$(date -I)"; log_f=${log_f}_$(date -I)
+    echo "init">$orig_log
+
+    activeExit=1; msgFail=0; [[ "${conf_a[reboot_1enable_num]}" -le "0" ]] && activeExit=0
+    if [[ "$activeExit" = "0" ]]; then
+        iconcritical; sendall "Kernel and/or drivers were updated. Please restart your $device to finish" || msgFail=1; fi
+    if [[ "${conf_a[reboot_1enable_num]}" = "0" ]] && [[ "$msgFail" = "1" ]]; then activeExit=1; fi
+
+    if [ "$activeExit" = "1" ]; then
+        exit_active "Kernel and/or drivers were updated.\n"
+    else
+        exit_passive
+    fi
+fi
+
+exit 1
 

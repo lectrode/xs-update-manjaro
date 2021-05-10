@@ -38,6 +38,7 @@
   * [main_country_str](#main_country_str "")
   * [main_testsite_str](#main_testsite_str "")
   * [reboot_1enable_num](#reboot_1enable_num "")
+  * [reboot_action_str](#reboot_action_str "")
   * [reboot_delayiflogin_bool](#reboot_delayiflogin_bool "")
   * [reboot_delay_num](#reboot_delay_num "")
   * [reboot_notifyrep_num](#reboot_notifyrep_num "")
@@ -208,10 +209,10 @@ Overview of what the script does from start to finish. Some steps may be slightl
 
 * Stop background notification process
 * Determine final message
-* Reboot proceedure if critical system packages were updated (*config: [enable](#reboot_1enable_num "")*)
+* Perform System Power Action (i.e. reboot) if required (*config: [enable](#reboot_1enable_num "")*)
   * Delay reboot if users are logged in (*config: [enable](#reboot_delayiflogin_bool ""), [ignore these users](#reboot_ignoreusers_str "")*)
     * Countdown to reboot (*config: [duration](#reboot_delay_num ""), [notification frequency](#reboot_notifyrep_num "")*)
-  * `sync; reboot || systemctl --force reboot || systemctl --force --force reboot`
+  * `sync; reboot || systemctl --force reboot || systemctl --force --force reboot` (*config: [action](#reboot_action_str "")*)
 * Final message after non-critical update (*config: [duration](#notify_lastmsg_num "")*)
 * Stop auto-update service and quit
 </details>
@@ -383,6 +384,7 @@ notify_function_str=auto
 notify_lastmsg_num=20
 notify_vsn_bool=0
 reboot_1enable_num=1
+reboot_action_str=reboot
 reboot_delayiflogin_bool=1
 reboot_delay_num=120
 reboot_ignoreusers_str=nobody lightdm sddm gdm
@@ -598,10 +600,22 @@ zflag:dropbox,tor-browser=--skippgpcheck
 <details>
 <summary><a name="reboot_1enable_num"></a>reboot_1enable_num</summary>
 
+ * Determines when script should perform "System Power Action" (see `reboot_action_str` below)
  * Default: `1`
- * -1: Disable script reboot in all cases
- *  0: Allow script reboot only if rebooting normally may not be possible (system may be in critical state after critical package update)
- *  1: Always allow script to reboot after critical system packages have been updated
+ * -1: Disable in all cases
+ *  0: Only if rebooting manually may not be possible (system may be in critical state after critical package update)
+ *  1: Only after critical system packages have been updated
+ *  2: Always reboot, regardless of any updates
+</details>
+
+<details>
+<summary><a name="reboot_action_str"></a>reboot_action_str</summary>
+
+ * This is the System Power Action the script should take when required
+ * Default: `reboot`
+ * `reboot`: System will be restarted
+ * `halt`: System will be halted (shutdown, with hardware left running)
+ * `poweroff`: System will be powered off (shutdown, with hardware powered off)
 </details>
 
 <details>
