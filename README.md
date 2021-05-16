@@ -210,10 +210,10 @@ Overview of what the script does from start to finish. Some steps may be slightl
 * Stop background notification process
 * Determine final message
 * Perform System Power Action (i.e. reboot) if required (*config: [enable](#reboot_1enable_num "")*)
-  * Delay reboot if users are logged in (*config: [enable](#reboot_delayiflogin_bool ""), [ignore these users](#reboot_ignoreusers_str "")*)
-    * Countdown to reboot (*config: [duration](#reboot_delay_num ""), [notification frequency](#reboot_notifyrep_num "")*)
-  * `sync; reboot || systemctl --force reboot || systemctl --force --force reboot` (*config: [action](#reboot_action_str "")*)
-* Final message after non-critical update (*config: [duration](#notify_lastmsg_num "")*)
+  * Delay system power action if users are logged in (*config: [enable](#reboot_delayiflogin_bool ""), [ignore these users](#reboot_ignoreusers_str "")*)
+    * Countdown to system power action (*config: [duration](#reboot_delay_num ""), [notification frequency](#reboot_notifyrep_num "")*)
+  * `sync; [reboot|halt|poweroff] || systemctl --force [reboot|halt|poweroff] || systemctl --force --force [reboot|halt|poweroff]` (*config: [action](#reboot_action_str "")*)
+* Final message if system power action not performed (*config: [duration](#notify_lastmsg_num "")*)
 * Stop auto-update service and quit
 </details>
 
@@ -276,9 +276,10 @@ xs-updatehelper.desktop -> /etc/xdg/autostart/
 3) Enable running the auto-update script at startup (optional):
   * `sudo systemctl enable xs-autoupdate`
 
-4) You can manually run the script with either:
-  * `sudo systemctl start xs-autoupdate` (start in background)
-  * `sudo /usr/share/xs/auto-update.sh` (watch logs in real-time)
+4) You can manually run the script with the following:
+  * `sudo systemctl start xs-autoupdate` (run silently as service)
+  * `sudo /usr/share/xs/auto-update.sh` (watch logs)
+  * `sudo /usr/share/xs/auto-update.sh nofork` (watch logs, do not fork to background)
 
 ----
 

@@ -1,11 +1,11 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.6.0-rc2"; vsndsp="$vsn 2021-05-09"
+vsn="v3.6.1"; vsndsp="$vsn 2021-05-15"
 #-Downloads and Installs new updates
 #-Depends: coreutils, grep, pacman, pacman-mirrors, iputils
 #-Optional Depends: flatpak, notify-desktop, pikaur, wget
 true=0; false=1; ctrue=1; cfalse=0
-if [ $# -eq 0 ]; then "$0" "XS"& exit 0; fi # start in background
+if [ $# -eq 0 ]; then "$0" "XS"& exit 0; fi # fork to background (start with "nofork" parameter to avoid this)
 
 
 [[ "$xs_autoupdate_conf" = "" ]] && xs_autoupdate_conf='/etc/xs/auto-update.conf'

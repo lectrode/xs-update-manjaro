@@ -5,10 +5,11 @@
 [Unit]
 Description=Automatically Update computer
 Before=network.target
- 
+
 [Service]
 Type=oneshot
 ExecStart=/usr/share/xs/auto-update.sh
+KillMode=process
 RemainAfterExit=yes
  
 [Install]
