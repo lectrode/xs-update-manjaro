@@ -1,11 +1,11 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.5.5"; vsndsp="$vsn 2021-04-04"
+vsn="v3.6.1"; vsndsp="$vsn 2021-05-15"
 #-Downloads and Installs new updates
-#-Depends: coreutils, grep, pacman, pacman-mirrors, ping
-#-Optional Depends: flatpak, notification daemon, notify-desktop, pikaur, wget
+#-Depends: coreutils, grep, pacman, pacman-mirrors, iputils
+#-Optional Depends: flatpak, notify-desktop, pikaur, wget
 true=0; false=1; ctrue=1; cfalse=0
-if [ $# -eq 0 ]; then "$0" "XS"& exit 0; fi # start in background
+if [ $# -eq 0 ]; then "$0" "XS"& exit 0; fi # fork to background (start with "nofork" parameter to avoid this)
 
 
 [[ "$xs_autoupdate_conf" = "" ]] && xs_autoupdate_conf='/etc/xs/auto-update.conf'
@@ -16,7 +16,7 @@ device="device"; [[ "$(uname -m)" = "x86_64" ]] && device="computer"
 
 #---Define Functions---
 
-cnvrt2_int(){ if ! [[ "$1" =~ ^[0-9]+$ ]]; then echo 0; return; fi; echo $1; }
+cnvrt2_int(){ if ! [[ "$1" =~ ^[\-]?[0-9]+$ ]]; then echo 0; return; fi; echo $1; }
 
 trouble(){ (echo;echo "#XS# $(date) - $@") |tee -a $log_f; }
 troublem(){ echo "XS-$@" |tee -a $log_f; }
@@ -54,7 +54,7 @@ if [[ "${conf_a[cln_paccache_num]}" -gt "-1" ]]; then
 fi
 }
 
-chk_pkgisinst(){ [[ "$($pcmbin -Qq $1 2>/dev/null | grep -m1 -x $1)" == "$1" ]] && return 0; return 1; }
+chk_pkgisinst(){ if [[ "$($pcmbin -Qq $1 2>/dev/null | grep -m1 -x $1)" == "$1" ]]; then [[ "$2" = "1" ]] && echo "$1"; return 0; else return 1; fi }
 get_pkgvsn(){ echo "$($pcmbin -Q $1 | grep "$1 " -m1 | cut -d' ' -f2)"; }
 chk_pkgvsndiff(){ cpvd_t1="$(get_pkgvsn $1)"; echo "$(vercmp ${cpvd_t1:-0} $2)"; unset cpvd_t1; }
 
@@ -127,7 +127,8 @@ echo '# Cleanup Settings #' >> "$xs_autoupdate_conf"
 echo '#cln_1enable_bool:         Enable/Disable ALL package cleanup (overrides following cleanup settings)' >> "$xs_autoupdate_conf"
 echo '#cln_aurpkg_bool:          Enable/Disable AUR package cleanup' >> "$xs_autoupdate_conf"
 echo '#cln_aurbuild_bool:        Enable/Disable AUR build cleanup' >> "$xs_autoupdate_conf"
-echo '#cln_orphan_bool:          Enable/Disable uninstall of uneeded packages' >> "$xs_autoupdate_conf"
+echo '#cln_flatpakorphan_bool:   Enable/Disable uninstall of uneeded flatpak packages' >> "$xs_autoupdate_conf"
+echo '#cln_orphan_bool:          Enable/Disable uninstall of uneeded repo packages' >> "$xs_autoupdate_conf"
 echo '#cln_paccache_num:         Number of official packages to keep (-1 to keep all)' >> "$xs_autoupdate_conf"
 echo '#' >> "$xs_autoupdate_conf"
 echo '# Flatpak Settings #' >> "$xs_autoupdate_conf"
@@ -142,13 +143,15 @@ echo '#notify_vsn_bool:          Include version number in notifications' >> "$x
 echo '#' >> "$xs_autoupdate_conf"
 echo '# Main Settings #' >> "$xs_autoupdate_conf"
 echo '#main_ignorepkgs_str:      List of packages to ignore separated by spaces (in addition to pacman.conf)' >> "$xs_autoupdate_conf"
+echo '#main_systempkgs_str:      List of packages to update before any other packages (i.e. archlinux-keyring)' >> "$xs_autoupdate_conf"
 echo '#main_logdir_str:          Path to the log directory' >> "$xs_autoupdate_conf"
 echo '#main_perstdir_str:        Path to the persistant timestamp directory (uses main_logdir_str if not defined)' >> "$xs_autoupdate_conf"
 echo '#main_country_str:         Countries separated by commas from which to pull updates. Default is automatic (geoip)' >> "$xs_autoupdate_conf"
 echo '#main_testsite_str:        URL (without protocol) used to test internet connection' >> "$xs_autoupdate_conf"
 echo '#' >> "$xs_autoupdate_conf"
 echo '# Reboot Settings #' >> "$xs_autoupdate_conf"
-echo '#reboot_1enable_num:       Automatic reboot after critical updates: (1=enabled) (-1=disabled) (0=only if normal reboot may be impossible)' >> "$xs_autoupdate_conf"
+echo '#reboot_1enable_num:       Perform system power action: 2=always, 1=only after critical updates, 0=only if normal reboot may not be possible, -1=never' >> "$xs_autoupdate_conf"
+echo '#reboot_action_str:        System power action. Valid options are reboot, halt, poweroff' >> "$xs_autoupdate_conf"
 echo "#reboot_delayiflogin_bool: Only delay rebooting $device if users are logged in" >> "$xs_autoupdate_conf"
 echo "#reboot_delay_num:         Delay in seconds to wait before rebooting the $device" >> "$xs_autoupdate_conf"
 echo '#reboot_notifyrep_num:     Reboot notification is updated every X seconds. Best if reboot_delay_num is evenly divisible by this' >> "$xs_autoupdate_conf"
@@ -290,39 +293,6 @@ sendall(){
     fi
 }
 
-finalmsg_normal(){
-    iconnormal
-    sendall "$msg" "${conf_a[notify_lastmsg_num]}"
-}
-
-finalmsg_critical(){
-    iconcritical
-    
-    orig_log="$log_f"
-    mv -f "$log_f" "${log_f}_$(date -I)"; log_f=${log_f}_$(date -I)
-
-    allowreboot=1; [[ "${conf_a[reboot_1enable_num]}" = "-1" ]] && allowreboot=0
-    if [[ "${conf_a[reboot_1enable_num]}" = "0" ]] || [ "$allowreboot" = "0" ]; then
-        sendall "Kernel and/or drivers were updated. Please restart your $device to finish" || allowreboot=1; fi
-    if [ "$allowreboot" = "1" ]; then
-        trouble "XS-done"
-        secremain=${conf_a[reboot_delay_num]}
-        echo "init">$orig_log
-        ignoreusers="$(echo "${conf_a[reboot_ignoreusers_str]}" |sed 's/ /\\\|/g')"
-        while [ $secremain -gt 0 ]; do
-            usersexist=$false; loginctl list-sessions --no-legend |grep -v "$ignoreusers" |grep "seat\|pts" >/dev/null && usersexist=$true
-            
-            if [ "${conf_a[reboot_delayiflogin_bool]}" = "$ctrue" ]; then
-                if [ "$usersexist" = "$false" ]; then troublem "No logged-in users detected, rebooting now"; secremain=0; sleep 1; continue; fi; fi
-            
-            if [[ "$usersexist" = "$true" ]]; then sendall "Kernel and/or drivers were updated.\nYour $device will automatically restart in \n$secremain seconds..."; fi
-            sleep ${conf_a[reboot_notifyrep_num]}
-            let secremain-=${conf_a[reboot_notifyrep_num]}
-        done
-        sync; reboot || systemctl --force reboot || systemctl --force --force reboot
-    fi
-}
-
 backgroundnotify(){
 iconwarn; while : ; do
     sleep 5
@@ -348,6 +318,30 @@ userlogon(){
     fi; else touch "$HOME/.cache/xs/logonnotify"; fi
 }
 
+exit_passive(){
+    trouble "XS-done"; sync; disown -a; sleep 1
+    systemctl stop xs-autoupdate.service >/dev/null 2>&1; exit 0
+}
+
+exit_active(){
+#$1 = reason
+    secremain=${conf_a[reboot_delay_num]}
+    actn_cmd="${conf_a[reboot_action_str]}"
+    ignoreusers="$(echo "${conf_a[reboot_ignoreusers_str]}" |sed 's/ /\\\|/g')"
+    iconcritical; trouble "Active Exit: $actn_cmd";trouble "XS-done"
+    while [ $secremain -gt 0 ]; do
+        usersexist=$false; loginctl list-sessions --no-legend |grep -v "$ignoreusers" |grep "seat\|pts" >/dev/null && usersexist=$true
+
+        if [ "${conf_a[reboot_delayiflogin_bool]}" = "$ctrue" ]; then
+            if [ "$usersexist" = "$false" ]; then troublem "No logged-in users detected; System will $actn_cmd now"; secremain=0; sleep 1; continue; fi; fi
+
+        if [[ "$usersexist" = "$true" ]]; then sendall "$1\nYour $device will $actn_cmd in \n$secremain seconds..."; fi
+        sleep ${conf_a[reboot_notifyrep_num]}
+        let secremain-=${conf_a[reboot_notifyrep_num]}
+    done
+    sync; $actn_cmd || systemctl --force $actn_cmd || systemctl --force --force $actn_cmd
+}
+
 
 #---Init Config---
 
@@ -363,6 +357,7 @@ typeset -A conf_a; conf_a=(
     [cln_1enable_bool]=$ctrue
     [cln_aurpkg_bool]=$ctrue
     [cln_aurbuild_bool]=$ctrue
+    [cln_flatpakorphan_bool]=$ctrue
     [cln_orphan_bool]=$ctrue
     [cln_paccache_num]=1
     [flatpak_update_freq]=3
@@ -372,6 +367,7 @@ typeset -A conf_a; conf_a=(
     [notify_errors_bool]=$ctrue
     [notify_vsn_bool]=$cfalse
     [main_ignorepkgs_str]=""
+    [main_systempkgs_str]=""
     [main_logdir_str]="/var/log/xs"
     [main_perstdir_str]=""
     [main_country_str]=""
@@ -382,6 +378,7 @@ typeset -A conf_a; conf_a=(
     [update_keys_freq]=30
     [update_mirrors_freq]=1
     [reboot_1enable_num]=1
+    [reboot_action_str]="reboot"
     [reboot_delayiflogin_bool]=$ctrue
     [reboot_delay_num]=120
     [reboot_notifyrep_num]=10
@@ -440,6 +437,12 @@ if [[ -f "$xs_autoupdate_conf" ]]; then
                 #validate integers -1+
                 if echo "$conf_intn1" | grep "$varname" >/dev/null; then 
                     if [[ "$line" -lt "-1" ]]; then continue; fi; fi
+                #validate reboot_action_str
+                if [[ "$varname" = "reboot_action_str" ]]; then case "$line" in
+                        reboot|halt|poweroff) ;;
+                        shutdown) line="poweroff" ;;
+                        *) continue
+                esac; fi
                 #validate reboot_notifyrep_num
                 if [[ "$varname" = "reboot_notifyrep_num" ]]; then
                     if [[ "$line" -gt "${conf_a[reboot_delay_num]}" ]]; then
@@ -660,7 +663,8 @@ pacmirArgs="--geoip"
 #Check for, download, and install main updates
 pacclean
 
-if perst_isneeded "${conf_a[update_mirrors_freq]}" "${perst_a[last_mirrors_update]}"; then
+if ! type pacman-mirrors >/dev/null 2>&1; then trouble "pacman-mirrors not found - skipping"
+elif perst_isneeded "${conf_a[update_mirrors_freq]}" "${perst_a[last_mirrors_update]}"; then
     trouble "Updating Mirrors... [branch: $(pacman-mirrors -G 2>/dev/null)]"
     (pacman-mirrors $pacmirArgs || pacman-mirrors -g) 2>&1 |sed 's/\x1B\[[0-9;]\+[A-Za-z]//g' |tr -cd '\11\12\15\40-\176' |tee -a $log_f
     err_mirrors=${PIPESTATUS[0]}; if [[ $err_mirrors -eq 0 ]]; then
@@ -711,7 +715,8 @@ if chk_pkgisinst "engrampa-thunar-plugin" && [[ "$(chk_pkgvsndiff "engrampa-thun
 fi
 
 trouble "Updating system packages..."
-$pcmbin -S --needed --noconfirm archlinux-keyring manjaro-keyring manjaro-system 2>&1 |tee -a $log_f
+$pcmbin -S --needed --noconfirm $(for p in archlinux-keyring manjaro-keyring manjaro-system \
+    ${conf_a[main_systempkgs_str]}; do chk_pkgisinst $p 1; done) 2>&1 |tee -a $log_f
 err_sys=${PIPESTATUS[0]}; if [[ $err_sys -ne 0 ]]; then trouble "ERR: pacman exited with code $err_sys"; fi
 
 #check for missing database files
@@ -911,6 +916,12 @@ if perst_isneeded "${conf_a[flatpak_update_freq]}" "${perst_a[last_flatpak_updat
         flatpak update -y | grep -Fv "[" 2>&1 |tee -a $log_f
         err_fpak=${PIPESTATUS[0]}; if [[ $err_fpak -eq 0 ]]; then
             perst_update "last_flatpak_update"; else trouble "ERR: flatpak exited with error code $err_fpak"; fi
+        if [[ "${conf_a[cln_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[cln_flatpakorphan_bool]}" = "$ctrue" ]] && [[ "$err_fpak" = "0" ]]; then
+            trouble "Removing unused flatpak packages..."
+            flatpak uninstall --unused -y | grep -Fv "[" 2>&1 |tee -a $log_f
+            err_fpakorphan=${PIPESTATUS[0]}; if [[ $err_fpakorphan -ne 0 ]]; then
+                trouble "ERR: flatpak orphan removal exited with error code $err_fpakorphan"; fi
+        fi
     fi
 fi
 
@@ -922,7 +933,7 @@ msg="System update finished"
 grep "Total Installed Size:\|new signatures:\|Total Removed Size:" $log_f >/dev/null || msg="$msg; no changes made"
 
 if [ "${conf_a[notify_errors_bool]}" = "$ctrue" ]; then 
-    trouble "error codes: [mirrors:$err_mirrors][sys:$err_sys][keys:$err_keys][repo:$err_repo][aur:$err_aur][fpak:$err_fpak][orphan:$err_orphan]"
+    trouble "error codes: [mirrors:$err_mirrors][sys:$err_sys][keys:$err_keys][repo:$err_repo][aur:$err_aur][fpak:$err_fpak][orphan:$err_orphan][fpakorphan:$err_fpakorphan]"
     [[ "$err_mirrors" -gt 0 ]] && errmsg="\n-Mirrors failed to update"
     [[ "$err_sys" -gt 0 ]] && errmsg="$errmsg \n-System packages failed to update"
     [[ "$err_keys" -gt 0 ]] && errmsg="$errmsg \n-Security signatures failed to update"
@@ -930,14 +941,38 @@ if [ "${conf_a[notify_errors_bool]}" = "$ctrue" ]; then
     [[ "$err_aur" -gt 0 ]] && errmsg="$errmsg \n-Packages from AUR failed to update"
     [[ "$err_fpak" -gt 0 ]] && errmsg="$errmsg \n-Packages from Flatpak failed to update"
     [[ "$err_orphan" -gt 0 ]] && errmsg="$errmsg \n-Failed to remove orphan packages"
+    [[ "$err_fpakorphan" -gt 0 ]] && errmsg="$errmsg \n-Failed to remove flatpak orphan packages"
     [[ "$errmsg" = "" ]] || msg="$msg \n\nSome update tasks encountered errors:$errmsg"
 fi
 
 if [ ! "$msg" = "System update finished; no changes made" ]; then 
     [[ "$msg" = "System update finished" ]] || msg="$msg\n"
-    msg="$msg\nDetails: $log_f"
+    msg="$msg\nDetails: $log_f\n"
 fi
 
-if [[ "$(chk_crit)" = "norm" ]]; then finalmsg_normal; else finalmsg_critical; fi
-trouble "XS-done"; sync; disown -a; sleep 1; systemctl stop xs-autoupdate.service >/dev/null 2>&1; exit 0
+if [[ "$(chk_crit)" = "norm" ]]; then
+    if [[ "${conf_a[reboot_1enable_num]}" = "2" ]]; then
+        exit_active "$msg\n"
+    else
+        iconnormal; sendall "$msg" "${conf_a[notify_lastmsg_num]}"
+        exit_passive
+    fi
+else
+    orig_log="$log_f"
+    mv -f "$log_f" "${log_f}_$(date -I)"; log_f=${log_f}_$(date -I)
+    echo "init">$orig_log
+
+    activeExit=1; msgFail=0; [[ "${conf_a[reboot_1enable_num]}" -le "0" ]] && activeExit=0
+    if [[ "$activeExit" = "0" ]]; then
+        iconcritical; sendall "Kernel and/or drivers were updated. Please restart your $device to finish" || msgFail=1; fi
+    if [[ "${conf_a[reboot_1enable_num]}" = "0" ]] && [[ "$msgFail" = "1" ]]; then activeExit=1; fi
+
+    if [ "$activeExit" = "1" ]; then
+        exit_active "Kernel and/or drivers were updated.\n"
+    else
+        exit_passive
+    fi
+fi
+
+exit 1
 

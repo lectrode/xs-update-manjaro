@@ -23,6 +23,7 @@
   * [cln_aurpkg_bool](#cln_aurpkg_bool "")
   * [cln_aurbuild_bool](#cln_aurbuild_bool "")
   * [cln_orphan_bool](#cln_orphan_bool "")
+  * [cln_flatpakorphan_bool](#cln_flatpakorphan_bool "")
   * [cln_paccache_num](#cln_paccache_num "")
   * [flatpak_update_freq](#flatpak_update_freq "")
   * [notify_1enable_bool](#notify_1enable_bool "")
@@ -31,11 +32,13 @@
   * [notify_errors_bool](#notify_errors_bool "")
   * [notify_vsn_bool](#notify_vsn_bool "")
   * [main_ignorepkgs_str](#main_ignorepkgs_str "")
+  * [main_systempkgs_str](#main_systempkgs_str "")
   * [main_logdir_str](#main_logdir_str "")
   * [main_perstdir_str](#main_perstdir_str "")
   * [main_country_str](#main_country_str "")
   * [main_testsite_str](#main_testsite_str "")
   * [reboot_1enable_num](#reboot_1enable_num "")
+  * [reboot_action_str](#reboot_action_str "")
   * [reboot_delayiflogin_bool](#reboot_delayiflogin_bool "")
   * [reboot_delay_num](#reboot_delay_num "")
   * [reboot_notifyrep_num](#reboot_notifyrep_num "")
@@ -53,7 +56,7 @@
 
 ## Summary
 
-This is a highly configurable, **non-interactive** script for automating updates for Manjaro Linux. It supports updating the following:
+This is a highly configurable, **non-interactive** script for automating updates for Manjaro Linux, with basic support for other distributions based on Arch Linux. It supports updating the following:
 * Main system packages (via `pacman`)
 * AUR packages (via an [AUR helper](#supported-aur-helpers ""))
 * Flatpak packages
@@ -78,6 +81,11 @@ This is not a replacement for manually updating/maintaining your own computer, b
 Some of the manual steps have been incorporated into this script, but your system(s) may require additional manual steps depending on what packages you have installed.
 
 Always have external bootable media (like a flash drive with manjaro on it) available in case the system becomes unbootable.
+
+
+## Support of other distributions based on Arch Linux
+Most functions in this script are distro-agnostic and should work with any distro that uses pacman. Manjaro Linux continues to be the primary testing environment, but feel free to submit issues/pull requests concerning other distributions.
+
 
 ## Execution Overview
 <details>
@@ -129,7 +137,7 @@ Overview of what the script does from start to finish. Some steps may be slightl
   * If these actions fail, remaining repo and AUR packages are skipped
 
 * Update System packages
-  * `pacman -S --needed --noconfirm archlinux-keyring manjaro-keyring manjaro-system`
+  * `pacman -S --needed --noconfirm archlinux-keyring manjaro-keyring manjaro-system `[`$main_systempkgs_str`](#main_systempkgs_str "")
 
 * Check for package database errors (*config: [enable](#repair_db01_bool "")*)
   * For every package with errors:
@@ -191,6 +199,8 @@ Overview of what the script does from start to finish. Some steps may be slightl
 
 * Update `flatpak` packages (*config: [frequency](#flatpak_update_freq "")*)
   * `flatpak update -y`
+* Remove `flatpak` orphan packages (*config: [enable](#cln_flatpakorphan_bool "")*)
+  * `flatpak uninstall --unused -y`
 </details>
 
 ### Final Actions
@@ -199,11 +209,11 @@ Overview of what the script does from start to finish. Some steps may be slightl
 
 * Stop background notification process
 * Determine final message
-* Reboot proceedure if critical system packages were updated (*config: [enable](#reboot_1enable_num "")*)
-  * Delay reboot if users are logged in (*config: [enable](#reboot_delayiflogin_bool ""), [ignore these users](#reboot_ignoreusers_str "")*)
-    * Countdown to reboot (*config: [duration](#reboot_delay_num ""), [notification frequency](#reboot_notifyrep_num "")*)
-  * `sync; reboot || systemctl --force reboot || systemctl --force --force reboot`
-* Final message after non-critical update (*config: [duration](#notify_lastmsg_num "")*)
+* Perform System Power Action (i.e. reboot) if required (*config: [enable](#reboot_1enable_num "")*)
+  * Delay system power action if users are logged in (*config: [enable](#reboot_delayiflogin_bool ""), [ignore these users](#reboot_ignoreusers_str "")*)
+    * Countdown to system power action (*config: [duration](#reboot_delay_num ""), [notification frequency](#reboot_notifyrep_num "")*)
+  * `sync; [reboot|halt|poweroff] || systemctl --force [reboot|halt|poweroff] || systemctl --force --force [reboot|halt|poweroff]` (*config: [action](#reboot_action_str "")*)
+* Final message if system power action not performed (*config: [duration](#notify_lastmsg_num "")*)
 * Stop auto-update service and quit
 </details>
 
@@ -240,7 +250,7 @@ Oldest KDE and Gnome fresh installs are unknown, and not tested.
 ### Dependencies:
 
 Required:
- * `coreutils`, `pacman`, `pacman-mirrors`, `grep`, `ping`
+ * `coreutils`, `pacman`, `pacman-mirrors`, `grep`, `iputils`
 
 Optional:
 <table>
@@ -266,9 +276,10 @@ xs-updatehelper.desktop -> /etc/xdg/autostart/
 3) Enable running the auto-update script at startup (optional):
   * `sudo systemctl enable xs-autoupdate`
 
-4) You can manually run the script with either:
-  * `sudo systemctl start xs-autoupdate` (start in background)
-  * `sudo /usr/share/xs/auto-update.sh` (watch logs in real-time)
+4) You can manually run the script with the following:
+  * `sudo systemctl start xs-autoupdate` (run silently as service)
+  * `sudo /usr/share/xs/auto-update.sh` (watch logs)
+  * `sudo /usr/share/xs/auto-update.sh nofork` (watch logs, do not fork to background)
 
 ----
 
@@ -358,6 +369,7 @@ aur_devel_freq=6
 cln_1enable_bool=1
 cln_aurbuild_bool=0
 cln_aurpkg_bool=1
+cln_flatpakorphan_bool=1
 cln_orphan_bool=1
 cln_paccache_num=1
 flatpak_update_freq=3
@@ -365,6 +377,7 @@ main_country_str=
 main_ignorepkgs_str=
 main_logdir_str=/var/log/xs
 main_perstdir_str=
+main_systempkgs_str=
 main_testsite_str=www.google.com
 notify_1enable_bool=1
 notify_errors_bool=1
@@ -372,6 +385,7 @@ notify_function_str=auto
 notify_lastmsg_num=20
 notify_vsn_bool=0
 reboot_1enable_num=1
+reboot_action_str=reboot
 reboot_delayiflogin_bool=1
 reboot_delay_num=120
 reboot_ignoreusers_str=nobody lightdm sddm gdm
@@ -464,7 +478,14 @@ zflag:dropbox,tor-browser=--skippgpcheck
 <summary><a name="cln_orphan_bool"></a>cln_orphan_bool</summary>
 
 * Default: `1` (True)
-* If this is True, obsolete dependencies will be uninstalled when finished
+* If this is True, obsolete dependencies from main repos will be uninstalled
+</details>
+
+<details>
+<summary><a name="cln_flatpakorphan_bool"></a>cln_flatpakorphan_bool</summary>
+
+* Default: `1` (True)
+* If this is True, obsolete flatpak dependencies will be uninstalled
 </details>
 
 <details>
@@ -534,7 +555,14 @@ zflag:dropbox,tor-browser=--skippgpcheck
 <summary><a name="main_ignorepkgs_str"></a>main_ignorepkgs_str</summary>
 
 * Default: (blank)
-* Packages (if any) to ignore, separated by spaces (these are in addition to those stored in pacman.conf)
+* Packages to ignore, separated by spaces (these are in addition to those stored in pacman.conf)
+</details>
+
+<details>
+<summary><a name="main_systempkgs_str"></a>main_systempkgs_str</summary>
+
+* Default: (blank)
+* Packages to update before any other packages (i.e. `archlinux-keyring`), separated by spaces
 </details>
 
 <details>
@@ -573,10 +601,22 @@ zflag:dropbox,tor-browser=--skippgpcheck
 <details>
 <summary><a name="reboot_1enable_num"></a>reboot_1enable_num</summary>
 
+ * Determines when script should perform "System Power Action" (see `reboot_action_str` below)
  * Default: `1`
- * -1: Disable script reboot in all cases
- *  0: Allow script reboot only if rebooting normally may not be possible (system may be in critical state after critical package update)
- *  1: Always allow script to reboot after critical system packages have been updated
+ * -1: Disable in all cases
+ *  0: Only if rebooting manually may not be possible (system may be in critical state after critical package update)
+ *  1: Only after critical system packages have been updated
+ *  2: Always reboot, regardless of any updates
+</details>
+
+<details>
+<summary><a name="reboot_action_str"></a>reboot_action_str</summary>
+
+ * This is the System Power Action the script should take when required
+ * Default: `reboot`
+ * `reboot`: System will be restarted
+ * `halt`: System will be halted (shutdown, with hardware left running)
+ * `poweroff`: System will be powered off (shutdown, with hardware powered off)
 </details>
 
 <details>
