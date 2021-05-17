@@ -1,6 +1,6 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.7.0-rc1"; vsndsp="$vsn 2021-05-17"
+vsn="v3.7.0-rc2"; vsndsp="$vsn 2021-05-17"
 #-Downloads and Installs new updates
 #-Depends: coreutils, grep, pacman, pacman-mirrors, iputils
 #-Optional Depends: flatpak, notify-desktop, pikaur, rebuild-detector, wget
@@ -158,7 +158,8 @@ echo '# Automatic Repair Settings #' >> "$xs_autoupdate_conf"
 echo '#repair_db01_bool:         Enable/Disable Repair missing "desc"/"files" files in package database' >> "$xs_autoupdate_conf"
 echo '#repair_manualpkg_bool:    Enable/Disable Perform critical package changes required for continued updates' >> "$xs_autoupdate_conf"
 echo '#repair_pikaur01_bool:     Enable/Disable Re-install pikaur if not functioning' >> "$xs_autoupdate_conf"
-echo '#repair_aurrbld_bool:   Enable/Disable Rebuild AUR packages after dependency updates (requires AUR helper enabled)' >> "$xs_autoupdate_conf"
+echo '#repair_aurrbld_bool:      Enable/Disable Rebuild AUR packages after dependency updates (requires AUR helper enabled)' >> "$xs_autoupdate_conf"
+echo '#repair_aurrbldfail_freq:  Retry rebuild/reinstall of AUR packages after dependency updates every X days (-1=never, 0=always)' >> "$xs_autoupdate_conf"
 echo '#' >> "$xs_autoupdate_conf"
 echo '# Self-update Settings #' >> "$xs_autoupdate_conf"
 echo '#self_1enable_bool:        Enable/Disable updating self (this script)' >> "$xs_autoupdate_conf"
@@ -200,23 +201,38 @@ perst_isneeded(){
 perst_update(){
 #$1 = last_*
     perst_a[$1]=$(date +'%Y%m%d'); echo "$1=$(date +'%Y%m%d')" >> "$perst_f"
+    echo "$1" | grep -F "zrbld:" >/dev/null && \
+        rbld_a["$(echo "$1" | cut -d ':' -f 2)"]=$(date +'%Y%m%d')
 }
 
 perst_reset(){
 #$1 = last_*
-    perst_a[$1]="20010101"; echo "$1=20010101" >> "$perst_f"
+    if echo "$1" | grep -F "zrbld:" >/dev/null; then
+        unset rbld_a["$(echo "$1" | cut -d ':' -f 2)"]
+        unset perst_a[$1]
+        sed -i "s|perst_a[$1]|#perst_a[$1]|g" "$perst_f"
+    else perst_a[$1]="20010101"; echo "$1=20010101" >> "$perst_f"; fi
 }
 
 perst_export(){
     touch "$perst_f"
     echo "#Last day specific tasks were performed" > "$perst_f"
-
     IFS=$'\n'; for i in $(sort <<< "${!perst_a[*]}"); do
         echo "$i=${perst_a[$i]}" >> "$perst_f"
     done; IFS=$DEFAULTIFS
 }
 
-aurrebuildlist(){ checkrebuild|grep -oP '^foreign[[:space:]]+\K(?!.*-bin$)([[[:alnum:]\.@_\+\-]*)$' 2>/dev/null; }
+aurrebuildlist(){
+    arlist="$(checkrebuild|grep -oP '^foreign[[:space:]]+\K(?!.*-bin$)([[[:alnum:]\.@_\+\-]*)$' 2>/dev/null)"
+    if [[ "$1" = "slim" ]]; then
+        arignore="$(echo "${!rbld_a[*]}"|sed 's/ /\\|/g')"
+        if [[ "$arignore" = "" ]]; then echo $arlist
+        else echo $arlist|grep -v "$arignore"; fi
+    fi
+    if [[ "$1" = "full" ]]; then echo $arlist; fi
+    unset arlist arignore
+}
+
 
 #Notification Functions
 
@@ -385,6 +401,7 @@ typeset -A conf_a; conf_a=(
     [repair_manualpkg_bool]=$ctrue
     [repair_pikaur01_bool]=$ctrue
     [repair_aurrbld_bool]=$ctrue
+    [repair_aurrbldfail_freq]=32
     #legacy
     [bool_detectErrors]=""
     [bool_Downgrades]=""
@@ -467,7 +484,7 @@ if [[ -f "$xs_autoupdate_conf" ]]; then
 
                 conf_a[$varname]=$line
                 echo "$varname" | grep -F "zflag:" >/dev/null && \
-                    flag_a["$(echo "$varname" | cut -d ':' -f 2)"]="${conf_a[$varname]}"
+                    flag_a["$(echo "$varname" | cut -d ':' -f 2)"]="$line"
 
             fi
         fi
@@ -573,6 +590,8 @@ mkdir -p "$perst_d"; if [ ! -d "$perst_d" ]; then
     conf_a[main_perstdir_str]="${conf_a[main_logdir_str]}"; perst_d="${conf_a[main_logdir_str]}"; fi
 perst_f="${perst_d}/auto-update_persist.dat"; export perst_d
 
+typeset -A rbld_a
+
 typeset -A perst_a; perst_a=(
     [last_aur_update]="20000101"
     [last_aurdev_update]="20000101"
@@ -587,12 +606,16 @@ if [[ -f "$perst_f" ]]; then
         line="$(echo "$line" | cut -d ';' -f 1 | cut -d '#' -f 1)"
         if echo "$line" | grep -F '=' &>/dev/null; then
             varname="$(echo "$line" | cut -d '=' -f 1)"
-            if ! echo $varname |grep "$validconf" >/dev/null; then continue; fi
+            if ! echo $varname |grep "$validconf" >/dev/null; then
+                echo "$varname"|grep -F "zrbld:" >/dev/null || continue
+            fi
             line="$(echo "$line" | cut -d '=' -f 2-)"
             if [[ ! "$line" = "" ]]; then
                 #validate timestamp
                 line="$(cnvrt2_int "$line")"; [[ "$line" -lt "20000101" ]] && continue
                 perst_a[$varname]=$line
+                echo "$varname" | grep -F "zrbld:" >/dev/null && \
+                    rbld_a["$(echo "$varname" | cut -d ':' -f 2)"]=$line
             fi
         fi
     done < "$perst_f"; unset line varname
@@ -770,7 +793,10 @@ if [ "${conf_a[repair_aurrbld_bool]}" = "$ctrue" ] && [[ $(($use_pikaur+$use_apa
         if [ "$use_apacman" = "1" ] && ! chk_pkgisinst "rebuild-detector"; then apacman -S --needed --noconfirm rebuild-detector 2>&1 |tee -a $log_f; fi
     fi
     if chk_pkgisinst "rebuild-detector"; then
-        rbaur_curpkg="$(aurrebuildlist)"
+        for pkg in ${!rbld_a[*]}; do
+            if perst_isneeded "${conf_a[repair_aurrbldfail_freq]}" "${perst_a[zrbld:$pkg]}"; then perst_reset "zrbld:$pkg"; continue; fi
+        done
+        rbaur_curpkg="$(aurrebuildlist "slim")"
         if [[ "$rbaur_curpkg" = "" ]]; then unset rbaur_curpkg
         else
             trouble "AUR Rebuilds required; AUR timestamps have been reset"
@@ -840,6 +866,7 @@ if [ "${conf_a[repair_aurrbld_bool]}" = "$ctrue" ] && [[ $(($use_pikaur+$use_apa
         trouble "Rebuilding AUR packages..."
         err_rbaur=0; while [[ ! "$rbaur_curpkg" = "$rbaur_oldpkg" ]]; do
             for pkg in $rbaur_curpkg; do
+                troublem "Rebuilding/reinstalling $pkg"
                 if [ "$use_pikaur" = "1" ]; then
                     test_online && pikaur -Sa --noconfirm $pkg 2>&1 |tee -a $log_f
                     err_rbaur=${PIPESTATUS[0]}
@@ -848,10 +875,21 @@ if [ "${conf_a[repair_aurrbld_bool]}" = "$ctrue" ] && [[ $(($use_pikaur+$use_apa
                     err_rbaur=${PIPESTATUS[0]}
                 fi
             done
-        rbaur_oldpkg="$rbaur_curpkg"; rbaur_curpkg="$(aurrebuildlist)"
-        done; let "err_aur=err_aur+err_rbaur"
+            rbaur_oldpkg="$rbaur_curpkg"; rbaur_curpkg="$(aurrebuildlist "slim")"
+        done; #let "err_aur=err_aur+err_rbaur"
+        rbaur_full="$(aurrebuildlist "full")"
+        rbaur_fullg="$(echo $rbaur_full|sed 's/ /\\|/g')"
+        for pkg in ${!rbld_a[*]}; do
+            if [[ "$rbaur_fullg" = "" ]]; then perst_reset "zrbld:$pkg"; continue; fi
+            if echo "$pkg"|grep -v "$rbaur_fullg" >/dev/null; then perst_reset "zrbld:$pkg"; continue; fi
+        done
+        rbaur_ignore="$(echo "${!rbld_a[*]}"|sed 's/ /\\|/g')"
+        for pkg in $rbaur_full; do
+            if [[ "$rbaur_ignore" = "" ]]; then perst_update "zrbld:$pkg"; continue; fi
+            echo "$pkg"|grep -v "$rbaur_ignore" >/dev/null && perst_update "zrbld:$pkg"
+        done
     fi
-fi; unset err_rbaur rbaur_curpkg rbaur_oldpkg
+fi; unset err_rbaur rbaur_curpkg rbaur_oldpkg rbaur_full
 
 if [[ "$use_pikaur" = "1" ]]; then
     if [[ ! "${#flag_a[@]}" = "0" ]]; then
