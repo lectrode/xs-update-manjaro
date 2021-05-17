@@ -1,12 +1,11 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.6.1"; vsndsp="$vsn 2021-05-15"
+vsn="v3.7.0-rc1"; vsndsp="$vsn 2021-05-17"
 #-Downloads and Installs new updates
 #-Depends: coreutils, grep, pacman, pacman-mirrors, iputils
-#-Optional Depends: flatpak, notify-desktop, pikaur, wget
+#-Optional Depends: flatpak, notify-desktop, pikaur, rebuild-detector, wget
 true=0; false=1; ctrue=1; cfalse=0
 if [ $# -eq 0 ]; then "$0" "XS"& exit 0; fi # fork to background (start with "nofork" parameter to avoid this)
-
 
 [[ "$xs_autoupdate_conf" = "" ]] && xs_autoupdate_conf='/etc/xs/auto-update.conf'
 [[ "$DEFAULTIFS" = "" ]] && DEFAULTIFS="$IFS"
@@ -111,8 +110,6 @@ if grep -Ei "(up|down)(grad|dat)ing (linux([0-9]{2,3}|-pinephone)|systemd|mesa|(
 then echo crit; else echo norm; fi
 }
 
-get_pyaur(){ $pcmbin -Qqo $(ls -d /usr/lib/python3.*/site-packages|grep -v "python$1") 2>/dev/null|tr ' ' '\n'|sort -u|grep -Fx "$($pcmbin -Qqm)"; }
-
 conf_export(){
 if [ ! -d "$(dirname $xs_autoupdate_conf)" ]; then mkdir "$(dirname $xs_autoupdate_conf)"; fi
 echo '#Config for XS-AutoUpdate' > "$xs_autoupdate_conf"
@@ -161,7 +158,7 @@ echo '# Automatic Repair Settings #' >> "$xs_autoupdate_conf"
 echo '#repair_db01_bool:         Enable/Disable Repair missing "desc"/"files" files in package database' >> "$xs_autoupdate_conf"
 echo '#repair_manualpkg_bool:    Enable/Disable Perform critical package changes required for continued updates' >> "$xs_autoupdate_conf"
 echo '#repair_pikaur01_bool:     Enable/Disable Re-install pikaur if not functioning' >> "$xs_autoupdate_conf"
-echo '#repair_pythonrebuild_bool:Enable/Disable Rebuild AUR python packages after python update (requires AUR helper enabled)' >> "$xs_autoupdate_conf"
+echo '#repair_aurrbld_bool:   Enable/Disable Rebuild AUR packages after dependency updates (requires AUR helper enabled)' >> "$xs_autoupdate_conf"
 echo '#' >> "$xs_autoupdate_conf"
 echo '# Self-update Settings #' >> "$xs_autoupdate_conf"
 echo '#self_1enable_bool:        Enable/Disable updating self (this script)' >> "$xs_autoupdate_conf"
@@ -219,6 +216,7 @@ perst_export(){
     done; IFS=$DEFAULTIFS
 }
 
+aurrebuildlist(){ checkrebuild|grep -oP '^foreign[[:space:]]+\K(?!.*-bin$)([[[:alnum:]\.@_\+\-]*)$' 2>/dev/null; }
 
 #Notification Functions
 
@@ -386,7 +384,7 @@ typeset -A conf_a; conf_a=(
     [repair_db01_bool]=$ctrue
     [repair_manualpkg_bool]=$ctrue
     [repair_pikaur01_bool]=$ctrue
-    [repair_pythonrebuild_bool]=$ctrue
+    [repair_aurrbld_bool]=$ctrue
     #legacy
     [bool_detectErrors]=""
     [bool_Downgrades]=""
@@ -409,7 +407,8 @@ conf_int0="notify_lastmsg_num reboot_delay_num reboot_notifyrep_num"
 conf_intn1="cln_paccache_num aur_update_freq aur_devel_freq flatpak_update_freq update_keys_freq \
     update_mirrors_freq reboot_1enable_num"
 conf_legacy="bool_detectErrors bool_Downgrades bool_notifyMe bool_updateFlatpak bool_updateKeys str_cleanLevel \
-    str_ignorePackages str_log_d str_mirrorCountry str_testSite aur_devel_bool flatpak_1enable_bool reboot_1enable_bool"
+    str_ignorePackages str_log_d str_mirrorCountry str_testSite aur_devel_bool flatpak_1enable_bool \
+    reboot_1enable_bool repair_pythonrebuild_bool"
 
 #Load external config
 #Basic config validation
@@ -496,6 +495,7 @@ esac
 [[ "${conf_a[aur_devel_bool]}" = "0" ]]       && conf_a[aur_devel_freq]="-1"
 [[ "${conf_a[flatpak_1enable_bool]}" = "0" ]] && conf_a[flatpak_update_freq]="-1"
 [[ ! "${conf_a[reboot_1enable_bool]}" = "" ]] && conf_a[reboot_1enable_num]="${conf_a[reboot_1enable_bool]}"
+[[ ! "${conf_a[repair_pythonrebuild_bool]}" = "" ]] && conf_a[repair_aurrbld_bool]="${conf_a[repair_pythonrebuild_bool]}"
 
 IFS=$' '; for i in $(sort <<< "$conf_legacy"); do
 	unset conf_a[$i]
@@ -761,14 +761,19 @@ if echo "${conf_a[aur_1helper_str]}" | grep "none" >/dev/null; then conf_a[aur_1
 echo "${conf_a[aur_1helper_str]}" | grep 'all\|auto\|pikaur' >/dev/null || use_pikaur=0
 echo "${conf_a[aur_1helper_str]}" | grep 'all\|auto\|apacman' >/dev/null || use_apacman=0
 
-#check if AUR python pkgs need rebuild
-if [ "${conf_a[repair_pythonrebuild_bool]}" = "$ctrue" ] && [[ $(($use_pikaur+$use_apacman)) -ge 1 ]]; then
-    if chk_pkgisinst "python"; then
-        pyaur_vsn="$(echo "$(get_pkgvsn "python")"|cut -d'.' -f1,2)"
-        pyaur_curpkg="$(get_pyaur "$pyaur_vsn")"
-        if [[ "$pyaur_curpkg" = "" ]]; then unset pyaur_curpkg pyaur_vsn
+#check if AUR pkgs need rebuild
+if [ "${conf_a[repair_aurrbld_bool]}" = "$ctrue" ] && [[ $(($use_pikaur+$use_apacman)) -ge 1 ]]; then
+    if ! chk_pkgisinst "rebuild-detector"; then
+        trouble "AUR Helper installed and enabled, and rebuilds are enabled. Installing missing dependency: rebuild-detector"
+        $pcmbin -S --needed --noconfirm rebuild-detector 2>&1 |tee -a $log_f
+        if [ "$use_pikaur" = "1" ] && ! chk_pkgisinst "rebuild-detector"; then pikaur -S --needed --noconfirm rebuild-detector 2>&1 |tee -a $log_f; fi
+        if [ "$use_apacman" = "1" ] && ! chk_pkgisinst "rebuild-detector"; then apacman -S --needed --noconfirm rebuild-detector 2>&1 |tee -a $log_f; fi
+    fi
+    if chk_pkgisinst "rebuild-detector"; then
+        rbaur_curpkg="$(aurrebuildlist)"
+        if [[ "$rbaur_curpkg" = "" ]]; then unset rbaur_curpkg
         else
-            trouble "Python Rebuilds required for $pyaur_vsn; AUR timestamps have been reset"
+            trouble "AUR Rebuilds required; AUR timestamps have been reset"
             perst_reset "last_aur_update"; perst_reset "last_aurdev_update"
         fi
     fi
@@ -828,24 +833,25 @@ fi
 
 #Update AUR packages
 
-#rebuild python AUR packages
-if [ "${conf_a[repair_pythonrebuild_bool]}" = "$ctrue" ] && [[ $(($use_pikaur+$use_apacman)) -ge 1 ]]; then
-    if [[ ! "$pyaur_curpkg" = "" ]] && [[ ! "$pyaur_vsn" = "" ]]; then
-        trouble "Rebuilding AUR python packages..."
-        err_pyaur=0; while [[ ! "$pyaur_curpkg" = "$pyaur_oldpkg" ]]; do
-            for pkg in $pyaur_curpkg; do
+#rebuild AUR packages
+#this is done before AUR updates to minimize AUR package update failure
+if [ "${conf_a[repair_aurrbld_bool]}" = "$ctrue" ] && [[ $(($use_pikaur+$use_apacman)) -ge 1 ]]; then
+    if [[ ! "$rbaur_curpkg" = "" ]]; then
+        trouble "Rebuilding AUR packages..."
+        err_rbaur=0; while [[ ! "$rbaur_curpkg" = "$rbaur_oldpkg" ]]; do
+            for pkg in $rbaur_curpkg; do
                 if [ "$use_pikaur" = "1" ]; then
                     test_online && pikaur -Sa --noconfirm $pkg 2>&1 |tee -a $log_f
-                    err_pyaur=${PIPESTATUS[0]}
+                    err_rbaur=${PIPESTATUS[0]}
                 elif [ "$use_apacman" = "1" ]; then
                     apacman -S --auronly --noconfirm $pkg 2>&1 |tee -a $log_f
-                    err_pyaur=${PIPESTATUS[0]}
+                    err_rbaur=${PIPESTATUS[0]}
                 fi
             done
-        pyaur_oldpkg="$pyaur_curpkg"; pyaur_curpkg="$(get_pyaur "$pyaur_vsn")"
-        done; let "err_aur=err_aur+err_pyaur"
+        rbaur_oldpkg="$rbaur_curpkg"; rbaur_curpkg="$(aurrebuildlist)"
+        done; let "err_aur=err_aur+err_rbaur"
     fi
-fi; unset err_pyaur pyaur_vsn pyaur_curpkg pyaur_oldpkg
+fi; unset err_rbaur rbaur_curpkg rbaur_oldpkg
 
 if [[ "$use_pikaur" = "1" ]]; then
     if [[ ! "${#flag_a[@]}" = "0" ]]; then
