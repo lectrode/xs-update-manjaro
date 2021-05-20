@@ -46,7 +46,8 @@
   * [repair_db01_bool](#repair_db01_bool "")
   * [repair_manualpkg_bool](#repair_manualpkg_bool "")
   * [repair_pikaur01_bool](#repair_pikaur01_bool "")
-  * [repair_pythonrebuild_bool](#repair_pythonrebuild_bool "")
+  * [repair_aurrbld_bool](#repair_aurrbld_bool "")
+  * [repair_aurrbldfail_freq](#repair_aurrbldfail_freq "")
   * [self_1enable_bool](#self_1enable_bool "")
   * [self_branch_str](#self_branch_str "")
   * [update_downgrades_bool](#update_downgrades_bool "")
@@ -67,10 +68,7 @@ Status Notifications are currently supported on the following Desktop Environmen
 * Gnome ([permanent notifications extension](https://extensions.gnome.org/extension/41/permanent-notifications/ "") is recommended)
 .
 
-
 ## Suggested Usage and Disclaimer:
-No warranty or guarantee is included or implied. **Use at your own risk**.
-
 Please do not use this script blindly. You should have a firm understanding of how to manually update your computer before using this. 
 You can learn about updating your computer at the following:
 * [Manjaro Wiki](https://wiki.manjaro.org/index.php?title=Main_Page#Software_Management_.2F_Applications)
@@ -82,10 +80,38 @@ Some of the manual steps have been incorporated into this script, but your syste
 
 Always have external bootable media (like a flash drive with manjaro on it) available in case the system becomes unbootable.
 
-
 ## Support of other distributions based on Arch Linux
 Most functions in this script are distro-agnostic and should work with any distro that uses pacman. Manjaro Linux continues to be the primary testing environment, but feel free to submit issues/pull requests concerning other distributions.
 
+
+## Legal stuff
+<details>
+<summary>↕</summary>
+
+No warranty or guarantee is included or implied. **Use at your own risk**.
+
+This is licensed under [Apache 2.0](https://opensource.org/licenses/Apache-2.0)
+* TL/DR (as I understand it): You can modify, redistribute, or include in sold products as long as you include the license. You lose this right if you start throwing around litigation.
+<details>
+<summary>= Expand for License details =</summary>
+
+   Copyright 2016-2021 Steven Hoff (aka "lectrode")
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+
+</details>
+
+</details>
 
 ## Execution Overview
 <details>
@@ -160,7 +186,8 @@ Overview of what the script does from start to finish. Some steps may be slightl
 * Determine available AUR helpers (*config: [frequency](#aur_update_freq ""), [manual selection](#aur_1helper_str "")*)
   * Check if pikaur is functional (*config: [enable repair](#repair_pikaur01_bool "")*)
 
-* If AUR helper available/enabled, detect and rebuild AUR python packages that need it (*config: [enable python pkg rebuild](#repair_pythonrebuild_bool "")*)
+* If AUR helper available/enabled, detect and rebuild AUR packages that need it (*config: [enable aur pkg rebuild](#repair_aurrbld_bool "")*)
+  * If packages are still detected as needing a rebuild afterward, these packages are excluded from future attempts (*config: [number of days to exclude](#repair_aurrbldfail_freq "")*)
 
 * If selected, update AUR packages with `pikaur`
   * Update AUR packages with [custom flags](#custom-makepkg-flags-for-specific-aur-packages "") specified
@@ -393,7 +420,8 @@ reboot_notifyrep_num=10
 repair_db01_bool=1
 repair_manualpkg_bool=1
 repair_pikaur01_bool=1
-repair_pythonrebuild_bool=1
+repair_aurrbld_bool=1
+repair_aurrbldfail_freq=32
 self_1enable_bool=1
 self_branch_str=stable
 update_downgrades_bool=1
@@ -677,10 +705,18 @@ zflag:dropbox,tor-browser=--skippgpcheck
 </details>
 
 <details>
-<summary><a name="repair_pythonrebuild_bool"></a>repair_pythonrebuild_bool</summary>
+<summary><a name="repair_aurrbld_bool"></a>repair_aurrbld_bool</summary>
 
  * Default: `1` (True)
  * If true, the script will attempt to rebuild AUR python packages after python update
+ * Depends on external tool: rebuild-detector (available in official repos)
+</details>
+
+<details>
+<summary><a name="repair_aurrbldfail_freq"></a>repair_aurrbldfail_freq</summary>
+
+ * Default: `32` (True)
+ * After the script finishes attempting to rebuild packages that need it, any packages that still need to be rebuilt are excluded from future runs for this number of days
 </details>
 
 ----
