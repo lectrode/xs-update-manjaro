@@ -256,7 +256,7 @@ Overview of what the script does from start to finish. Some steps may be slightl
 This script supports detecting and repairing the following potential issues:
 * [Package database errors](#repair_db01_bool "")
 * [Non-functioning Pikaur](#repair_pikaur01_bool "")
-* [AUR Python packages requiring rebuild after python 3.x update](#repair_pythonrebuild_bool "")
+* [AUR packages requiring rebuild after dependency update](#repair_aurrbld_bool "")
 
 ### Manual Changes
 Every once in a while, updating Manjaro requires manual package changes to allow updates to succeed. This script [supports](#repair_manualpkg_bool "") automatically performing the following:

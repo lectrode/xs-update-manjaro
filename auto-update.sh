@@ -1,6 +1,6 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.7.2-rc1"; vsndsp="$vsn 2021-06-02"
+vsn="v3.7.2-rc2"; vsndsp="$vsn 2021-06-05"
 #-Downloads and Installs new updates
 #-Depends: coreutils, grep, pacman, pacman-mirrors, iputils
 #-Optional Depends: flatpak, notify-desktop, pikaur, rebuild-detector, wget
@@ -241,8 +241,8 @@ aurrebuildlist(){
     #remove stale rebuild cache entries
     arlist_grep="$(echo -n "$arlist"|tr '\n' '|')"
     for pkg in ${!rbld_a[*]}; do
-        if [[ "$arlist" = "" ]]; then perst_reset "zrbld:$pkg"; continue; fi
-        if ! echo "$pkg"|grep -E "^($arlist_grep)$" >/dev/null; then perst_reset "zrbld:$pkg"; fi
+        if [[ "$arlist" = "" ]] || ! echo "$pkg"|grep -E "^($arlist_grep)$" >/dev/null; then
+            perst_reset "zrbld:$pkg"; fi
     done
 
     #return active list
@@ -821,7 +821,7 @@ if [[ "${conf_a[repair_aurrbld_bool]}" = "$ctrue" ]]; then
             if perst_isneeded "${conf_a[repair_aurrbldfail_freq]}" "${perst_a[zrbld:$pkg]}"; then perst_reset "zrbld:$pkg"; continue; fi
         done
         rbaur_curpkg="$(aurrebuildlist)"
-        if [[ "$rbaur_curpkg" = "" ]]; then unset rbaur_curpkg
+        if [[ "$rbaur_curpkg" = "" ]] || [[ "$rbaur_curpkg" =~ ^[[:space:]]+$ ]]; then unset rbaur_curpkg
             else trouble "AUR Rebuilds required; AUR timestamps have been reset"; perst_reset "last_aur_update"; fi
     fi
 fi
