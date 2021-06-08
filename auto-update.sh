@@ -1,6 +1,6 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.7.2-rc2"; vsndsp="$vsn 2021-06-05"
+vsn="v3.7.2-rc3"; vsndsp="$vsn 2021-06-07"
 #-Downloads and Installs new updates
 #-Depends: coreutils, grep, pacman, pacman-mirrors, iputils
 #-Optional Depends: flatpak, notify-desktop, pikaur, rebuild-detector, wget
@@ -122,6 +122,12 @@ if [[ "$1" = "CacheDir" ]]; then echo "/var/cache/pacman/pkg/"; fi
 chk_crit(){
 if grep -Ei "(up|down)(grad|dat)ing (linux([0-9]{2,3}|-pinephone)|systemd|mesa|(intel|amd)-ucode|cryptsetup|xf86-video)(\.|-| )" $log_f >/dev/null;
 then echo crit; else echo norm; fi
+}
+
+manualRemoval(){
+#$1=pkg|$2=vsn (or older) to remove
+if chk_pkgisinst "$1" && [[ "$(chk_pkgvsndiff "$1" "$2")" -le 0 ]]; then
+    pacman -Rdd $1 --noconfirm 2>&1 |tee -a $log_f; fi
 }
 
 conf_export(){
@@ -734,27 +740,26 @@ err_repodl=${PIPESTATUS[0]}; if [[ $err_repodl -ne 0 ]]; then trouble "ERR: pacm
 
 #Required manual pkg changes
 if [[ "${conf_a[repair_manualpkg_bool]}" = "$ctrue" ]]; then
-
-#Fix for pacman<5.2 (18.1.1 and earlier)
-if [[ "$(chk_pkgvsndiff "pacman" "5.2.0-1")" -lt 0 ]]; then
-    trouble "Old pacman detected, attempting to use pacman-static..."
-    pacman -Sw --noconfirm pacman-static 2>&1 |tee -a $log_f
-    pacman -U --noconfirm "$(get_pkgfilename "pacman-static")" 2>&1 |tee -a $log_f && pcmbin="pacman-static"
-    if ! chk_pkgisinst "pacman-static"; then
-        if dl_verify "pacmanstatic" "$self_repo/master/external/hash_pacman-static" "$self_repo/master/external/pacman-static"; then
-            chmod +x /tmp/xs-autmp-pacmanstatic/pacman-static && pcmbin="/tmp/xs-autmp-pacmanstatic/pacman-static"; fi; fi
-    if echo "$pcmbin"|grep "pacman-static" >/dev/null 2>&1 && $pcmbin --help >/dev/null 2>&1; then
-        trouble "Using $pcmbin"
-    else trouble "ERR: Critical: failed to use pacman-static. Cannot update system packages"; err_repo=1; break; fi
-fi
-
-#Removed from repos early December 2019
-if chk_pkgisinst "pyqt5-common" && [[ "$(chk_pkgvsndiff "pyqt5-common" "5.13.2-1")" -le 0 ]]; then
-    pacman -Rdd pyqt5-common --noconfirm 2>&1 |tee -a $log_f; fi
-#Xfce 17.1.10 and earlier
-if chk_pkgisinst "engrampa-thunar-plugin" && [[ "$(chk_pkgvsndiff "engrampa-thunar-plugin" "1.0-2")" -le 0 ]]; then
-    pacman -Rdd engrampa-thunar-plugin --noconfirm 2>&1 |tee -a $log_f; fi
-
+    trouble "Checking for required manual package changes..."
+    #Fix for pacman<5.2 (18.1.1 and earlier)
+    if [[ "$(chk_pkgvsndiff "pacman" "5.2.0-1")" -lt 0 ]]; then
+        trouble "Old pacman detected, attempting to use pacman-static..."
+        pacman -Sw --noconfirm pacman-static 2>&1 |tee -a $log_f
+        pacman -U --noconfirm "$(get_pkgfilename "pacman-static")" 2>&1 |tee -a $log_f && pcmbin="pacman-static"
+        if ! chk_pkgisinst "pacman-static"; then
+            if dl_verify "pacmanstatic" "$self_repo/master/external/hash_pacman-static" "$self_repo/master/external/pacman-static"; then
+                chmod +x /tmp/xs-autmp-pacmanstatic/pacman-static && pcmbin="/tmp/xs-autmp-pacmanstatic/pacman-static"; fi; fi
+        if echo "$pcmbin"|grep "pacman-static" >/dev/null 2>&1 && $pcmbin --help >/dev/null 2>&1; then
+            trouble "Using $pcmbin"
+        else trouble "ERR: Critical: failed to use pacman-static. Cannot update system packages"; err_repo=1; break; fi
+    fi
+    #consolidated with lib32-/libcanberra-pulse 2021/06
+    manualRemoval "libcanberra-gstreamer" "0.30+2+gc0620e4-3"
+    manualRemoval "lib32-libcanberra-gstreamer" "0.30+2+gc0620e4-3"
+    #Removed from repos early December 2019
+    manualRemoval "pyqt5-common" "5.13.2-1"
+    #Xfce 17.1.10 and earlier
+    manualRemoval "engrampa-thunar-plugin" "1.0-2"
 fi
 
 trouble "Updating system packages..."
