@@ -1,6 +1,6 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.7.1"; vsndsp="$vsn 2021-05-19"
+vsn="v3.7.3"; vsndsp="$vsn 2021-06-14"
 #-Downloads and Installs new updates
 #-Depends: coreutils, grep, pacman, pacman-mirrors, iputils
 #-Optional Depends: flatpak, notify-desktop, pikaur, rebuild-detector, wget
@@ -21,7 +21,6 @@ vsn="v3.7.1"; vsndsp="$vsn 2021-05-19"
 
 true=0; false=1; ctrue=1; cfalse=0
 if [ $# -eq 0 ]; then "$0" "XS"& exit 0; fi # fork to background (start with "nofork" parameter to avoid this)
-
 [[ "$xs_autoupdate_conf" = "" ]] && xs_autoupdate_conf='/etc/xs/auto-update.conf'
 [[ "$DEFAULTIFS" = "" ]] && DEFAULTIFS="$IFS"
 debgn=+x; # -x =debugging | +x =no debugging
@@ -125,6 +124,12 @@ if grep -Ei "(up|down)(grad|dat)ing (linux([0-9]{2,3}|-pinephone)|systemd|mesa|(
 then echo crit; else echo norm; fi
 }
 
+manualRemoval(){
+#$1=pkg|$2=vsn (or older) to remove
+if chk_pkgisinst "$1" && [[ "$(chk_pkgvsndiff "$1" "$2")" -le 0 ]]; then
+    pacman -Rdd $1 --noconfirm 2>&1 |tee -a $log_f; fi
+}
+
 conf_export(){
 if [ ! -d "$(dirname $xs_autoupdate_conf)" ]; then mkdir "$(dirname $xs_autoupdate_conf)"; fi
 echo '#Config for XS-AutoUpdate' > "$xs_autoupdate_conf"
@@ -220,15 +225,6 @@ perst_update(){
         rbld_a["$(echo "$1" | cut -d ':' -f 2)"]=$(date +'%Y%m%d')
 }
 
-perst_reset(){
-#$1 = last_*
-    if echo "$1" | grep -F "zrbld:" >/dev/null; then
-        unset rbld_a["$(echo "$1" | cut -d ':' -f 2)"]
-        unset perst_a[$1]
-        sed -i "s|perst_a[$1]|#perst_a[$1]|g" "$perst_f"
-    else perst_a[$1]="20010101"; echo "$1=20010101" >> "$perst_f"; fi
-}
-
 perst_export(){
     touch "$perst_f"
     echo "#Last day specific tasks were performed" > "$perst_f"
@@ -237,15 +233,30 @@ perst_export(){
     done; IFS=$DEFAULTIFS
 }
 
+perst_reset(){
+#$1 = last_*
+    if echo "$1" | grep -F "zrbld:" >/dev/null; then
+        unset rbld_a["$(echo "$1" | cut -d ':' -f 2)"] perst_a[$1]
+        perst_export #cannot use sed, as anything between [] is treated as regex
+    else perst_a[$1]="20010101"; echo "$1=20010101" >> "$perst_f"; fi
+}
+
 aurrebuildlist(){
-    arlist="$(checkrebuild|grep -oP '^foreign[[:space:]]+\K(?!.*-bin$)([[[:alnum:]\.@_\+\-]*)$' 2>/dev/null)"
-    if [[ "$1" = "slim" ]]; then
-        arignore="$(echo "${!rbld_a[*]}"|sed 's/ /\\|/g')"
-        if [[ "$arignore" = "" ]]; then echo $arlist
-        else echo $arlist|grep -v "$arignore"; fi
-    fi
-    if [[ "$1" = "full" ]]; then echo $arlist; fi
-    unset arlist arignore
+    arlist="$(checkrebuild|grep -oP '^foreign[[:space:]]+\K(?!.*-bin$)([[:alnum:]\.@_\+\-]*)$' 2>/dev/null)"
+
+    #remove stale rebuild cache entries
+    arlist_grep="$(echo -n "$arlist"|tr '\n' '|')"
+    for pkg in ${!rbld_a[*]}; do
+        if [[ "$arlist" = "" ]] || ! echo "$pkg"|grep -E "^($arlist_grep)$" >/dev/null; then
+            perst_reset "zrbld:$pkg"; fi
+    done
+
+    #return active list
+    arignore="$(echo "${!rbld_a[*]}"|sed 's/ /\\|/g')"
+    if [[ "$arignore" = "" ]]; then echo "$arlist"|tr '\n' ' '
+    else echo "$arlist"|grep -v "$arignore"|tr '\n' ' '; fi
+
+    unset arlist arignore arlist_grep
 }
 
 
@@ -481,8 +492,8 @@ if [[ -f "$xs_autoupdate_conf" ]]; then
                     if [[ "$line" = "0" ]]; then
                         line=1; fi
                 fi
-                #validate aur_helper_str
-                if [[ "$varname" = "aur_helper_str" ]]; then case "$line" in
+                #validate aur_1helper_str
+                if [[ "$varname" = "aur_1helper_str" ]]; then case "$line" in
                         auto|none|all|pikaur|apacman) ;;
                         *) continue
                 esac; fi
@@ -729,27 +740,26 @@ err_repodl=${PIPESTATUS[0]}; if [[ $err_repodl -ne 0 ]]; then trouble "ERR: pacm
 
 #Required manual pkg changes
 if [[ "${conf_a[repair_manualpkg_bool]}" = "$ctrue" ]]; then
-
-#Fix for pacman<5.2 (18.1.1 and earlier)
-if [[ "$(chk_pkgvsndiff "pacman" "5.2.0-1")" -lt 0 ]]; then
-    trouble "Old pacman detected, attempting to use pacman-static..."
-    pacman -Sw --noconfirm pacman-static 2>&1 |tee -a $log_f
-    pacman -U --noconfirm "$(get_pkgfilename "pacman-static")" 2>&1 |tee -a $log_f && pcmbin="pacman-static"
-    if ! chk_pkgisinst "pacman-static"; then
-        if dl_verify "pacmanstatic" "$self_repo/master/external/hash_pacman-static" "$self_repo/master/external/pacman-static"; then
-            chmod +x /tmp/xs-autmp-pacmanstatic/pacman-static && pcmbin="/tmp/xs-autmp-pacmanstatic/pacman-static"; fi; fi
-    if echo "$pcmbin"|grep "pacman-static" >/dev/null 2>&1 && $pcmbin --help >/dev/null 2>&1; then
-        trouble "Using $pcmbin"
-    else trouble "ERR: Critical: failed to use pacman-static. Cannot update system packages"; err_repo=1; break; fi
-fi
-
-#Removed from repos early December 2019
-if chk_pkgisinst "pyqt5-common" && [[ "$(chk_pkgvsndiff "pyqt5-common" "5.13.2-1")" -le 0 ]]; then
-    pacman -Rdd pyqt5-common --noconfirm 2>&1 |tee -a $log_f; fi
-#Xfce 17.1.10 and earlier
-if chk_pkgisinst "engrampa-thunar-plugin" && [[ "$(chk_pkgvsndiff "engrampa-thunar-plugin" "1.0-2")" -le 0 ]]; then
-    pacman -Rdd engrampa-thunar-plugin --noconfirm 2>&1 |tee -a $log_f; fi
-
+    trouble "Checking for required manual package changes..."
+    #Fix for pacman<5.2 (18.1.1 and earlier)
+    if [[ "$(chk_pkgvsndiff "pacman" "5.2.0-1")" -lt 0 ]]; then
+        trouble "Old pacman detected, attempting to use pacman-static..."
+        pacman -Sw --noconfirm pacman-static 2>&1 |tee -a $log_f
+        pacman -U --noconfirm "$(get_pkgfilename "pacman-static")" 2>&1 |tee -a $log_f && pcmbin="pacman-static"
+        if ! chk_pkgisinst "pacman-static"; then
+            if dl_verify "pacmanstatic" "$self_repo/master/external/hash_pacman-static" "$self_repo/master/external/pacman-static"; then
+                chmod +x /tmp/xs-autmp-pacmanstatic/pacman-static && pcmbin="/tmp/xs-autmp-pacmanstatic/pacman-static"; fi; fi
+        if echo "$pcmbin"|grep "pacman-static" >/dev/null 2>&1 && $pcmbin --help >/dev/null 2>&1; then
+            trouble "Using $pcmbin"
+        else trouble "ERR: Critical: failed to use pacman-static. Cannot update system packages"; err_repo=1; break; fi
+    fi
+    #consolidated with lib32-/libcanberra-pulse 2021/06
+    manualRemoval "libcanberra-gstreamer" "0.30+2+gc0620e4-3"
+    manualRemoval "lib32-libcanberra-gstreamer" "0.30+2+gc0620e4-3"
+    #Removed from repos early December 2019
+    manualRemoval "pyqt5-common" "5.13.2-1"
+    #Xfce 17.1.10 and earlier
+    manualRemoval "engrampa-thunar-plugin" "1.0-2"
 fi
 
 trouble "Updating system packages..."
@@ -793,70 +803,59 @@ fi
 
 
 # Init AUR selection
-
-use_apacman=1; use_pikaur=1
-if echo "${conf_a[aur_1helper_str]}" | grep "none" >/dev/null; then conf_a[aur_1helper_str]="none"; use_apacman=0; use_pikaur=0; fi
-echo "${conf_a[aur_1helper_str]}" | grep 'all\|auto\|pikaur' >/dev/null || use_pikaur=0
-echo "${conf_a[aur_1helper_str]}" | grep 'all\|auto\|apacman' >/dev/null || use_apacman=0
+typeset -A hlpr_a; hlpr_a[apacman]=1; hlpr_a[pikaur]=1
+if [[ "${conf_a[aur_update_freq]}" = "-1" ]] || [[ "${conf_a[aur_1helper_str]}" = "none" ]]; then break; fi
+for helper in pikaur apacman; do
+    if ! echo "${conf_a[aur_1helper_str]}" | grep "all\|auto\|$helper" >/dev/null; then hlpr_a[$helper]=0; continue; fi
+    if ! type $helper >/dev/null 2>&1; then hlpr_a[$helper]=0
+        if [[ "${conf_a[aur_1helper_str]}" = "$helper" ]]; then
+            trouble "Warning: AURHelper: $helper specified but not found..."; fi
+    fi
+done
+[[ "$((${hlpr_a[pikaur]}+${hlpr_a[apacman]}))" = "0" ]] && break
 
 #check if AUR pkgs need rebuild
-if [ "${conf_a[repair_aurrbld_bool]}" = "$ctrue" ] && [[ $(($use_pikaur+$use_apacman)) -ge 1 ]]; then
+if [[ "${conf_a[repair_aurrbld_bool]}" = "$ctrue" ]]; then
     if ! chk_pkgisinst "rebuild-detector"; then
         trouble "AUR Helper installed and enabled, and rebuilds are enabled. Installing missing dependency: rebuild-detector"
         $pcmbin -S --needed --noconfirm rebuild-detector 2>&1 |tee -a $log_f
-        if [ "$use_pikaur" = "1" ] && ! chk_pkgisinst "rebuild-detector"; then pikaur -S --needed --noconfirm rebuild-detector 2>&1 |tee -a $log_f; fi
-        if [ "$use_apacman" = "1" ] && ! chk_pkgisinst "rebuild-detector"; then apacman -S --needed --noconfirm rebuild-detector 2>&1 |tee -a $log_f; fi
     fi
     if chk_pkgisinst "rebuild-detector"; then
+        trouble "Checking if AUR packages need rebuild..."
         for pkg in ${!rbld_a[*]}; do
             if perst_isneeded "${conf_a[repair_aurrbldfail_freq]}" "${perst_a[zrbld:$pkg]}"; then perst_reset "zrbld:$pkg"; continue; fi
         done
-        rbaur_curpkg="$(aurrebuildlist "slim")"
-        if [[ "$rbaur_curpkg" = "" ]]; then unset rbaur_curpkg
-        else
-            trouble "AUR Rebuilds required; AUR timestamps have been reset"
-            perst_reset "last_aur_update"; perst_reset "last_aurdev_update"
-        fi
+        rbaur_curpkg="$(aurrebuildlist)"
+        if [[ "$rbaur_curpkg" = "" ]] || [[ "$rbaur_curpkg" =~ ^[[:space:]]+$ ]]; then unset rbaur_curpkg
+            else trouble "AUR Rebuilds required; AUR timestamps have been reset"; perst_reset "last_aur_update"; fi
     fi
 fi
 
-if ! perst_isneeded "${conf_a[aur_update_freq]}" "${perst_a[last_aur_update]}";  then use_apacman=0; use_pikaur=0; fi
+if ! perst_isneeded "${conf_a[aur_update_freq]}" "${perst_a[last_aur_update]}";  then break; fi
 
-if [ "$use_pikaur" = "1" ]; then
-    if ! type pikaur >/dev/null 2>&1; then
-        use_pikaur=0
-        if echo "${conf_a[aur_1helper_str]}" | grep 'pikaur' >/dev/null; then
-            trouble "Warning: AURHelper: pikaur specified but not found..."; fi
-    else
-        pikpkg="$($pcmbin -Qq pikaur)"
-        pikerr=0; pikaur -S --needed --noconfirm ${pikpkg:-pikaur} 2>&1 |tee -a $log_f
-        if [[ ! "${PIPESTATUS[0]}" = "0" ]]; then pikerr=1
-            else pikaur -Q pikaur 2>&1|grep "rebuild" >/dev/null && pikerr=1
+#ensure pikaur functional if enabled
+if [ "${hlpr_a[pikaur]}" = "1" ]; then
+    pikpkg="$($pcmbin -Qq pikaur)"
+    pikerr=0; pikaur -S --needed --noconfirm ${pikpkg:-pikaur} 2>&1 |tee -a $log_f
+    if [[ ! "${PIPESTATUS[0]}" = "0" ]]; then pikerr=1
+        else pikaur -Q pikaur 2>&1|grep "rebuild" >/dev/null && pikerr=1
+    fi
+    if [[ "$pikerr" = "1" ]]; then
+        trouble "Warning: AURHelper: pikaur not functioning"
+        if [[ "${conf_a[repair_pikaur01_bool]}" = "$ctrue" ]] && $pcmbin -Q pikaur >/dev/null 2>&1; then
+            troublem "Attempting to re-install ${pikpkg:-pikaur}..."
+            mkdir "/tmp/xs-autmp-2delete"; pushd "/tmp/xs-autmp-2delete"
+            git clone https://github.com/actionless/pikaur.git && cd pikaur
+            python3 ./pikaur.py -S --rebuild --noconfirm ${pikpkg:-pikaur} 2>&1 |tee -a $log_f
+            sync; popd; rm -rf /tmp/xs-autmp-2delete
         fi
-        if [[ "$pikerr" = "1" ]]; then
-            trouble "Warning: AURHelper: pikaur not functioning"
-            if [[ "${conf_a[repair_pikaur01_bool]}" = "$ctrue" ]] && $pcmbin -Q pikaur >/dev/null 2>&1; then
-                troublem "Attempting to re-install ${pikpkg:-pikaur}..."
-                mkdir "/tmp/xs-autmp-2delete"; pushd "/tmp/xs-autmp-2delete"
-                git clone https://github.com/actionless/pikaur.git && cd pikaur
-                python3 ./pikaur.py -S --rebuild --noconfirm ${pikpkg:-pikaur} 2>&1 |tee -a $log_f
-                sync; popd; rm -rf /tmp/xs-autmp-2delete
-            fi
-            if ! pikaur --help >/dev/null 2>&1; then
-                trouble "Warning: AURHelper: pikaur will be disabled"; fi
-        fi
+        if ! pikaur --help >/dev/null 2>&1; then
+            trouble "Warning: AURHelper: pikaur will be disabled"; fi
     fi
 fi
 
-if [ "$use_apacman" = "1" ]; then if ! apacman --help >/dev/null 2>&1; then
-    use_apacman=0
-    if echo "${conf_a[aur_1helper_str]}" | grep 'apacman' >/dev/null; then
-        trouble "Warning: AURHelper: apacman specified but not found..."
-    fi
-fi; fi
-
-if echo "${conf_a[aur_1helper_str]}" | grep 'auto' >/dev/null; then
-    if [ "$use_pikaur" = "1" ]; then conf_a[aur_1helper_str]="auto"; use_apacman=0; fi; fi
+if [[ "${conf_a[aur_1helper_str]}" = "auto" ]]; then
+    if [ "${hlpr_a[pikaur]}" = "1" ]; then hlpr_a[apacman]=0; fi; fi
 
 
 #Install KDE notifier dependency (if auto|desk on KDE)
@@ -864,8 +863,8 @@ if [ "${conf_a[notify_1enable_bool]}" = "$ctrue" ]; then
     if echo "${conf_a[notify_function_str]}"|grep "auto\|desk" >/dev/null; then
         if $pcmbin -Q plasma-desktop >/dev/null 2>&1; then
             if ! $pcmbin -Q notify-desktop-git; then
-                if [ "$use_pikaur" = "1" ]; then pikaur -S --needed --noconfirm notify-desktop-git; fi
-                if [ "$use_apacman" = "1" ]; then apacman -S --needed --noconfirm notify-desktop-git; fi
+                if [ "${hlpr_a[pikaur]}" = "1" ]; then pikaur -S --needed --noconfirm notify-desktop-git; fi
+                if [ "${hlpr_a[apacman]}" = "1" ]; then apacman -S --needed --noconfirm notify-desktop-git; fi
             fi
         fi
     fi
@@ -874,39 +873,31 @@ fi
 
 #Update AUR packages
 
-#rebuild AUR packages
-#this is done before AUR updates to minimize AUR package update failure
-if [ "${conf_a[repair_aurrbld_bool]}" = "$ctrue" ] && [[ $(($use_pikaur+$use_apacman)) -ge 1 ]]; then
+#rebuild AUR packages before AUR updates to minimize AUR package update failure
+if [ "${conf_a[repair_aurrbld_bool]}" = "$ctrue" ]; then
     if [[ ! "$rbaur_curpkg" = "" ]]; then
         trouble "Rebuilding AUR packages..."
         err_rbaur=0; while [[ ! "$rbaur_curpkg" = "$rbaur_oldpkg" ]]; do
             for pkg in $rbaur_curpkg; do
                 troublem "Rebuilding/reinstalling $pkg"
-                if [ "$use_pikaur" = "1" ]; then
-                    test_online && pikaur -Sa --noconfirm $pkg 2>&1 |tee -a $log_f
-                    err_rbaur=${PIPESTATUS[0]}
-                elif [ "$use_apacman" = "1" ]; then
+                if [ "${hlpr_a[pikaur]}" = "1" ]; then
+                    rbcst="$(echo "${!flag_a[*]}"|grep -E "(^|,)$pkg(,|$)")"
+                    [[ ! "$rbcst" = "" ]] && rbcst_flg="--mflags=${flag_a[$rbcst]}"
+                    test_online && pikaur -Sa --noconfirm $rbcst_flg $pkg 2>&1 |tee -a $log_f
+                    err_rbaur=${PIPESTATUS[0]}; unset rbcst rbcst_flg
+                elif [ "${hlpr_a[apacman]}" = "1" ]; then
                     apacman -S --auronly --noconfirm $pkg 2>&1 |tee -a $log_f
                     err_rbaur=${PIPESTATUS[0]}
                 fi
             done
-            rbaur_oldpkg="$rbaur_curpkg"; rbaur_curpkg="$(aurrebuildlist "slim")"
+            rbaur_oldpkg="$rbaur_curpkg"; rbaur_curpkg="$(aurrebuildlist)"
         done; #let "err_aur=err_aur+err_rbaur"
-        rbaur_full="$(aurrebuildlist "full")"
-        rbaur_fullg="$(echo $rbaur_full|sed 's/ /\\|/g')"
-        for pkg in ${!rbld_a[*]}; do
-            if [[ "$rbaur_fullg" = "" ]]; then perst_reset "zrbld:$pkg"; continue; fi
-            if echo "$pkg"|grep -v "$rbaur_fullg" >/dev/null; then perst_reset "zrbld:$pkg"; continue; fi
-        done
-        rbaur_ignore="$(echo "${!rbld_a[*]}"|sed 's/ /\\|/g')"
-        for pkg in $rbaur_full; do
-            if [[ "$rbaur_ignore" = "" ]]; then perst_update "zrbld:$pkg"; continue; fi
-            echo "$pkg"|grep -v "$rbaur_ignore" >/dev/null && perst_update "zrbld:$pkg"
-        done
+        for pkg in $rbaur_curpkg; do perst_update "zrbld:$pkg"; done
     fi
-fi; unset err_rbaur rbaur_curpkg rbaur_oldpkg rbaur_full
+fi; unset err_rbaur rbaur_curpkg rbaur_oldpkg
 
-if [[ "$use_pikaur" = "1" ]]; then
+#AUR updates with pikaur
+if [[ "${hlpr_a[pikaur]}" = "1" ]]; then
     if [[ ! "${#flag_a[@]}" = "0" ]]; then
         trouble "Updating AUR packages with custom flags [pikaur]..."
         for i in ${!flag_a[*]}; do
@@ -932,7 +923,8 @@ if [[ "$use_pikaur" = "1" ]]; then
     else err_aur="1"; trouble "Not online - skipping pikaur command"; fi
 fi
 
-if [[ "$use_apacman" = "1" ]]; then
+#AUR updates with apacman
+if [[ "${hlpr_a[apacman]}" = "1" ]]; then
     # Workaround apacman script crash ( https://github.com/lectrode/xs-update-manjaro/issues/2 )
     dummystty="/tmp/xs-dummy/stty"
     mkdir $(dirname $dummystty)

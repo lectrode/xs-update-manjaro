@@ -256,11 +256,14 @@ Overview of what the script does from start to finish. Some steps may be slightl
 This script supports detecting and repairing the following potential issues:
 * [Package database errors](#repair_db01_bool "")
 * [Non-functioning Pikaur](#repair_pikaur01_bool "")
-* [AUR Python packages requiring rebuild after python 3.x update](#repair_pythonrebuild_bool "")
+* [AUR packages requiring rebuild after dependency update](#repair_aurrbld_bool "")
 
 ### Manual Changes
 Every once in a while, updating Manjaro requires manual package changes to allow updates to succeed. This script [supports](#repair_manualpkg_bool "") automatically performing the following:
-* Removal: `pyqt5-common`<=5.13.2-1, `engrampa-thunar-plugin`<=1.0-2
+* Removal:
+  * `pyqt5-common`<=5.13.2-1
+  * `engrampa-thunar-plugin`<=1.0-2
+  * `[lib32-]libcanberra-gstreamer`<=0.30+2+gc0620e4-3
 * Setup and use `pacman-static` if `pacman`<5.2
 
 The oldest fresh install this script has successfully updated is Manjaro Xfce 17.1.7 (as of July of 2020). 
