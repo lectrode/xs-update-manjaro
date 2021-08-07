@@ -1,6 +1,6 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.7.3"; vsndsp="$vsn 2021-06-14"
+vsn="v3.7.4-hf1"; vsndsp="$vsn 2021-08-06"
 #-Downloads and Installs new updates
 #-Depends: coreutils, grep, pacman, pacman-mirrors, iputils
 #-Optional Depends: flatpak, notify-desktop, pikaur, rebuild-detector, wget
@@ -368,7 +368,7 @@ exit_active(){
     secremain=${conf_a[reboot_delay_num]}
     actn_cmd="${conf_a[reboot_action_str]}"
     ignoreusers="$(echo "${conf_a[reboot_ignoreusers_str]}" |sed 's/ /\\\|/g')"
-    iconcritical; trouble "Active Exit: $actn_cmd";trouble "XS-done"
+    iconcritical; trouble "Active Exit: $actn_cmd";trouble "XS-done"; sync &
     while [ $secremain -gt 0 ]; do
         usersexist=$false; loginctl list-sessions --no-legend |grep -v "$ignoreusers" |grep "seat\|pts" >/dev/null && usersexist=$true
 
@@ -720,11 +720,11 @@ elif perst_isneeded "${conf_a[update_mirrors_freq]}" "${perst_a[last_mirrors_upd
         perst_update "last_mirrors_update"; else trouble "ERR: pacman-mirrors exited with code $err_mirrors"; fi
 fi
 
-if perst_isneeded "${conf_a[update_keys_freq]}" "${perst_a[last_keys_update]}"; then
-    trouble "Refreshing keys..."; pacman-key --refresh-keys  2>&1 |tee -a $log_f
-    err_keys=${PIPESTATUS[0]}; if [[ $err_keys -eq 0 ]]; then
-        perst_update "last_keys_update"; else trouble "ERR: pacman-key exited with code $err_keys"; fi
-fi
+#if perst_isneeded "${conf_a[update_keys_freq]}" "${perst_a[last_keys_update]}"; then
+#    trouble "Refreshing keys..."; pacman-key --refresh-keys  2>&1 |tee -a $log_f
+#    err_keys=${PIPESTATUS[0]}; if [[ $err_keys -eq 0 ]]; then
+#        perst_update "last_keys_update"; else trouble "ERR: pacman-key exited with code $err_keys"; fi
+#fi
 
 #While loop for updating main and AUR packages
 #Any critical errors will disable further changes
@@ -737,6 +737,8 @@ if chk_pkgisinst "xproto" && [[ "$(chk_pkgvsndiff "xproto" "7.0.31-1")" -le 0 ]]
 trouble "Downloading packages from main repos..."
 pacman -Syyuw$pacdown --needed --noconfirm $pacignore 2>&1 |tee -a $log_f
 err_repodl=${PIPESTATUS[0]}; if [[ $err_repodl -ne 0 ]]; then trouble "ERR: pacman exited with code $err_repodl"; fi
+
+[[ "${conf_a[cln_paccache_num]}" = "0" ]] || pacclean
 
 #Required manual pkg changes
 if [[ "${conf_a[repair_manualpkg_bool]}" = "$ctrue" ]]; then
