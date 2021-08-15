@@ -43,7 +43,9 @@
   * [reboot_delay_num](#reboot_delay_num "")
   * [reboot_notifyrep_num](#reboot_notifyrep_num "")
   * [reboot_ignoreusers_str](#reboot_ignoreusers_str "")
+  * [repair_1enable_bool](#repair_enable_bool "")
   * [repair_db01_bool](#repair_db01_bool "")
+  * [repair_keyringpkg_bool](#repair_keyringpkg_bool "")
   * [repair_manualpkg_bool](#repair_manualpkg_bool "")
   * [repair_pikaur01_bool](#repair_pikaur01_bool "")
   * [repair_aurrbld_bool](#repair_aurrbld_bool "")
@@ -264,6 +266,10 @@ Every once in a while, updating Manjaro requires manual package changes to allow
   * `pyqt5-common`<=5.13.2-1
   * `engrampa-thunar-plugin`<=1.0-2
   * `[lib32-]libcanberra-gstreamer`<=0.30+2+gc0620e4-3
+  * `ilmbase`<=2.3.0-1
+  * `colord`<=1.4.4-1
+* Replacement:
+  * `[lib32-]gtk3-classic`<=3.24.24-1 with gtk3
 * Setup and use `pacman-static` if `pacman`<5.2
 
 The oldest fresh install this script has successfully updated is Manjaro Xfce 17.1.7 (as of July of 2020). 
@@ -683,11 +689,28 @@ zflag:dropbox,tor-browser=--skippgpcheck
 ----
 
 <details>
+<summary><a name="repair_1enable_bool"></a>repair_1enable_bool</summary>
+
+ * Default: `1` (True)
+ * Enables/Disables all repair steps
+ * NOTE: If either this, or the individual repair option is disabled, that repair will be ignored
+
+</details>
+
+<details>
 <summary><a name="repair_db01_bool"></a>repair_db01_bool</summary>
 
  * Default: `1` (True)
  * If true, the script will detect and attempt to repair missing "desc"/"files" files in package database
  * NOTE: It does this by creating the missing files and re-installing the package(s) with `overwrite=*` specified
+
+</details>
+
+<details>
+<summary><a name="repair_keyringpkg_bool"></a>repair_keyringpkg_bool</summary>
+
+ * Default: `1` (True)
+ * If true, the script will detect and attempt to repair outdated keyring packages
 
 </details>
 

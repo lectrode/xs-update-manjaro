@@ -1,6 +1,6 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.7.4-hf1"; vsndsp="$vsn 2021-08-06"
+vsn="v3.8.0-rc1"; vsndsp="$vsn 2021-08-15"
 #-Downloads and Installs new updates
 #-Depends: coreutils, grep, pacman, pacman-mirrors, iputils
 #-Optional Depends: flatpak, notify-desktop, pikaur, rebuild-detector, wget
@@ -109,14 +109,32 @@ done< <(ls "$(get_pacmancfg CacheDir)"|grep -E "^$1-[0-9]"|sort -r)
 echo "$gpfn_t2"; unset gpfn_t1 gpfn_t2 gpfn_t3 i regex
 }
 
+get_pkgbuilddate(){
+gpbd_date="$(pacman -Qi $1|grep "Build Date"|grep -oP "(?<=:[[:space:]]).*$" 2>/dev/null)"
+[[ "$gpbd_date" = "" ]] && return 1
+date -d "$gpbd_date" +'%Y%m%d' 2>/dev/null || return 1
+unset gpbd_date; return 0
+}
+
 get_pacmancfg(){
 #$1=prop
-if pacman-conf --help >/dev/null 2>&1; then pacman-conf $1; return; fi
+if pacman-conf --help >/dev/null 2>&1; then pacman-conf $1 2>/dev/null && return 0; fi
 if [[ -f /etc/pacman.conf ]]; then
     gpcc="$(grep -E "^[^#]?$1" /etc/pacman.conf |sed -r 's/ += +/=/g'|cut -d'=' -f2)"
     if [[ ! "$gpcc" = "" ]]; then echo "$gpcc/"|sed -r 's_/+_/_g'; unset gpcc; return; fi; unset gpcc; fi
 if [[ "$1" = "DBPath" ]]; then echo "/var/lib/pacman/"; fi
 if [[ "$1" = "CacheDir" ]]; then echo "/var/cache/pacman/pkg/"; fi
+}
+
+chk_freespace(){
+if [[ "$(($(stat -f --format="%a*%S" "$1")))" -le "$(($2*1024*1024*1024))" ]]; then
+    trouble "ERR: Less than $2GB free on $1; please free up some space"; return 1; fi; return  0; }
+
+chk_freespace_all(){
+chk_freespace "$(get_pacmancfg CacheDir)" "2" || return 1
+chk_freespace "/etc" "1" || return 1
+chk_freespace "/" "2" || return 1
+return 0
 }
 
 chk_crit(){
@@ -125,78 +143,28 @@ then echo crit; else echo norm; fi
 }
 
 manualRemoval(){
-#$1=pkg|$2=vsn (or older) to remove
+#$1=pkg|$2=vsn (or older) to remove|[$3 replacement pkg]
 if chk_pkgisinst "$1" && [[ "$(chk_pkgvsndiff "$1" "$2")" -le 0 ]]; then
-    pacman -Rdd $1 --noconfirm 2>&1 |tee -a $log_f; fi
+    trouble "attempting manual package removal/replacement of $1..."
+    if [[ ! "$3" = "" ]]; then
+        $pcmbin -Sw --noconfirm $3 $sf_ignore 2>&1 |tee -a $log_f
+        if [[ ! "${PIPESTATUS[0]}" = "0" ]]; then trouble "ERR: failed to download $3"; return 1; fi
+    fi
+    $pcmbin -Rdd --noconfirm $1 2>&1 |tee -a $log_f
+    [[ "$3" = "" ]] || $pcmbin -S --noconfirm $3 $sf_ignore 2>&1 |tee -a $log_f
+    if [[ ! "${PIPESTATUS[0]}" = "0" ]]; then trouble "ERR: failed to replace $1 with $3"; return 1; fi
+fi
 }
 
-conf_export(){
-if [ ! -d "$(dirname $xs_autoupdate_conf)" ]; then mkdir "$(dirname $xs_autoupdate_conf)"; fi
-echo '#Config for XS-AutoUpdate' > "$xs_autoupdate_conf"
-echo '#' >> "$xs_autoupdate_conf"
-echo '# AUR Settings #' >> "$xs_autoupdate_conf"
-echo '#aur_1helper_str:          Valid options are auto,none,all,pikaur,apacman' >> "$xs_autoupdate_conf"
-echo '#aur_aftercritical_bool:   Enable/Disable AUR updates immediately after critical system updates' >> "$xs_autoupdate_conf"
-echo '#aur_update_freq:          Update AUR packages every X days' >> "$xs_autoupdate_conf"
-echo '#aur_devel_freq:           Update -git and -svn AUR packages every X days (-1 to disable, best if a multiple of aur_update_freq, pikaur only)' >> "$xs_autoupdate_conf"
-echo '#' >> "$xs_autoupdate_conf"
-echo '# Cleanup Settings #' >> "$xs_autoupdate_conf"
-echo '#cln_1enable_bool:         Enable/Disable ALL package cleanup (overrides following cleanup settings)' >> "$xs_autoupdate_conf"
-echo '#cln_aurpkg_bool:          Enable/Disable AUR package cleanup' >> "$xs_autoupdate_conf"
-echo '#cln_aurbuild_bool:        Enable/Disable AUR build cleanup' >> "$xs_autoupdate_conf"
-echo '#cln_flatpakorphan_bool:   Enable/Disable uninstall of uneeded flatpak packages' >> "$xs_autoupdate_conf"
-echo '#cln_orphan_bool:          Enable/Disable uninstall of uneeded repo packages' >> "$xs_autoupdate_conf"
-echo '#cln_paccache_num:         Number of official packages to keep (-1 to keep all)' >> "$xs_autoupdate_conf"
-echo '#' >> "$xs_autoupdate_conf"
-echo '# Flatpak Settings #' >> "$xs_autoupdate_conf"
-echo '#flatpak_update_freq:      Check for Flatpak package updates every X days (-1 to disable)' >> "$xs_autoupdate_conf"
-echo '#' >> "$xs_autoupdate_conf"
-echo '# Notification Settings #' >> "$xs_autoupdate_conf"
-echo '#notify_1enable_bool:      Enable/Disable nofications' >> "$xs_autoupdate_conf"
-echo '#notify_function_str:      Valid options are auto,gdbus,desk,send' >> "$xs_autoupdate_conf"
-echo '#notify_lastmsg_num:       Seconds before final normal notification expires (0=never)' >> "$xs_autoupdate_conf"
-echo '#notify_errors_bool:       Include failed tasks in summary notification' >> "$xs_autoupdate_conf"
-echo '#notify_vsn_bool:          Include version number in notifications' >> "$xs_autoupdate_conf"
-echo '#' >> "$xs_autoupdate_conf"
-echo '# Main Settings #' >> "$xs_autoupdate_conf"
-echo '#main_ignorepkgs_str:      List of packages to ignore separated by spaces (in addition to pacman.conf)' >> "$xs_autoupdate_conf"
-echo '#main_systempkgs_str:      List of packages to update before any other packages (i.e. archlinux-keyring)' >> "$xs_autoupdate_conf"
-echo '#main_logdir_str:          Path to the log directory' >> "$xs_autoupdate_conf"
-echo '#main_perstdir_str:        Path to the persistant timestamp directory (uses main_logdir_str if not defined)' >> "$xs_autoupdate_conf"
-echo '#main_country_str:         Countries separated by commas from which to pull updates. Default is automatic (geoip)' >> "$xs_autoupdate_conf"
-echo '#main_testsite_str:        URL (without protocol) used to test internet connection' >> "$xs_autoupdate_conf"
-echo '#' >> "$xs_autoupdate_conf"
-echo '# Reboot Settings #' >> "$xs_autoupdate_conf"
-echo '#reboot_1enable_num:       Perform system power action: 2=always, 1=only after critical updates, 0=only if normal reboot may not be possible, -1=never' >> "$xs_autoupdate_conf"
-echo '#reboot_action_str:        System power action. Valid options are reboot, halt, poweroff' >> "$xs_autoupdate_conf"
-echo "#reboot_delayiflogin_bool: Only delay rebooting $device if users are logged in" >> "$xs_autoupdate_conf"
-echo "#reboot_delay_num:         Delay in seconds to wait before rebooting the $device" >> "$xs_autoupdate_conf"
-echo '#reboot_notifyrep_num:     Reboot notification is updated every X seconds. Best if reboot_delay_num is evenly divisible by this' >> "$xs_autoupdate_conf"
-echo '#reboot_ignoreusers_str:   Ignore these users even if logged on. List users separated by spaces' >> "$xs_autoupdate_conf"
-echo '#' >> "$xs_autoupdate_conf"
-echo '# Automatic Repair Settings #' >> "$xs_autoupdate_conf"
-echo '#repair_db01_bool:         Enable/Disable Repair missing "desc"/"files" files in package database' >> "$xs_autoupdate_conf"
-echo '#repair_manualpkg_bool:    Enable/Disable Perform critical package changes required for continued updates' >> "$xs_autoupdate_conf"
-echo '#repair_pikaur01_bool:     Enable/Disable Re-install pikaur if not functioning' >> "$xs_autoupdate_conf"
-echo '#repair_aurrbld_bool:      Enable/Disable Rebuild AUR packages after dependency updates (requires AUR helper enabled)' >> "$xs_autoupdate_conf"
-echo '#repair_aurrbldfail_freq:  Retry rebuild/reinstall of AUR packages after dependency updates every X days (-1=never, 0=always)' >> "$xs_autoupdate_conf"
-echo '#' >> "$xs_autoupdate_conf"
-echo '# Self-update Settings #' >> "$xs_autoupdate_conf"
-echo '#self_1enable_bool:        Enable/Disable updating self (this script)' >> "$xs_autoupdate_conf"
-echo '#self_branch_str:          Update branch (this script only): stable, beta' >> "$xs_autoupdate_conf"
-echo '#' >> "$xs_autoupdate_conf"
-echo '# Update Settings #' >> "$xs_autoupdate_conf"
-echo '#update_downgrades_bool:   Directs pacman to downgrade package if remote is older than local' >> "$xs_autoupdate_conf"
-echo '#update_mirrors_freq:      Update mirror list every X days (-1 to disable)' >> "$xs_autoupdate_conf"
-echo '#update_keys_freq:         Check for security signature/key updates every X days (-1 to disable)' >> "$xs_autoupdate_conf"
-echo '#' >> "$xs_autoupdate_conf"
-echo '# Custom Makepkg Flags for AUR packages (requires pikaur)' >> "$xs_autoupdate_conf"
-echo '#zflag:packagename1,packagename2=--flag1,--flag2,--flag3' >> "$xs_autoupdate_conf"
-echo '#' >> "$xs_autoupdate_conf"
-echo '#' >> "$xs_autoupdate_conf"
-IFS=$'\n'; for i in $(sort <<< "${!conf_a[*]}"); do
-	echo "$i=${conf_a[$i]}" >> "$xs_autoupdate_conf"
-done; IFS=$DEFAULTIFS
+disableSigsUpdate(){
+[[ -f "/etc/pacman.conf.xsautoupdate.orig" ]] && mv -f "/etc/pacman.conf.xsautoupdate.orig" "/etc/pacman.conf"  2>&1 |tee -a $log_f
+if cp -f "/etc/pacman.conf" "/etc/pacman.conf.xsautoupdate.orig" >/dev/null 2>&1; then
+    sed -i 's/SigLevel.*/SigLevel = Never/' /etc/pacman.conf
+    $pcmbin -S --noconfirm $1 $sf_ignore 2>&1 |tee -a $log_f
+    mv -f "/etc/pacman.conf.xsautoupdate.orig" "/etc/pacman.conf"  2>&1 |tee -a $log_f
+fi
+$pcmbin -Quq|grep -E "^$1$" >/dev/null 2>&1 && return 1
+return 0
 }
 
 #Persistant Data Functions
@@ -382,6 +350,79 @@ exit_active(){
     sync; $actn_cmd || systemctl --force $actn_cmd || systemctl --force --force $actn_cmd
 }
 
+conf_export(){
+if [ ! -d "$(dirname $xs_autoupdate_conf)" ]; then mkdir "$(dirname $xs_autoupdate_conf)"; fi
+echo '#Config for XS-AutoUpdate' > "$xs_autoupdate_conf"
+echo '#' >> "$xs_autoupdate_conf"
+echo '# AUR Settings #' >> "$xs_autoupdate_conf"
+echo '#aur_1helper_str:          Valid options are auto,none,all,pikaur,apacman' >> "$xs_autoupdate_conf"
+echo '#aur_aftercritical_bool:   Enable/Disable AUR updates immediately after critical system updates' >> "$xs_autoupdate_conf"
+echo '#aur_update_freq:          Update AUR packages every X days' >> "$xs_autoupdate_conf"
+echo '#aur_devel_freq:           Update -git and -svn AUR packages every X days (-1 to disable, best if a multiple of aur_update_freq, pikaur only)' >> "$xs_autoupdate_conf"
+echo '#' >> "$xs_autoupdate_conf"
+echo '# Cleanup Settings #' >> "$xs_autoupdate_conf"
+echo '#cln_1enable_bool:         Enable/Disable ALL package cleanup (overrides following cleanup settings)' >> "$xs_autoupdate_conf"
+echo '#cln_aurpkg_bool:          Enable/Disable AUR package cleanup' >> "$xs_autoupdate_conf"
+echo '#cln_aurbuild_bool:        Enable/Disable AUR build cleanup' >> "$xs_autoupdate_conf"
+echo '#cln_flatpakorphan_bool:   Enable/Disable uninstall of uneeded flatpak packages' >> "$xs_autoupdate_conf"
+echo '#cln_orphan_bool:          Enable/Disable uninstall of uneeded repo packages' >> "$xs_autoupdate_conf"
+echo '#cln_paccache_num:         Number of official packages to keep (-1 to keep all)' >> "$xs_autoupdate_conf"
+echo '#' >> "$xs_autoupdate_conf"
+echo '# Flatpak Settings #' >> "$xs_autoupdate_conf"
+echo '#flatpak_update_freq:      Check for Flatpak package updates every X days (-1 to disable)' >> "$xs_autoupdate_conf"
+echo '#' >> "$xs_autoupdate_conf"
+echo '# Notification Settings #' >> "$xs_autoupdate_conf"
+echo '#notify_1enable_bool:      Enable/Disable nofications' >> "$xs_autoupdate_conf"
+echo '#notify_function_str:      Valid options are auto,gdbus,desk,send' >> "$xs_autoupdate_conf"
+echo '#notify_lastmsg_num:       Seconds before final normal notification expires (0=never)' >> "$xs_autoupdate_conf"
+echo '#notify_errors_bool:       Include failed tasks in summary notification' >> "$xs_autoupdate_conf"
+echo '#notify_vsn_bool:          Include version number in notifications' >> "$xs_autoupdate_conf"
+echo '#' >> "$xs_autoupdate_conf"
+echo '# Main Settings #' >> "$xs_autoupdate_conf"
+echo '#main_ignorepkgs_str:      List of packages to ignore separated by spaces (in addition to pacman.conf)' >> "$xs_autoupdate_conf"
+echo '#main_systempkgs_str:      List of packages to update before any other packages (i.e. archlinux-keyring)' >> "$xs_autoupdate_conf"
+echo '#main_logdir_str:          Path to the log directory' >> "$xs_autoupdate_conf"
+echo '#main_perstdir_str:        Path to the persistant timestamp directory (uses main_logdir_str if not defined)' >> "$xs_autoupdate_conf"
+echo '#main_country_str:         Countries separated by commas from which to pull updates. Default is automatic (geoip)' >> "$xs_autoupdate_conf"
+echo '#main_testsite_str:        URL (without protocol) used to test internet connection' >> "$xs_autoupdate_conf"
+echo '#' >> "$xs_autoupdate_conf"
+echo '# Reboot Settings #' >> "$xs_autoupdate_conf"
+echo '#reboot_1enable_num:       Perform system power action: 2=always, 1=only after critical updates, 0=only if normal reboot may not be possible, -1=never' >> "$xs_autoupdate_conf"
+echo '#reboot_action_str:        System power action. Valid options are reboot, halt, poweroff' >> "$xs_autoupdate_conf"
+echo "#reboot_delayiflogin_bool: Only delay rebooting $device if users are logged in" >> "$xs_autoupdate_conf"
+echo "#reboot_delay_num:         Delay in seconds to wait before rebooting the $device" >> "$xs_autoupdate_conf"
+echo '#reboot_notifyrep_num:     Reboot notification is updated every X seconds. Best if reboot_delay_num is evenly divisible by this' >> "$xs_autoupdate_conf"
+echo '#reboot_ignoreusers_str:   Ignore these users even if logged on. List users separated by spaces' >> "$xs_autoupdate_conf"
+echo '#' >> "$xs_autoupdate_conf"
+echo '# Automatic Repair Settings #' >> "$xs_autoupdate_conf"
+echo '#repair_1enable_bool:      Enable/Disable all repairs' >> "$xs_autoupdate_conf"
+echo '#repair_db01_bool:         Enable/Disable Repair missing "desc"/"files" files in package database' >> "$xs_autoupdate_conf"
+echo '#repair_keyringpkg_bool:   Enable/Disable Manual update of obsolete keyring packages' >> "$xs_autoupdate_conf"
+echo '#repair_manualpkg_bool:    Enable/Disable Perform critical package changes required for continued updates' >> "$xs_autoupdate_conf"
+echo '#repair_pikaur01_bool:     Enable/Disable Re-install pikaur if not functioning' >> "$xs_autoupdate_conf"
+echo '#repair_aurrbld_bool:      Enable/Disable Rebuild AUR packages after dependency updates (requires AUR helper enabled)' >> "$xs_autoupdate_conf"
+echo '#repair_aurrbldfail_freq:  Retry rebuild/reinstall of AUR packages after dependency updates every X days (-1=never, 0=always)' >> "$xs_autoupdate_conf"
+echo '#' >> "$xs_autoupdate_conf"
+echo '# Self-update Settings #' >> "$xs_autoupdate_conf"
+echo '#self_1enable_bool:        Enable/Disable updating self (this script)' >> "$xs_autoupdate_conf"
+echo '#self_branch_str:          Update branch (this script only): stable, beta' >> "$xs_autoupdate_conf"
+echo '#' >> "$xs_autoupdate_conf"
+echo '# Update Settings #' >> "$xs_autoupdate_conf"
+echo '#update_downgrades_bool:   Directs pacman to downgrade package if remote is older than local' >> "$xs_autoupdate_conf"
+echo '#update_mirrors_freq:      Update mirror list every X days (-1 to disable)' >> "$xs_autoupdate_conf"
+echo '#update_keys_freq:         Check for security signature/key updates every X days (-1 to disable)' >> "$xs_autoupdate_conf"
+echo '#' >> "$xs_autoupdate_conf"
+echo '# Custom Makepkg Flags for AUR packages (requires pikaur)' >> "$xs_autoupdate_conf"
+echo '#zflag:packagename1,packagename2=--flag1,--flag2,--flag3' >> "$xs_autoupdate_conf"
+echo '#' >> "$xs_autoupdate_conf"
+echo '#' >> "$xs_autoupdate_conf"
+IFS=$'\n'; for i in $(sort <<< "${!conf_a[*]}"); do
+	echo "$i=${conf_a[$i]}" >> "$xs_autoupdate_conf"
+done; IFS=$DEFAULTIFS
+}
+
+
+
 
 #---Init Config---
 
@@ -423,7 +464,9 @@ typeset -A conf_a; conf_a=(
     [reboot_delay_num]=120
     [reboot_notifyrep_num]=10
     [reboot_ignoreusers_str]="nobody lightdm sddm gdm"
+    [repair_1enable_bool]=$ctrue
     [repair_db01_bool]=$ctrue
+    [repair_keyringpkg_bool]=$ctrue
     [repair_manualpkg_bool]=$ctrue
     [repair_pikaur01_bool]=$ctrue
     [repair_aurrbld_bool]=$ctrue
@@ -650,6 +693,12 @@ fi; unset validconf
 #Finish init
 conf_export; perst_export
 self_repo="https://raw.githubusercontent.com/lectrode/xs-update-manjaro"
+sf_ignore="$(get_pacmancfg SyncFirst)"; if [[ ! "$sf_ignore" = "" ]]; then sf_ignore="--ignore $(echo $sf_ignore|sed -e 's/\s/ --ignore /g')"; fi
+if [[ "${conf_a[repair_1enable_bool]}" = "$cfalse" ]]; then
+    [repair_db01_bool]=$cfalse; [repair_keyringpkg_bool]=$cfalse
+    [repair_manualpkg_bool]=$cfalse; [repair_pikaur01_bool]=$cfalse
+    [repair_aurrbld_bool]=$cfalse
+fi
 echo "$(date) - XS-Update $vsndsp initialized..." |tee $log_f
 troublem "Config file: $xs_autoupdate_conf"
 troubleqout
@@ -730,6 +779,8 @@ fi
 #Any critical errors will disable further changes
 while : ; do
 
+if ! chk_freespace_all; then err_repo=1; break; fi
+
 #Does not support installs with xproto<=7.0.31-1
 if chk_pkgisinst "xproto" && [[ "$(chk_pkgvsndiff "xproto" "7.0.31-1")" -le 0 ]]; then
     trouble "ERR: Critical: old xproto installed - system too old for script to update"; err_repo=1; break; fi
@@ -739,6 +790,7 @@ pacman -Syyuw$pacdown --needed --noconfirm $pacignore 2>&1 |tee -a $log_f
 err_repodl=${PIPESTATUS[0]}; if [[ $err_repodl -ne 0 ]]; then trouble "ERR: pacman exited with code $err_repodl"; fi
 
 [[ "${conf_a[cln_paccache_num]}" = "0" ]] || pacclean
+if ! chk_freespace_all; then err_repo=1; break; fi
 
 #Required manual pkg changes
 if [[ "${conf_a[repair_manualpkg_bool]}" = "$ctrue" ]]; then
@@ -755,19 +807,38 @@ if [[ "${conf_a[repair_manualpkg_bool]}" = "$ctrue" ]]; then
             trouble "Using $pcmbin"
         else trouble "ERR: Critical: failed to use pacman-static. Cannot update system packages"; err_repo=1; break; fi
     fi
-    #consolidated with lib32-/libcanberra-pulse 2021/06
-    manualRemoval "libcanberra-gstreamer" "0.30+2+gc0620e4-3"
-    manualRemoval "lib32-libcanberra-gstreamer" "0.30+2+gc0620e4-3"
-    #Removed from repos early December 2019
-    manualRemoval "pyqt5-common" "5.13.2-1"
-    #Xfce 17.1.10 and earlier
-    manualRemoval "engrampa-thunar-plugin" "1.0-2"
+fi
+
+#Update keyring packages
+trouble "Updating system keyrings..."
+for p in $(pacman -Sl core | grep "\[installed"|grep -oP "[^ ]*\-keyring"); do
+    $pcmbin -S --needed --noconfirm $p $sf_ignore 2>&1 |tee -a $log_f
+    if [[ "${PIPESTATUS[0]}" -gt 0 ]]; then
+        if [[ "${conf_a[repair_keyringpkg_bool]}" = "$ctrue" ]]; then
+            kr_date="$(get_pkgbuilddate $p)"; if [[ "$kr_date" = "" ]]; then kr_date="20000101"; fi
+            #if build date of the keyring package is 546 or more days ago (~1.5 years), assume too old to update normally
+            if perst_isneeded 546 "$kr_date"; then
+                troublem "$1 is old and failed to update; attempting fix..."
+                if ! disableSigsUpdate "$p"; then trouble "ERR: Critical: could not update $1"; err_sys=1; break; fi; fi
+        else err_sys=1; fi
+    fi
+done
+if [[ $err_sys -ne 0 ]]; then trouble "ERR: Critical: failed to update system keyrings"; break; fi
+
+if [[ "${conf_a[repair_manualpkg_bool]}" = "$ctrue" ]]; then
+    manualRemoval "libcanberra-gstreamer" "0.30+2+gc0620e4-3"; manualRemoval "lib32-libcanberra-gstreamer" "0.30+2+gc0620e4-3" #consolidated with lib32-/libcanberra-pulse 2021/06
+    manualRemoval "pyqt5-common" "5.13.2-1" #Removed from repos early December 2019
+    manualRemoval "ilmbase" "2.3.0-1" #Merged into openexr October 2019
+    manualRemoval "colord" "1.4.4-1" #Conflicts with libcolord mid-2019
+    manualRemoval "gtk3-classic" "3.24.24-1" "gtk3"; manualRemoval "lib32-gtk3-classic" "3.24.24-1" "lib32-gtk3" #Replaced around 18.0.4
+    manualRemoval "engrampa-thunar-plugin" "1.0-2" #Xfce 17.1.10 and earlier
 fi
 
 trouble "Updating system packages..."
-$pcmbin -S --needed --noconfirm $(for p in archlinux-keyring manjaro-keyring manjaro-system \
-    ${conf_a[main_systempkgs_str]}; do chk_pkgisinst $p 1; done) 2>&1 |tee -a $log_f
-err_sys=${PIPESTATUS[0]}; if [[ $err_sys -ne 0 ]]; then trouble "ERR: pacman exited with code $err_sys"; fi
+for p in $(pacman -Sl core | grep "\[installed"|grep -oP "[^ ]*\-(keyring|system)") ${conf_a[main_systempkgs_str]}; do
+    chk_pkgisinst $p && $pcmbin -S --needed --noconfirm $p 2>&1 |tee -a $log_f
+    let "err_sys=err_sys+${PIPESTATUS[0]}"; done
+if [[ $err_sys -ne 0 ]]; then trouble "ERR: pacman exited with code $err_sys"; fi
 
 #check for missing database files
 if [[ "${conf_a[repair_db01_bool]}" = "$ctrue" ]]; then
