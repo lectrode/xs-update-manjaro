@@ -263,11 +263,12 @@ This script supports detecting and repairing the following potential issues:
 ### Manual Changes
 Every once in a while, updating Manjaro requires manual package changes to allow updates to succeed. This script [supports](#repair_manualpkg_bool "") automatically performing the following:
 * Removal:
+  * `python2-dbus`<=1.2.16-3
   * `pyqt5-common`<=5.13.2-1
-  * `engrampa-thunar-plugin`<=1.0-2
-  * `[lib32-]libcanberra-gstreamer`<=0.30+2+gc0620e4-3
   * `ilmbase`<=2.3.0-1
   * `colord`<=1.4.4-1
+  * `engrampa-thunar-plugin`<=1.0-2
+  * `[lib32-]libcanberra-gstreamer`<=0.30+2+gc0620e4-3
 * Replacement:
   * `[lib32-]gtk3-classic`<=3.24.24-1 with gtk3
 * Setup and use `pacman-static` if `pacman`<5.2

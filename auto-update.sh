@@ -1,6 +1,6 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.8.0-rc1"; vsndsp="$vsn 2021-08-15"
+vsn="v3.8.0-rc2"; vsndsp="$vsn 2021-08-23"
 #-Downloads and Installs new updates
 #-Depends: coreutils, grep, pacman, pacman-mirrors, iputils
 #-Optional Depends: flatpak, notify-desktop, pikaur, rebuild-detector, wget
@@ -769,11 +769,11 @@ elif perst_isneeded "${conf_a[update_mirrors_freq]}" "${perst_a[last_mirrors_upd
         perst_update "last_mirrors_update"; else trouble "ERR: pacman-mirrors exited with code $err_mirrors"; fi
 fi
 
-#if perst_isneeded "${conf_a[update_keys_freq]}" "${perst_a[last_keys_update]}"; then
-#    trouble "Refreshing keys..."; pacman-key --refresh-keys  2>&1 |tee -a $log_f
-#    err_keys=${PIPESTATUS[0]}; if [[ $err_keys -eq 0 ]]; then
-#        perst_update "last_keys_update"; else trouble "ERR: pacman-key exited with code $err_keys"; fi
-#fi
+if perst_isneeded "${conf_a[update_keys_freq]}" "${perst_a[last_keys_update]}"; then
+    trouble "Refreshing keys..."; pacman-key --refresh-keys  2>&1 |tee -a $log_f |tee /dev/tty |grep "Total number processed:" >/dev/null
+    err_keys=("${PIPESTATUS[@]}"); if [[ "${err_keys[0]}" -eq 0 ]] || [[ "${err_keys[3]}" -eq 0 ]]; then
+        perst_update "last_keys_update"; err_keys=0; else err_keys=${err_keys[0]}; trouble "ERR: pacman-key exited with code $err_keys"; fi
+fi
 
 #While loop for updating main and AUR packages
 #Any critical errors will disable further changes
@@ -827,8 +827,9 @@ if [[ $err_sys -ne 0 ]]; then trouble "ERR: Critical: failed to update system ke
 
 if [[ "${conf_a[repair_manualpkg_bool]}" = "$ctrue" ]]; then
     manualRemoval "libcanberra-gstreamer" "0.30+2+gc0620e4-3"; manualRemoval "lib32-libcanberra-gstreamer" "0.30+2+gc0620e4-3" #consolidated with lib32-/libcanberra-pulse 2021/06
-    manualRemoval "pyqt5-common" "5.13.2-1" #Removed from repos early December 2019
-    manualRemoval "ilmbase" "2.3.0-1" #Merged into openexr October 2019
+    manualRemoval "python2-dbus" "1.2.16-3" #Removed from dbus-python 2021/03
+    manualRemoval "pyqt5-common" "5.13.2-1" #Removed from repos early 2019/12
+    manualRemoval "ilmbase" "2.3.0-1" #Merged into openexr 2019/10
     manualRemoval "colord" "1.4.4-1" #Conflicts with libcolord mid-2019
     manualRemoval "gtk3-classic" "3.24.24-1" "gtk3"; manualRemoval "lib32-gtk3-classic" "3.24.24-1" "lib32-gtk3" #Replaced around 18.0.4
     manualRemoval "engrampa-thunar-plugin" "1.0-2" #Xfce 17.1.10 and earlier
