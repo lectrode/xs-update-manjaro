@@ -43,7 +43,9 @@
   * [reboot_delay_num](#reboot_delay_num "")
   * [reboot_notifyrep_num](#reboot_notifyrep_num "")
   * [reboot_ignoreusers_str](#reboot_ignoreusers_str "")
+  * [repair_1enable_bool](#repair_1enable_bool "")
   * [repair_db01_bool](#repair_db01_bool "")
+  * [repair_keyringpkg_bool](#repair_keyringpkg_bool "")
   * [repair_manualpkg_bool](#repair_manualpkg_bool "")
   * [repair_pikaur01_bool](#repair_pikaur01_bool "")
   * [repair_aurrbld_bool](#repair_aurrbld_bool "")
@@ -147,29 +149,33 @@ Overview of what the script does from start to finish. Some steps may be slightl
   * `pacman-mirrors [--geoip || -c `[`$main_country_str`](#main_country_str "")`]`
   * Upon failure, falls back to `pacman-mirrors -g`
 
-
 * Update package signature keys (*config: [frequency](#update_keys_freq "")*)
   * `pacman-key --refresh-keys`
 
-* Check if packages are too old for script to update
-  * Does not support installs with `xproto`<=7.0.31-1
+* Pre-update system checks
+  * Check if too old (does not support installs with `xproto`<=7.0.31-1)
+  * Partial [cache cleanup](#cleanup-tasks "")
+  * Check Free space
 
 * Update repo databases, download package updates
   * `pacman -Syyu[`[`u`](#update_downgrades_bool "")`]w --needed --noconfirm [--ignore `[`$main_ignorepkgs_str`](#main_ignorepkgs_str "")`]`
 
-* Apply manual package changes (*config: [enable](#repair_manualpkg_bool "")*)
+* Update keyring packages
+  * manual update if packages are older than 1.5 years (*config: [enable](#repair_keyringpkg_bool "")*)
+
+* Apply manual package changes (*config: [enable](#repair_manualpkg_bool "")*)(see [this section](#supported-automatic-repair-and-manual-changes "") for details)
   * If `pacman`<5.2, switch to `pacman-static`
-  * Required removal of known conflicting packages
-  * If these actions fail, remaining repo and AUR packages are skipped
+  * Required removal and/or replacement of known conflicting packages
 
 * Update System packages
-  * `pacman -S --needed --noconfirm archlinux-keyring manjaro-keyring manjaro-system `[`$main_systempkgs_str`](#main_systempkgs_str "")
+  * Installed core packages that end with "-keyring"
+  * Installed core packages that end with "-system"
+  * Packages specified in [`$main_systempkgs_str`](#main_systempkgs_str "")
 
 * Check for package database errors (*config: [enable](#repair_db01_bool "")*)
   * For every package with errors:
     * create missing `files`/`desc`
     * reinstall with `pacman -S --noconfirm --overwrite=* packagename`
-
 
 * Update packages from Official Repos
   * `pacman -Syyu[`[`u`](#update_downgrades_bool "")`] --needed --noconfirm [--ignore `[`$main_ignorepkgs_str`](#main_ignorepkgs_str "")`]`
@@ -184,9 +190,9 @@ Overview of what the script does from start to finish. Some steps may be slightl
 * AUR updates are skipped after critical system package updates if [aur_aftercritical_bool](#aur_aftercritical_bool "") is false
 
 * Determine available AUR helpers (*config: [frequency](#aur_update_freq ""), [manual selection](#aur_1helper_str "")*)
-  * Check if pikaur is functional (*config: [enable repair](#repair_pikaur01_bool "")*)
+  * Check if pikaur is functional (*config: [enable](#repair_pikaur01_bool "")*)
 
-* If AUR helper available/enabled, detect and rebuild AUR packages that need it (*config: [enable aur pkg rebuild](#repair_aurrbld_bool "")*)
+* If AUR helper available/enabled, detect and rebuild AUR packages that need it (*config: [enable](#repair_aurrbld_bool "")*)
   * If packages are still detected as needing a rebuild afterward, these packages are excluded from future attempts (*config: [number of days to exclude](#repair_aurrbldfail_freq "")*)
 
 * If selected, update AUR packages with `pikaur`
@@ -252,21 +258,32 @@ Overview of what the script does from start to finish. Some steps may be slightl
 <details>
 <summary>↕</summary>
 
-### Automatic repair
+ 
+Note: All current and future automatic repair and manual package changes can be [disabled in one setting](#repair_1enable_bool "")
+
+### Automatic Repair
 This script supports detecting and repairing the following potential issues:
 * [Package database errors](#repair_db01_bool "")
+* [Obsolete keyring packages](#repair_keyringpkg_bool "")
 * [Non-functioning Pikaur](#repair_pikaur01_bool "")
 * [AUR packages requiring rebuild after dependency update](#repair_aurrbld_bool "")
 
-### Manual Changes
+### Manual Package Changes
 Every once in a while, updating Manjaro requires manual package changes to allow updates to succeed. This script [supports](#repair_manualpkg_bool "") automatically performing the following:
-* Removal:
-  * `pyqt5-common`<=5.13.2-1
-  * `engrampa-thunar-plugin`<=1.0-2
-  * `[lib32-]libcanberra-gstreamer`<=0.30+2+gc0620e4-3
 * Setup and use `pacman-static` if `pacman`<5.2
+* Package removal and/or replacement:
+<table>
+  <tr><td><code>[lib32-]libcanberra-gstreamer</code></td><td><=0.30+2+gc0620e4-3</td><td>2021/06: consolidated with <code>lib32-/libcanberra-pulse</code></td></tr>
+  <tr><td><code>python2-dbus</code></td><td><=1.2.16-3</td><td>2021/03: removed from <code>dbus-python</code></td></tr>
+  <tr><td><code>pyqt5-common</code></td><td><=5.13.2-1</td><td>2019/12: removed from repos</td></tr>
+  <tr><td><code>ilmbase</code></td><td><=2.3.0-1</td><td>2019/10: merged into <code>openexr</code></td></tr>
+  <tr><td><code>colord</code></td><td><=1.4.4-1</td><td>2019/??: conflicts with <code>libcolord</code></td></tr>
+  <tr><td><code>[lib32-]gtk3-classic</code></td><td><=3.24.24-1</td><td>Xfce 18.0.4: replaced with <code>gtk3</code></td></tr>
+  <tr><td><code>engrampa-thunar-plugin</code></td><td><=1.0-2</td><td>Xfce 17.1.10: removed from repos</td></tr>
+</table>
 
-The oldest fresh install this script has successfully updated is Manjaro Xfce 17.1.7 (as of July of 2020). 
+
+The oldest fresh install this script has successfully updated is Manjaro Xfce 17.1.7 (as of August of 2021). 
 Oldest KDE and Gnome fresh installs are unknown, and not tested.
 
 ----
@@ -683,11 +700,28 @@ zflag:dropbox,tor-browser=--skippgpcheck
 ----
 
 <details>
+<summary><a name="repair_1enable_bool"></a>repair_1enable_bool</summary>
+
+ * Default: `1` (True)
+ * Enables/Disables all repair steps
+ * NOTE: If either this, or the individual repair option is disabled, that repair will be ignored
+
+</details>
+
+<details>
 <summary><a name="repair_db01_bool"></a>repair_db01_bool</summary>
 
  * Default: `1` (True)
  * If true, the script will detect and attempt to repair missing "desc"/"files" files in package database
  * NOTE: It does this by creating the missing files and re-installing the package(s) with `overwrite=*` specified
+
+</details>
+
+<details>
+<summary><a name="repair_keyringpkg_bool"></a>repair_keyringpkg_bool</summary>
+
+ * Default: `1` (True)
+ * If true, the script will detect and attempt to repair outdated keyring packages
 
 </details>
 
