@@ -1,6 +1,6 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.8.0-rc2"; vsndsp="$vsn 2021-08-23"
+vsn="v3.8.1"; vsndsp="$vsn 2021-08-25"
 #-Downloads and Installs new updates
 #-Depends: coreutils, grep, pacman, pacman-mirrors, iputils
 #-Optional Depends: flatpak, notify-desktop, pikaur, rebuild-detector, wget
