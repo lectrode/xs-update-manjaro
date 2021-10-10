@@ -1,6 +1,6 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.9.0-rc1"; vsndsp="$vsn 2021-10-10"
+vsn="v3.9.0-rc2"; vsndsp="$vsn 2021-10-10"
 #-Downloads and Installs new updates
 #-Depends: coreutils, grep, pacman, pacman-mirrors, iputils
 #-Optional Depends: flatpak, notify-desktop, pikaur, rebuild-detector, wget
@@ -699,7 +699,7 @@ if [[ -f "$perst_f" ]]; then
     while read line; do
 
         #basic validation
-        if ! conf_valid "zflag"; then
+        if ! conf_valid "zrbld"; then
             [[ ! "$varname" = "" ]] && [[ ! "$val" = "" ]] && trblqin "$co_y invalid cache data (reset/ignored): [$line]"
             continue
         fi
