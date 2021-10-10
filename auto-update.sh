@@ -1,6 +1,6 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.8.1"; vsndsp="$vsn 2021-08-25"
+vsn="v3.9.0-rc1"; vsndsp="$vsn 2021-10-10"
 #-Downloads and Installs new updates
 #-Depends: coreutils, grep, pacman, pacman-mirrors, iputils
 #-Optional Depends: flatpak, notify-desktop, pikaur, rebuild-detector, wget
@@ -19,27 +19,24 @@ vsn="v3.8.1"; vsndsp="$vsn 2021-08-25"
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 
-true=0; false=1; ctrue=1; cfalse=0
+
 if [ $# -eq 0 ]; then "$0" "XS"& exit 0; fi # fork to background (start with "nofork" parameter to avoid this)
-[[ "$xs_autoupdate_conf" = "" ]] && xs_autoupdate_conf='/etc/xs/auto-update.conf'
-[[ "$DEFAULTIFS" = "" ]] && DEFAULTIFS="$IFS"
 debgn=+x; # -x =debugging | +x =no debugging
-set $debgn; pcmbin="pacman"
-device="device"; [[ "$(uname -m)" = "x86_64" ]] && device="computer"
+
 
 #---Define Functions---
 
-cnvrt2_int(){ if ! [[ "$1" =~ ^[\-]?[0-9]+$ ]]; then echo 0; return; fi; echo $1; }
+to_int(){ [[ "$1" =~ ^[\-]?[0-9]+$ ]] && echo $1 || echo 0; }
 
-trouble(){ (echo;echo "#XS# $(date) - $@") |tee -a $log_f; }
-troublem(){ echo "XS-$@" |tee -a $log_f; }
+trbl_out(){ echo -e "$@"; (echo -e "$@"|sed $ss_a |tr $ss_b)>> $log_f; }
+trbl(){ trbl_out "\n${co_g}#XS# $(date) -${co_n} $@${co_n}\n"; }
+trblm(){ trbl_out "${co_g2}XS-\033[0m$@${co_n}"; }
 
-troubleqin(){ logqueue+=("#XS# $(date) - $@"); }
-troubleqout(){
-    while [ 0 -lt ${#logqueue[@]} ]; do
-        (echo;echo "${logqueue[0]}") |tee -a $log_f
-        logqueue=(${logqueue[@]:1})
-    done
+trblqin(){ ((logqueue_i++)); logqueue[$logqueue_i]="\n${co_g}#XS# $(date) -${co_n} $@${co_n}\n"; }
+trblqout(){
+    i=0; while [ $i -lt ${#logqueue[@]} ]; do
+        trbl_out "${logqueue[$i]}"; ((i++))
+    done; unset logqueue logqueue_i i
 }
 
 test_online(){ ping -c 1 "${conf_a[main_testsite_str]}" >/dev/null 2>&1 && return 0; return 1; }
@@ -47,22 +44,22 @@ test_online(){ ping -c 1 "${conf_a[main_testsite_str]}" >/dev/null 2>&1 && retur
 pacclean(){
 [[ ! "${conf_a[cln_1enable_bool]}" = "$ctrue" ]] && return
 
-[[ "$(expr ${conf_a[cln_aurpkg_bool]} + ${conf_a[cln_aurbuild_bool]} + ${conf_a[cln_paccache_num]})" -gt "-1" ]] && trouble "Performing cleanup operations..."
+[[ "$((conf_a[cln_aurpkg_bool]+conf_a[cln_aurbuild_bool]+conf_a[cln_paccache_num]))" -gt "-1" ]] && trbl "Performing cleanup operations..."
 
 if [[ "${conf_a[cln_aurpkg_bool]}" = "$ctrue" ]]; then
-    troublem "Cleaning AUR package cache..."
+    trblm "Cleaning AUR package cache..."
     if [ -d /var/cache/apacman/pkg ]; then rm -rf /var/cache/apacman/pkg/*; fi
     if [ -d /var/cache/pikaur/pkg ]; then rm -rf /var/cache/pikaur/pkg/*; fi
 fi
 
 if [[ "${conf_a[cln_aurbuild_bool]}" = "$ctrue" ]]; then
-    troublem "Cleaning AUR build cache..."
+    trblm "Cleaning AUR build cache..."
     if [ -d /var/cache/pikaur/aur_repos ]; then rm -rf /var/cache/pikaur/aur_repos/*; fi
     if [ -d /var/cache/pikaur/build ]; then rm -rf /var/cache/pikaur/build/*; fi
 fi
 
 if [[ "${conf_a[cln_paccache_num]}" -gt "-1" ]]; then
-    troublem "Cleaning pacman cache..."
+    trblm "Cleaning pacman cache..."
     paccache -rfqk${conf_a[cln_paccache_num]}
 fi
 }
@@ -70,7 +67,6 @@ fi
 chk_pkgisinst(){ if [[ "$($pcmbin -Qq $1 2>/dev/null | grep -m1 -x $1)" == "$1" ]]; then [[ "$2" = "1" ]] && echo "$1"; return 0; else return 1; fi }
 get_pkgvsn(){ echo "$($pcmbin -Q $1 | grep "$1 " -m1 | cut -d' ' -f2)"; }
 chk_pkgvsndiff(){ cpvd_t1="$(get_pkgvsn $1)"; echo "$(vercmp ${cpvd_t1:-0} $2)"; unset cpvd_t1; }
-
 chk_sha256(){ [[ "$(sha256sum "$1" |cut -d ' ' -f 1 |tr -cd [:alnum:])" = "$2" ]] && return 0; return 1; }
 
 dl_outstd(){
@@ -95,6 +91,10 @@ if [ "${#dl_hash}" = "64" ]; then
     chk_sha256 "/tmp/xs-autmp-$1/$(basename $3)" "$dl_hash" && return 0
 fi; dl_clean $1; return 1
 }
+
+chk_remoterepo(){ pacman -Slq 2>/dev/null|grep -E "^$1$" >/dev/null && return 0; return 1; }
+chk_remoteaur(){ dl_outstd "${url_aur}?v=5&type=info&arg[]=$1" |grep -F '"resultcount":0' >/dev/null || return 0; return 1; }
+chk_remoteany(){ chk_remoterepo $1 && return 0; chk_remoteaur $1 && return 0; return 1; }
 
 get_pkgfilename(){
 #$1=pkg name
@@ -127,8 +127,8 @@ if [[ "$1" = "CacheDir" ]]; then echo "/var/cache/pacman/pkg/"; fi
 }
 
 chk_freespace(){
-if [[ "$(($(stat -f --format="%a*%S" "$1")))" -le "$(($2*1024*1024*1024))" ]]; then
-    trouble "ERR: Less than $2GB free on $1; please free up some space"; return 1; fi; return  0; }
+[[ "$(($(stat -f --format="%a*%S" "$1")))" -ge "$(($2*1024*1024*1024))" ]] && return 0
+trbl "$co_r Less than $2GB free on $1; please free up some space"; return 1; }
 
 chk_freespace_all(){
 chk_freespace "$(get_pacmancfg CacheDir)" "2" || return 1
@@ -138,21 +138,21 @@ return 0
 }
 
 chk_crit(){
-if grep -Ei "(up|down)(grad|dat)ing (linux([0-9]{2,3}|-pinephone)|systemd|mesa|(intel|amd)-ucode|cryptsetup|xf86-video)(\.|-| )" $log_f >/dev/null;
+if grep -Ei "(up|down)(grad|dat)ing (linux[0-9]{2,3}|linux|systemd|mesa|(intel|amd)-ucode|cryptsetup|xf86-video)(\.|-| )" "$log_f"|grep -Fv "\-docs." >/dev/null
 then echo crit; else echo norm; fi
 }
 
 manualRemoval(){
 #$1=pkg|$2=vsn (or older) to remove|[$3 replacement pkg]
 if chk_pkgisinst "$1" && [[ "$(chk_pkgvsndiff "$1" "$2")" -le 0 ]]; then
-    trouble "attempting manual package removal/replacement of $1..."
+    trbl "attempting manual package removal/replacement of $1..."
     if [[ ! "$3" = "" ]]; then
-        $pcmbin -Sw --noconfirm $3 $sf_ignore 2>&1 |tee -a $log_f
-        if [[ ! "${PIPESTATUS[0]}" = "0" ]]; then trouble "ERR: failed to download $3"; return 1; fi
+        $pcmbin -Sw --noconfirm $3 $sf_ignore 2>&1 |sed $ss_a|tr $ss_b|tee -a $log_f
+        if [[ ! "${PIPESTATUS[0]}" = "0" ]]; then trbl "$co_r failed to download $3"; return 1; fi
     fi
-    $pcmbin -Rdd --noconfirm $1 2>&1 |tee -a $log_f
+    pacman -Rdd --noconfirm $1 2>&1 |sed $ss_a|tr $ss_b|tee -a $log_f
     [[ "$3" = "" ]] || $pcmbin -S --noconfirm $3 $sf_ignore 2>&1 |tee -a $log_f
-    if [[ ! "${PIPESTATUS[0]}" = "0" ]]; then trouble "ERR: failed to replace $1 with $3"; return 1; fi
+    if [[ ! "${PIPESTATUS[0]}" = "0" ]]; then trbl "$co_r failed to replace $1 with $3"; return 1; fi
 fi
 }
 
@@ -160,7 +160,7 @@ disableSigsUpdate(){
 [[ -f "/etc/pacman.conf.xsautoupdate.orig" ]] && mv -f "/etc/pacman.conf.xsautoupdate.orig" "/etc/pacman.conf"  2>&1 |tee -a $log_f
 if cp -f "/etc/pacman.conf" "/etc/pacman.conf.xsautoupdate.orig" >/dev/null 2>&1; then
     sed -i 's/SigLevel.*/SigLevel = Never/' /etc/pacman.conf
-    $pcmbin -S --noconfirm $1 $sf_ignore 2>&1 |tee -a $log_f
+    $pcmbin -S --noconfirm $1 $sf_ignore 2>&1 |sed $ss_a|tr $ss_b|tee -a $log_f
     mv -f "/etc/pacman.conf.xsautoupdate.orig" "/etc/pacman.conf"  2>&1 |tee -a $log_f
 fi
 $pcmbin -Quq|grep -E "^$1$" >/dev/null 2>&1 && return 1
@@ -176,14 +176,10 @@ perst_isneeded(){
     if [[ "$1" -eq "-1" ]]; then return 1; fi
     curdate=$(date +'%Y%m%d')
     scheddate=$(date -d "$2 + $1 days" +'%Y%m%d')
-    
-    if [[ "$scheddate" -le "$curdate" ]]; then
-        return 0
-    elif [[ "$2" -gt "$curdate" ]]; then
-        return 0
-    else
-        return 1
-    fi
+
+    if [[ "$scheddate" -le "$curdate" ]]; then return 0
+    elif [[ "$2" -gt "$curdate" ]]; then return 0
+    else return 1; fi
 }
 
 perst_update(){
@@ -196,7 +192,7 @@ perst_update(){
 perst_export(){
     touch "$perst_f"
     echo "#Last day specific tasks were performed" > "$perst_f"
-    IFS=$'\n'; for i in $(sort <<< "${!perst_a[*]}"); do
+    IFS=$'\n'; for i in $(sort <<< "${!perst_a[@]}"); do
         echo "$i=${perst_a[$i]}" >> "$perst_f"
     done; IFS=$DEFAULTIFS
 }
@@ -205,24 +201,30 @@ perst_reset(){
 #$1 = last_*
     if echo "$1" | grep -F "zrbld:" >/dev/null; then
         unset rbld_a["$(echo "$1" | cut -d ':' -f 2)"] perst_a[$1]
-        perst_export #cannot use sed, as anything between [] is treated as regex
+        perst_export #cannot use sed, as [] is treated as regex
     else perst_a[$1]="20010101"; echo "$1=20010101" >> "$perst_f"; fi
 }
 
 aurrebuildlist(){
-    arlist="$(checkrebuild|grep -oP '^foreign[[:space:]]+\K(?!.*-bin$)([[:alnum:]\.@_\+\-]*)$' 2>/dev/null)"
+    arlist=($(checkrebuild 2>/dev/null|grep -oP '^foreign[[:space:]]+\K(?!.*-bin$)([[:alnum:]\.@_\+\-]*)$'))
 
     #remove stale rebuild cache entries
-    arlist_grep="$(echo -n "$arlist"|tr '\n' '|')"
-    for pkg in ${!rbld_a[*]}; do
-        if [[ "$arlist" = "" ]] || ! echo "$pkg"|grep -E "^($arlist_grep)$" >/dev/null; then
+    arlist_grep="$(echo -n "${arlist[@]}"|tr ' ' '|')"
+    for pkg in ${!rbld_a[@]}; do
+        if [[ "${#arlist[@]}" = "0" ]] || ! echo "$pkg"|grep -E "^($arlist_grep)$" >/dev/null; then
             perst_reset "zrbld:$pkg"; fi
     done
 
-    #return active list
-    arignore="$(echo "${!rbld_a[*]}"|sed 's/ /\\|/g')"
-    if [[ "$arignore" = "" ]]; then echo "$arlist"|tr '\n' ' '
-    else echo "$arlist"|grep -v "$arignore"|tr '\n' ' '; fi
+    #remove ignored entries
+    arignore="$(echo -n $(echo "${conf_a[main_ignorepkgs_str]}"; get_pacmancfg IgnorePkg; echo "${!rbld_a[@]}")|tr '\n' ' '|sed 's/ /|/g')"
+    [[ "$arignore" = "" ]] || arlist=($(echo "${arlist[@]}"|tr ' ' '\n'|grep -Evi "^($arignore)$"))
+    
+    #exclude orphan packages from list
+    for pkg in ${arlist[@]}; do
+        if ! chk_remoteaur $pkg; then
+            [[ "${perst_a[$pkg]}" = "" ]] || perst_reset "zrbld:$pkg"
+        else echo $pkg; fi
+    done
 
     unset arlist arignore arlist_grep
 }
@@ -236,15 +238,12 @@ iconcritical(){ icon=system-shutdown; }
 
 sendmsg(){
 #$1=user; $2=msg; [$3=timeout]
-    if [[ "${conf_a[notify_1enable_bool]}" = "$ctrue" ]] && [[ "$(($noti_desk+$noti_send+$noti_gdbus))" -le 2 ]]; then
-        noti_id["$1"]="$(cnvrt2_int "${noti_id["$1"]}")"
-        tmp_t0="$(cnvrt2_int "$3")"
+    if [[ "${conf_a[notify_1enable_bool]}" = "$ctrue" ]] && [[ "$((noti_desk+noti_send+noti_gdbus))" -le 2 ]]; then
+        noti_id["$1"]="$(to_int "${noti_id["$1"]}")"
+        tmp_t0="$(to_int "$3")"
         if [ "$tmp_t0" = "0" ]; then
             tmp_t1="-u critical"
-        else
-            let tmp_t0="$tmp_t0*1000"
-            tmp_t1="-t $tmp_t0"
-        fi
+        else ((tmp_t0*=1000)); tmp_t1="-t $tmp_t0"; fi
         if [ "$noti_desk" = "$true" ]; then
             if [[ "$2" = "dismiss" ]]; then
                 noti_id["$1"]="$(su $1 -c "notify-desktop -u normal -r ${noti_id["$1"]} \" \" -t 1")"
@@ -284,7 +283,7 @@ getsessions(){
         [[ "$disp" = "" ]] && disp=":0" #workaround for gnome, which returns nothing
         usrhome="$(getent passwd "$usr"|cut -d: -f6)"
         [[  ${usr-x} && ${disp-x} && ${usrhome-x} ]] || continue
-        s_usr[$i]=$usr; s_disp[$i]=$disp; s_home[$i]=$usrhome; i=$(($i+1)); IFS=$'\n\b';
+        s_usr[$i]=$usr; s_disp[$i]=$disp; s_home[$i]=$usrhome; ((i+=1)); IFS=$'\n\b';
     done
     if [ ${#s_usr[@]} -eq 0 ]; then sleep 5; fi
     IFS=$DEFAULTIFS; unset i usr disp usrhome actv sssnarr sssn
@@ -296,23 +295,21 @@ sendall(){
             DISPLAY=${s_disp[$i]} XAUTHORITY="${s_home[$i]}/.Xauthority" \
                 DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u ${s_usr[$i]})/bus" \
                 sendmsg "${s_usr[$i]}" "$1" "$2" || sa_err=1
-            i=$(($i+1))
+            ((i+=1))
         done; unset i; return $sa_err
     fi
 }
 
 backgroundnotify(){
 iconwarn; while : ; do
-    sleep 5
     if [[ -f "${perst_d}\auto-update_termnotify.dat" ]]; then 
-        rm -f "${perst_d}\auto-update_termnotify.dat" >/dev/null 2>&1; sendall "dismiss"; exit 0; fi
-    getsessions; i=0; while [ $i -lt ${#s_usr[@]} ]; do
+        sendall "dismiss"; rm -f "${perst_d}\auto-update_termnotify.dat" >/dev/null 2>&1; disown -a; sleep 2; exit 0; fi
+    sleep 2; getsessions; i=0; while [ $i -lt ${#s_usr[@]} ]; do
         if [ -f "${s_home[$i]}/.cache/xs/logonnotify" ]; then
             DISPLAY=${s_disp[$i]} XAUTHORITY="${s_home[$i]}/.Xauthority" \
                 DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u ${s_usr[$i]})/bus" \
-                sendmsg "${s_usr[$i]}" "System is updating (please do not turn off the $device)\nDetails: $log_f"
-            rm -f "${s_home[$i]}/.cache/xs/logonnotify"
-        fi; i=$(($i+1))
+                sendmsg "${s_usr[$i]}" "System is updating (please do not turn off the $device)\nDetails: $log_f" && rm -f "${s_home[$i]}/.cache/xs/logonnotify"
+        fi; ((i+=1))
     done
 done; }
 
@@ -327,7 +324,7 @@ userlogon(){
 }
 
 exit_passive(){
-    trouble "XS-done"; sync; disown -a; sleep 1
+    trbl "XS-done"; sync; disown -a; sleep 1
     systemctl stop xs-autoupdate.service >/dev/null 2>&1; exit 0
 }
 
@@ -336,18 +333,71 @@ exit_active(){
     secremain=${conf_a[reboot_delay_num]}
     actn_cmd="${conf_a[reboot_action_str]}"
     ignoreusers="$(echo "${conf_a[reboot_ignoreusers_str]}" |sed 's/ /\\\|/g')"
-    iconcritical; trouble "Active Exit: $actn_cmd";trouble "XS-done"; sync &
+    iconcritical; trbl "Active Exit: $actn_cmd";trbl "XS-done"; sync &
     while [ $secremain -gt 0 ]; do
         usersexist=$false; loginctl list-sessions --no-legend |grep -v "$ignoreusers" |grep "seat\|pts" >/dev/null && usersexist=$true
 
         if [ "${conf_a[reboot_delayiflogin_bool]}" = "$ctrue" ]; then
-            if [ "$usersexist" = "$false" ]; then troublem "No logged-in users detected; System will $actn_cmd now"; secremain=0; sleep 1; continue; fi; fi
+            if [ "$usersexist" = "$false" ]; then trblm "No logged-in users detected; System will $actn_cmd now"; secremain=0; sleep 1; continue; fi; fi
 
         if [[ "$usersexist" = "$true" ]]; then sendall "$1\nYour $device will $actn_cmd in \n$secremain seconds..."; fi
         sleep ${conf_a[reboot_notifyrep_num]}
-        let secremain-=${conf_a[reboot_notifyrep_num]}
+        ((secremain-=conf_a[reboot_notifyrep_num]))
     done
     sync; $actn_cmd || systemctl --force $actn_cmd || systemctl --force --force $actn_cmd
+}
+
+conf_validstr(){ echo "$val" |grep -E "^($1)\$" >/dev/null || return 1; return 0; }
+
+conf_valid(){
+#parse and validate lines from config and persistant data files
+parse="$(echo "$line" | cut -d ';' -f 1 | cut -d '#' -f 1)"
+echo "$parse" | grep -F '=' &>/dev/null || return 1
+
+varname="$(echo "$parse" | cut -d '=' -f 1)"
+val="$(echo "$line" | cut -d '=' -f 2-)"
+
+if ! echo $varname |grep "$validconf" >/dev/null; then
+    echo "$varname"|grep -E "^($1):" >/dev/null || return 1
+fi
+[[ "$val" = "" ]] && return 1
+
+#validate zflag
+if echo "$varname" | grep -E "^zflag:" >/dev/null; then
+    return 0
+fi
+
+#validate zrbld/timestamp
+if echo "$varname"|grep -E "(_(up)?date\$|^zrbld:)" >/dev/null; then
+    val="$(to_int "$val")"; [[ "$val" -lt "20000101" ]] && return 1
+    return 0
+fi
+
+#validate boolean
+if echo "$varname" | grep -F "bool" >/dev/null; then
+    [[ ( "$val" = "$ctrue" || "$val" = "$cfalse" ) ]] || return 1; return 0; fi
+
+#validate numbers
+if echo "$varname" | grep -E "_(num|freq)$" >/dev/null; then
+    if [[ ! "$val" = "0" ]]; then val="$(to_int "$val")"
+    [[ "$val" = "0" ]] && return 1; fi; fi
+#validate integers 0+
+if echo "$conf_int0" | grep "$varname" >/dev/null; then
+    if [[ "$val" -lt "0" ]]; then return 1; fi; fi
+#validate integers -1+
+if echo "$conf_intn1" | grep "$varname" >/dev/null || echo "$varname" | grep -E "_freq$" >/dev/null; then
+    if [[ "$val" -lt "-1" ]]; then return 1; fi; fi
+
+#validate string settings
+
+case "$varname" in
+        reboot_action_str) conf_validstr "reboot|halt|poweroff|shutdown" || return 1 ;;
+        aur_1helper_str) conf_validstr "auto|none|all|pikaur|apacman" || return 1 ;;
+        notify_function_str) conf_validstr "auto|gdbus|desk|send" || return 1 ;;
+        self_branch_str) conf_validstr "stable|beta" || return 1 ;;
+esac
+
+return 0
 }
 
 conf_export(){
@@ -416,20 +466,34 @@ echo '# Custom Makepkg Flags for AUR packages (requires pikaur)' >> "$xs_autoupd
 echo '#zflag:packagename1,packagename2=--flag1,--flag2,--flag3' >> "$xs_autoupdate_conf"
 echo '#' >> "$xs_autoupdate_conf"
 echo '#' >> "$xs_autoupdate_conf"
-IFS=$'\n'; for i in $(sort <<< "${!conf_a[*]}"); do
+IFS=$'\n'; for i in $(sort <<< "${!conf_a[@]}"); do
 	echo "$i=${conf_a[$i]}" >> "$xs_autoupdate_conf"
 done; IFS=$DEFAULTIFS
 }
 
 
 
+#----------------------
+#---Initialize---
+#----------------------
 
-#---Init Config---
+# misc vars
 
-#Init Defaults
+set $debgn; pcmbin="pacman"; pacmirArgs="--geoip"
+true=0; false=1; ctrue=1; cfalse=0
+ss_a='s/\x1B\[[0-9;]\+[A-Za-z]//g'; ss_b="-cd '\11\12\15\40-\176'"
+co_n='\033[0m';co_g='\033[1;32m';co_g2='\033[0;32m';co_r='\033[1;31m[Error]';co_y='\033[1;33m[Warning]'
+url_repo="https://raw.githubusercontent.com/lectrode/xs-update-manjaro"
+url_aur="https://aur.archlinux.org/rpc/"
+typeset -A err; typeset -A logqueue; logqueue_i=-1
+[[ "$DEFAULTIFS" = "" ]] && DEFAULTIFS="$IFS"
+[[ "$xs_autoupdate_conf" = "" ]] && xs_autoupdate_conf='/etc/xs/auto-update.conf'
+device="device"; [[ "$(uname -m)" = "x86_64" ]] && device="computer"
+sf_ignore="$(get_pacmancfg SyncFirst)"; if [[ ! "$sf_ignore" = "" ]]; then sf_ignore="--ignore $(echo $sf_ignore|sed -e 's/\s/ --ignore /g')"; fi
+
+#config: defaults
 
 typeset -A flag_a
-
 typeset -A conf_a; conf_a=(
     [aur_1helper_str]="auto"
     [aur_aftercritical_bool]=$cfalse
@@ -487,81 +551,44 @@ typeset -A conf_a; conf_a=(
     [reboot_1enable_bool]=""
 )
 
-validconf=$(echo "${!conf_a[*]}"|sed 's/ /\\|/g')
+validconf=$(echo "${!conf_a[@]}"|sed 's/ /\\|/g')
 
 conf_int0="notify_lastmsg_num reboot_delay_num reboot_notifyrep_num"
-conf_intn1="cln_paccache_num aur_update_freq aur_devel_freq flatpak_update_freq update_keys_freq \
-    update_mirrors_freq reboot_1enable_num"
+conf_intn1="cln_paccache_num reboot_1enable_num"
 conf_legacy="bool_detectErrors bool_Downgrades bool_notifyMe bool_updateFlatpak bool_updateKeys str_cleanLevel \
     str_ignorePackages str_log_d str_mirrorCountry str_testSite aur_devel_bool flatpak_1enable_bool \
     reboot_1enable_bool repair_pythonrebuild_bool"
 
-#Load external config
-#Basic config validation
+#config: load from file
 
 if [[ -f "$xs_autoupdate_conf" ]]; then
     while read line; do
-        line="$(echo "$line" | cut -d ';' -f 1 | cut -d '#' -f 1)"
-        if echo "$line" | grep -F '=' &>/dev/null; then
-            varname="$(echo "$line" | cut -d '=' -f 1)"
-            if ! echo $varname |grep "$validconf" >/dev/null; then
-                echo "$varname"|grep -F "zflag:" >/dev/null || continue
-            fi
-            line="$(echo "$line" | cut -d '=' -f 2-)"
-            if [[ ! "$line" = "" ]]; then
-                #validate boolean
-                echo "$varname" | grep -F "bool" >/dev/null && if [[ ! ( "$line" = "$ctrue" || \
-                    "$line" = "$cfalse" ) ]]; then continue; fi
-                #validate numbers
-                if echo "$varname" | grep "num" >/dev/null; then 
-                    if [[ ! "$line" = "0" ]]; then line="$(cnvrt2_int "$line")"
-                    [[ "$line" = "0" ]] && continue; fi; fi
-                #validate integers 0+
-                if echo "$conf_int0" | grep "$varname" >/dev/null; then 
-                    if [[ "$line" -lt "0" ]]; then continue; fi; fi
-                #validate integers -1+
-                if echo "$conf_intn1" | grep "$varname" >/dev/null; then 
-                    if [[ "$line" -lt "-1" ]]; then continue; fi; fi
-                #validate reboot_action_str
-                if [[ "$varname" = "reboot_action_str" ]]; then case "$line" in
-                        reboot|halt|poweroff) ;;
-                        shutdown) line="poweroff" ;;
-                        *) continue
-                esac; fi
-                #validate reboot_notifyrep_num
-                if [[ "$varname" = "reboot_notifyrep_num" ]]; then
-                    if [[ "$line" -gt "${conf_a[reboot_delay_num]}" ]]; then
-                        line=${conf_a[reboot_delay_num]}; fi
-                    if [[ "$line" = "0" ]]; then
-                        line=1; fi
-                fi
-                #validate aur_1helper_str
-                if [[ "$varname" = "aur_1helper_str" ]]; then case "$line" in
-                        auto|none|all|pikaur|apacman) ;;
-                        *) continue
-                esac; fi
-                #validate notify_function_str
-                if [[ "$varname" = "notify_function_str" ]]; then case "$line" in
-                        auto|gdbus|desk|send) ;;
-                        *) continue
-                esac; fi
-                #validate self_branch_str
-                if [[ "$varname" = "self_branch_str" ]]; then case "$line" in
-                        stable|beta) ;;
-                        *) continue
-                esac; fi
 
-                conf_a[$varname]=$line
-                echo "$varname" | grep -F "zflag:" >/dev/null && \
-                    flag_a["$(echo "$varname" | cut -d ':' -f 2)"]="$line"
-
-            fi
+        #basic validation
+        if ! conf_valid "zflag"; then
+            [[ ! "$varname" = "" ]] && [[ ! "$val" = "" ]] && trblqin "$co_y invalid config data (reset/ignored): [$line]"
+            continue
         fi
-    done < "$xs_autoupdate_conf"; unset line; unset varname
+
+        #validate reboot_notifyrep_num
+        if [[ "$varname" = "reboot_notifyrep_num" ]]; then
+            if [[ "$val" -gt "${conf_a[reboot_delay_num]}" ]]; then
+                val=${conf_a[reboot_delay_num]}; fi
+            if [[ "$val" = "0" ]]; then
+                val=1; fi
+        fi
+
+        [[ "$varname" = "reboot_action_str" ]] && [[ "$val" = "shutdown" ]] && val="poweroff"
+
+        conf_a[$varname]=$val
+        echo "$varname" | grep -F "zflag:" >/dev/null && \
+            flag_a["$(echo "$varname" | cut -d ':' -f 2)"]="$val"
+
+    done < "$xs_autoupdate_conf"; unset line parse varname val
 fi
 unset validconf
 
-#Convert legacy settings
+#config: convert legacy
 
 case "${conf_a[str_cleanLevel]}" in
     high) conf_a[cln_aurpkg_bool]="$ctrue";  conf_a[cln_aurbuild_bool]="$ctrue";  conf_a[cln_paccache_num]=0 ;;
@@ -588,10 +615,10 @@ IFS=$' '; for i in $(sort <<< "$conf_legacy"); do
 done; IFS=$DEFAULTIFS
 
 
-# Init notifications
+# notifications: get method
 
-notierr(){ troubleqin "ERR: $1 specified for notifications but not available/functioning. There will be no notifications"; }
-notierr2(){ troubleqin "ERR: No compatible notification method found. There will be no notifications"; }
+notierr(){ trblqin "$co_r $1 specified for notifications but not available/functioning. There will be no notifications"; }
+notierr2(){ trblqin "$co_r No compatible notification method found. There will be no notifications"; }
 
 if [ "${conf_a[notify_1enable_bool]}" = "$ctrue" ]; then 
 
@@ -615,19 +642,19 @@ if [ "${conf_a[notify_1enable_bool]}" = "$ctrue" ]; then
     "auto")
         if notify-desktop --help >/dev/null 2>&1; then
             noti_gdbus=$false; noti_send=$false
-            troubleqin "notify-desktop found, using for notifications"
+            trblqin "notify-desktop found, using for notifications"
         elif chk_pkgisinst plasma-desktop; then
             if notify-send --help >/dev/null 2>&1; then
                 noti_gdbus=$false; noti_desk=$false
-                troubleqin "WARN: KDE Plasma desktop found, falling back to legacy. Please install notify-desktop-git for fully-supported notifications in KDE Plasma"
+                trblqin "$co_y KDE Plasma desktop found, falling back to legacy. Please install notify-desktop-git for fully-supported notifications in KDE Plasma"
             else
                 noti_desk=$false; noti_send=$false
-                troubleqin "ERR: KDE Plasma desktop found, but no compatible notification method found"
-                if gdbus help >/dev/null 2>&1; then troubleqin "WARN: Attempting to use gdbus...(this will likely fail on KDE)"
+                trblqin "$co_r KDE Plasma desktop found, but no compatible notification method found"
+                if gdbus help >/dev/null 2>&1; then trblqin "$co_y Attempting to use gdbus...(this will likely fail on KDE)"
                 else noti_gdbus=$false; notierr2; fi
             fi
         else
-            if gdbus help >/dev/null 2>&1; then noti_desk=$false; noti_send=$false; troubleqin "gdbus found, using for notifications"
+            if gdbus help >/dev/null 2>&1; then noti_desk=$false; noti_send=$false; trblqin "gdbus found, using for notifications"
             else noti_gdbus=$false; noti_desk=$false; noti_send=$false; notierr2; fi
         fi
         ;;
@@ -636,31 +663,29 @@ if [ "${conf_a[notify_1enable_bool]}" = "$ctrue" ]; then
 else noti_gdbus=$false; noti_desk=$false; noti_send=$false; fi
 
 
-#---Main---
 
-#Start Sub-processes
+#sub-processes
 if [ "$1" = "backnotify" ]; then backgroundnotify; exit 0; fi
 if [ "$1" = "userlogon" ]; then userlogon; exit 0; fi
 
-if pidof -o %PPID -x "$(basename "$0")">/dev/null; then exit 0; fi #Only 1 main instance allowed
+if pidof -o %PPID -x "$(basename "$0")">/dev/null; then exit 0; fi #only 1 main instance allowed
 
-#Init logs
+#logs
 mkdir -p "${conf_a[main_logdir_str]}"; if [ ! -d "${conf_a[main_logdir_str]}" ]; then conf_a[main_logdir_str]="/var/log/xs"; fi
 mkdir -p "${conf_a[main_logdir_str]}"; if [ ! -d "${conf_a[main_logdir_str]}" ]; then
     echo "Critical error: could not create log directory"; sleep 10; exit; fi
-log_d="${conf_a[main_logdir_str]}"; log_f="${log_d}/auto-update.log"; export log_f
+log_d="${conf_a[main_logdir_str]}"; log_f="${log_d}/auto-update.log"
 if [ ! -f "$log_f" ]; then echo "init">$log_f; fi
 
 
-#Init perst
+#perst
 if [ "${conf_a[main_perstdir_str]}" = "" ]; then perst_d="$log_d"
 else perst_d="${conf_a[main_perstdir_str]}"; fi
 mkdir -p "$perst_d"; if [ ! -d "$perst_d" ]; then
     conf_a[main_perstdir_str]="${conf_a[main_logdir_str]}"; perst_d="${conf_a[main_logdir_str]}"; fi
-perst_f="${perst_d}/auto-update_persist.dat"; export perst_d
+perst_f="${perst_d}/auto-update_persist.dat"
 
 typeset -A rbld_a
-
 typeset -A perst_a; perst_a=(
     [last_aur_update]="20000101"
     [last_aurdev_update]="20000101"
@@ -669,42 +694,38 @@ typeset -A perst_a; perst_a=(
     [last_mirrors_update]="20000101"
 )
 
-validconf=$(echo "${!perst_a[*]}"|sed 's/ /\\|/g')
+validconf=$(echo "${!perst_a[@]}"|sed 's/ /\\|/g')
 if [[ -f "$perst_f" ]]; then
     while read line; do
-        line="$(echo "$line" | cut -d ';' -f 1 | cut -d '#' -f 1)"
-        if echo "$line" | grep -F '=' &>/dev/null; then
-            varname="$(echo "$line" | cut -d '=' -f 1)"
-            if ! echo $varname |grep "$validconf" >/dev/null; then
-                echo "$varname"|grep -F "zrbld:" >/dev/null || continue
-            fi
-            line="$(echo "$line" | cut -d '=' -f 2-)"
-            if [[ ! "$line" = "" ]]; then
-                #validate timestamp
-                line="$(cnvrt2_int "$line")"; [[ "$line" -lt "20000101" ]] && continue
-                perst_a[$varname]=$line
-                echo "$varname" | grep -F "zrbld:" >/dev/null && \
-                    rbld_a["$(echo "$varname" | cut -d ':' -f 2)"]=$line
-            fi
+
+        #basic validation
+        if ! conf_valid "zflag"; then
+            [[ ! "$varname" = "" ]] && [[ ! "$val" = "" ]] && trblqin "$co_y invalid cache data (reset/ignored): [$line]"
+            continue
         fi
-    done < "$perst_f"; unset line varname
+        perst_a[$varname]=$val
+        echo "$varname" | grep -F "zrbld:" >/dev/null && \
+            rbld_a["$(echo "$varname" | cut -d ':' -f 2)"]=$val
+    done < "$perst_f"; unset line parse varname val
 fi; unset validconf
 
-#Finish init
+#finish init
 conf_export; perst_export
-self_repo="https://raw.githubusercontent.com/lectrode/xs-update-manjaro"
-sf_ignore="$(get_pacmancfg SyncFirst)"; if [[ ! "$sf_ignore" = "" ]]; then sf_ignore="--ignore $(echo $sf_ignore|sed -e 's/\s/ --ignore /g')"; fi
-if [[ "${conf_a[repair_1enable_bool]}" = "$cfalse" ]]; then
-    [repair_db01_bool]=$cfalse; [repair_keyringpkg_bool]=$cfalse
-    [repair_manualpkg_bool]=$cfalse; [repair_pikaur01_bool]=$cfalse
-    [repair_aurrbld_bool]=$cfalse
-fi
-echo "$(date) - XS-Update $vsndsp initialized..." |tee $log_f
-troublem "Config file: $xs_autoupdate_conf"
-troubleqout
+export perst_d log_f #needed for backgroundnotify
+[[ "${conf_a[main_country_str]}" = "" ]] || pacmirArgs="-c ${conf_a[main_country_str]}"
+[[ "${conf_a[main_ignorepkgs_str]}" = "" ]] || pacignore="--ignore ${conf_a[main_ignorepkgs_str]}"
+[[ "${conf_a[update_downgrades_bool]}" = "$ctrue" ]] && pacdown="u"
+(echo)>$log_f;trbl "${co_g}XS-Update $vsndsp initialized..."
+trblm "Config file: $xs_autoupdate_conf"; trblqout
+
+
+#-----------------------
+#---Main Script---
+#-----------------------
+
 
 #Wait up to 5 minutes for network
-trouble "Waiting for network..."
+trbl "Waiting for network..."
 waiting=1;waited=0; while [ $waiting = 1 ]; do
     test_online && waiting=0
     if [ $waiting = 1 ]; then
@@ -717,13 +738,13 @@ sleep 8 # In case connection just established
 
 #Check for updates for self
 if [[ "${conf_a[self_1enable_bool]}" = "$ctrue" ]]; then
-    trouble "Checking for self-updates [branch: ${conf_a[self_branch_str]}]..."
-    vsn_new="$(dl_outstd "$self_repo/master/vsn_${conf_a[self_branch_str]}" | tr -cd '[:alnum:]+-.')"
+    trbl "Checking for self-updates [branch: ${conf_a[self_branch_str]}]..."
+    vsn_new="$(dl_outstd "$url_repo/master/vsn_${conf_a[self_branch_str]}" | tr -cd '[:alnum:]+-.')"
     if [[ ! "$(echo $vsn_new | cut -d '+' -f 1)" = "$(printf "$(echo $vsn_new | cut -d '+' -f 1)\n$vsn" | sort -V | head -n1)" ]]; then
-        if dl_verify "selfupdate" "$self_repo/${vsn_new}/hash_auto-update-sh" "$self_repo/${vsn_new}/auto-update.sh"; then
-            troublem "==================================="
-            troublem "Updating script to $vsn_new..."
-            troublem "==================================="
+        if dl_verify "selfupdate" "$url_repo/${vsn_new}/hash_auto-update-sh" "$url_repo/${vsn_new}/auto-update.sh"; then
+            trblm "==================================="
+            trblm "Updating script to $vsn_new..."
+            trblm "==================================="
             mv -f '/tmp/xs-autmp-selfupdate/auto-update.sh' "$0"
             chmod +x "$0"; "$0" "XS"& exit 0
         fi
@@ -731,7 +752,7 @@ if [[ "${conf_a[self_1enable_bool]}" = "$ctrue" ]]; then
 fi
 
 #wait up to 5 minutes for running instances of pacman/apacman/pikaur
-trouble "Waiting for pacman/apacman/pikaur..."
+trbl "Waiting for pacman/apacman/pikaur..."
 waiting=1;waited=0; while [ $waiting = 1 ]; do
     isRunning=0; pgrep pacman >/dev/null && isRunning=1
     pgrep apacman >/dev/null && isRunning=1; pgrep pikaur >/dev/null && isRunning=1
@@ -745,87 +766,83 @@ done;  unset waiting waited isRunning
 #remove .lck file (pacman is not running at this point)
 if [[ -f "$(get_pacmancfg DBPath)db.lck" ]]; then rm -f "$(get_pacmancfg DBPath)db.lck"; fi
 
-#init main script and background notifications
-trouble "Init vars and notifier..."
+#init background notifications
+trbl "init notifier..."
 rm -f "${perst_d}\auto-update_termnotify.dat" >/dev/null 2>&1
 getsessions; i=0; while [ $i -lt ${#s_usr[@]} ]; do
 if [ -d "${s_home[$i]}/.cache" ]; then
     mkdir -p "${s_home[$i]}/.cache/xs"; echo "tmp" > "${s_home[$i]}/.cache/xs/logonnotify"
-    chown -R ${s_usr[$i]} "${s_home[$i]}/.cache/xs"; fi; i=$(($i+1)); done
+    chown -R ${s_usr[$i]} "${s_home[$i]}/.cache/xs"; fi; ((i+=1)); done
 "$0" "backnotify"& bkntfypid=$!
-pacmirArgs="--geoip"
-[[ "${conf_a[main_country_str]}" = "" ]] || pacmirArgs="-c ${conf_a[main_country_str]}"
-[[ "${conf_a[main_ignorepkgs_str]}" = "" ]] || pacignore="--ignore ${conf_a[main_ignorepkgs_str]}"
-[[ "${conf_a[update_downgrades_bool]}" = "$ctrue" ]] && pacdown="u"
 
 #Check for, download, and install main updates
 pacclean
 
-if ! type pacman-mirrors >/dev/null 2>&1; then trouble "pacman-mirrors not found - skipping"
+if ! type pacman-mirrors >/dev/null 2>&1; then trbl "pacman-mirrors not found - skipping"
 elif perst_isneeded "${conf_a[update_mirrors_freq]}" "${perst_a[last_mirrors_update]}"; then
-    trouble "Updating Mirrors... [branch: $(pacman-mirrors -G 2>/dev/null)]"
-    (pacman-mirrors $pacmirArgs || pacman-mirrors -g) 2>&1 |sed 's/\x1B\[[0-9;]\+[A-Za-z]//g' |tr -cd '\11\12\15\40-\176' |tee -a $log_f
-    err_mirrors=${PIPESTATUS[0]}; if [[ $err_mirrors -eq 0 ]]; then
-        perst_update "last_mirrors_update"; else trouble "ERR: pacman-mirrors exited with code $err_mirrors"; fi
+    trbl "Updating Mirrors... [branch: $(pacman-mirrors -G 2>/dev/null)]"
+    (pacman-mirrors $pacmirArgs || pacman-mirrors -g) 2>&1 |sed $ss_a|tr $ss_b|tee -a $log_f
+    err[mirrors]=${PIPESTATUS[0]}; if [[ ${err[mirrors]} -eq 0 ]]; then
+        perst_update "last_mirrors_update"; else trbl "$co_y pacman-mirrors exited with code ${err[mirrors]}"; fi
 fi
 
 if perst_isneeded "${conf_a[update_keys_freq]}" "${perst_a[last_keys_update]}"; then
-    trouble "Refreshing keys..."; pacman-key --refresh-keys  2>&1 |tee -a $log_f |tee /dev/tty |grep "Total number processed:" >/dev/null
+    trbl "Refreshing keys..."; pacman-key --refresh-keys  2>&1 |tee -a $log_f |tee /dev/tty |grep "Total number processed:" >/dev/null
     err_keys=("${PIPESTATUS[@]}"); if [[ "${err_keys[0]}" -eq 0 ]] || [[ "${err_keys[3]}" -eq 0 ]]; then
-        perst_update "last_keys_update"; err_keys=0; else err_keys=${err_keys[0]}; trouble "ERR: pacman-key exited with code $err_keys"; fi
-fi
+        perst_update "last_keys_update"; err[keys]=0; else err[keys]=${err_keys[0]}; trbl "$co_y pacman-key exited with code ${err[keys]}"; fi
+unset err_keys; fi
 
 #While loop for updating main and AUR packages
 #Any critical errors will disable further changes
 while : ; do
 
-if ! chk_freespace_all; then err_repo=1; break; fi
+if ! chk_freespace_all; then err[repo]=1; err_crit="repo"; break; fi
 
 #Does not support installs with xproto<=7.0.31-1
 if chk_pkgisinst "xproto" && [[ "$(chk_pkgvsndiff "xproto" "7.0.31-1")" -le 0 ]]; then
-    trouble "ERR: Critical: old xproto installed - system too old for script to update"; err_repo=1; break; fi
+    trbl "$co_r old xproto installed - system too old for script to update"; err[repo]=1; err_crit="repo"; break; fi
 
-trouble "Downloading packages from main repos..."
-pacman -Syyuw$pacdown --needed --noconfirm $pacignore 2>&1 |tee -a $log_f
-err_repodl=${PIPESTATUS[0]}; if [[ $err_repodl -ne 0 ]]; then trouble "ERR: pacman exited with code $err_repodl"; fi
+trbl "Downloading packages from main repos..."
+pacman -Syyuw$pacdown --needed --noconfirm $pacignore 2>&1 |sed $ss_a|tr $ss_b|tee -a $log_f
+err_repodl=${PIPESTATUS[0]}; if [[ $err_repodl -ne 0 ]]; then trbl "$co_y pacman failed to download packages - err code:$err_repodl"; fi
 
 [[ "${conf_a[cln_paccache_num]}" = "0" ]] || pacclean
-if ! chk_freespace_all; then err_repo=1; break; fi
+if ! chk_freespace_all; then err[repo]=1; err_crit="repo"; break; fi
 
 #Required manual pkg changes
-if [[ "${conf_a[repair_manualpkg_bool]}" = "$ctrue" ]]; then
-    trouble "Checking for required manual package changes..."
+if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_manualpkg_bool]}" = "$ctrue" ]]; then
+    trbl "Checking for required manual package changes..."
     #Fix for pacman<5.2 (18.1.1 and earlier)
     if [[ "$(chk_pkgvsndiff "pacman" "5.2.0-1")" -lt 0 ]]; then
-        trouble "Old pacman detected, attempting to use pacman-static..."
-        pacman -Sw --noconfirm pacman-static 2>&1 |tee -a $log_f
-        pacman -U --noconfirm "$(get_pkgfilename "pacman-static")" 2>&1 |tee -a $log_f && pcmbin="pacman-static"
+        trbl "Old pacman detected, attempting to use pacman-static..."
+        pacman -Sw --noconfirm pacman-static 2>&1 |sed $ss_a|tr $ss_b|tee -a $log_f
+        pacman -U --noconfirm "$(get_pkgfilename "pacman-static")" 2>&1 |sed $ss_a |tr $ss_b|tee -a $log_f && pcmbin="pacman-static"
         if ! chk_pkgisinst "pacman-static"; then
-            if dl_verify "pacmanstatic" "$self_repo/master/external/hash_pacman-static" "$self_repo/master/external/pacman-static"; then
+            if dl_verify "pacmanstatic" "$url_repo/master/external/hash_pacman-static" "$url_repo/master/external/pacman-static"; then
                 chmod +x /tmp/xs-autmp-pacmanstatic/pacman-static && pcmbin="/tmp/xs-autmp-pacmanstatic/pacman-static"; fi; fi
         if echo "$pcmbin"|grep "pacman-static" >/dev/null 2>&1 && $pcmbin --help >/dev/null 2>&1; then
-            trouble "Using $pcmbin"
-        else trouble "ERR: Critical: failed to use pacman-static. Cannot update system packages"; err_repo=1; break; fi
+            trbl "Using $pcmbin"
+        else trbl "$co_r failed to use pacman-static. Cannot update system packages"; err[repo]=1; err_crit="repo"; break; fi
     fi
 fi
 
 #Update keyring packages
-trouble "Updating system keyrings..."
+trbl "Updating system keyrings..."
 for p in $(pacman -Sl core | grep "\[installed"|grep -oP "[^ ]*\-keyring"); do
-    $pcmbin -S --needed --noconfirm $p $sf_ignore 2>&1 |tee -a $log_f
+    $pcmbin -S --needed --noconfirm $p $sf_ignore 2>&1 |sed $ss_a|tr $ss_b|tee -a $log_f
     if [[ "${PIPESTATUS[0]}" -gt 0 ]]; then
-        if [[ "${conf_a[repair_keyringpkg_bool]}" = "$ctrue" ]]; then
+        if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_keyringpkg_bool]}" = "$ctrue" ]]; then
             kr_date="$(get_pkgbuilddate $p)"; if [[ "$kr_date" = "" ]]; then kr_date="20000101"; fi
             #if build date of the keyring package is 546 or more days ago (~1.5 years), assume too old to update normally
             if perst_isneeded 546 "$kr_date"; then
-                troublem "$1 is old and failed to update; attempting fix..."
-                if ! disableSigsUpdate "$p"; then trouble "ERR: Critical: could not update $1"; err_sys=1; break; fi; fi
-        else err_sys=1; fi
+                trblm "$1 is old and failed to update; attempting fix..."
+                if ! disableSigsUpdate "$p"; then trbl "$co_r could not update $1"; err[sys]=1; break; fi; fi
+        else err[sys]=1; fi
     fi
 done
-if [[ $err_sys -ne 0 ]]; then trouble "ERR: Critical: failed to update system keyrings"; break; fi
+if [[ ${err[sys]} -ne 0 ]]; then trbl "$co_r failed to update system keyrings"; err_crit="sys"; break; fi
 
-if [[ "${conf_a[repair_manualpkg_bool]}" = "$ctrue" ]]; then
+if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_manualpkg_bool]}" = "$ctrue" ]]; then
     manualRemoval "libcanberra-gstreamer" "0.30+2+gc0620e4-3"; manualRemoval "lib32-libcanberra-gstreamer" "0.30+2+gc0620e4-3" #consolidated with lib32-/libcanberra-pulse 2021/06
     manualRemoval "python2-dbus" "1.2.16-3" #Removed from dbus-python 2021/03
     manualRemoval "pyqt5-common" "5.13.2-1" #Removed from repos early 2019/12
@@ -835,42 +852,42 @@ if [[ "${conf_a[repair_manualpkg_bool]}" = "$ctrue" ]]; then
     manualRemoval "engrampa-thunar-plugin" "1.0-2" #Xfce 17.1.10 and earlier
 fi
 
-trouble "Updating system packages..."
-for p in $(pacman -Sl core | grep "\[installed"|grep -oP "[^ ]*\-(keyring|system)") ${conf_a[main_systempkgs_str]}; do
-    chk_pkgisinst $p && $pcmbin -S --needed --noconfirm $p 2>&1 |tee -a $log_f
-    let "err_sys=err_sys+${PIPESTATUS[0]}"; done
-if [[ $err_sys -ne 0 ]]; then trouble "ERR: pacman exited with code $err_sys"; fi
+trbl "Updating system packages..."
+for p in $(pacman -Sl core | grep "\[installed"|grep -oP "[^ ]*\-system") ${conf_a[main_systempkgs_str]}; do
+    chk_pkgisinst $p && $pcmbin -S --needed --noconfirm $p 2>&1 |sed $ss_a|tr $ss_b|tee -a $log_f
+    ((err[sys]+=PIPESTATUS[0])); done
+if [[ ${err[sys]} -ne 0 ]]; then trbl "$co_y system packages failed to update - err:${err[sys]}"; fi
 
 #check for missing database files
-if [[ "${conf_a[repair_db01_bool]}" = "$ctrue" ]]; then
-    trouble "Checking for database errors..."
+if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_db01_bool]}" = "$ctrue" ]]; then
+    trbl "Checking for database errors..."
     i=-1; while IFS= read -r rp_errmsg; do
         if [[ ! "$rp_errmsg" = "" ]]; then
             ((i++))
             rp_pathf[$i]="$(echo "$rp_errmsg" | grep -o "/[[:alnum:]\.@_\/-]*")"
-            troublem "Missing file: ${rp_pathf[$i]}"
+            trblm "Missing file: ${rp_pathf[$i]}"
             rp_pathd[$i]="$(dirname "${rp_pathf[$i]}")"
-            troublem "detected dir: ${rp_pathd[$i]}"
+            trblm "detected dir: ${rp_pathd[$i]}"
             rp_pkgn[$i]="$(basename "${rp_pathd[$i]}"|grep -oP '.+?(?=-[0-9A-z\.\+:]+-[0-9]+$)')"
-            troublem "detected pkg: ${rp_pkgn[$i]}"; mkdir -p "${rp_pathd[$i]}"
-            if [[ ! -d "${rp_pathd[$i]}" ]]; then trouble "Err: mkdir failed: ${rp_pathd[$i]}"; break; fi
+            trblm "detected pkg: ${rp_pkgn[$i]}"; mkdir -p "${rp_pathd[$i]}"
+            if [[ ! -d "${rp_pathd[$i]}" ]]; then trbl "$co_y mkdir failed: ${rp_pathd[$i]}"; break; fi
             touch "${rp_pathd[$i]}/files"; touch "${rp_pathd[$i]}/desc"
-            if [[ ! -f "${rp_pathd[$i]}/files" ]] || [[ ! -f "${rp_pathd[$i]}/desc" ]]; then trouble "Err: could not touch files and/or desc"; continue; fi
+            if [[ ! -f "${rp_pathd[$i]}/files" ]] || [[ ! -f "${rp_pathd[$i]}/desc" ]]; then trbl "$co_y could not touch files and/or desc"; continue; fi
         fi
     done< <($pcmbin -Qo pacman 2>&1 | grep -Ei "error: could not open file [[:alnum:]\.@_\/-]*\/(files|desc): No such file or directory")
     unset rp_errmsg; IFS=$DEFAULTIFS
     m=$i; i=-1; while [[ $i -lt $m ]]; do
         ((i++))
-        troublem "reinstalling ${rp_pkgn[$i]}"
-        $pcmbin -S --noconfirm --overwrite=* ${rp_pkgn[$i]} 2>&1 |tee -a $log_f
+        trblm "reinstalling ${rp_pkgn[$i]}"
+        $pcmbin -S --noconfirm --overwrite=* ${rp_pkgn[$i]} 2>&1 |sed $ss_a|tr $ss_b|tee -a $log_f
     done; unset i m rp_pathf[@] rp_pathd[@] rp_pkgn[@]
 else if [[ "$($pcmbin -Dk 2>&1|grep -Ei "error:.+(description file|file list) is missing$"|wc -l)" -gt "0" ]]; then
-    trouble "ERR: system has missing files in package database. Automatic fix disabled; reporting only."
+    trbl "$co_y system has missing files in package database. Automatic fix disabled; reporting only."
 fi; fi
 
-sync; trouble "Updating packages from main repos..."
-$pcmbin -Su$pacdown --needed --noconfirm $pacignore 2>&1 |tee -a $log_f
-err_repo=${PIPESTATUS[0]}; if [[ $err_repo -ne 0 ]]; then trouble "ERR: pacman exited with code $err_repo"; break; fi
+sync; trbl "Updating packages from main repos..."
+$pcmbin -Su$pacdown --needed --noconfirm $pacignore 2>&1 |sed $ss_a|tr $ss_b|tee -a $log_f
+err[repo]=${PIPESTATUS[0]}; if [[ ${err[repo]} -ne 0 ]]; then trbl "$co_r pacman exited with code ${err[repo]}"; err_crit="repo"; break; fi
 if [[ "${conf_a[aur_aftercritical_bool]}" = "$cfalse" ]]; then
     [[ "$(chk_crit)" = "crit" ]] && break
 fi
@@ -883,25 +900,25 @@ for helper in pikaur apacman; do
     if ! echo "${conf_a[aur_1helper_str]}" | grep "all\|auto\|$helper" >/dev/null; then hlpr_a[$helper]=0; continue; fi
     if ! type $helper >/dev/null 2>&1; then hlpr_a[$helper]=0
         if [[ "${conf_a[aur_1helper_str]}" = "$helper" ]]; then
-            trouble "Warning: AURHelper: $helper specified but not found..."; fi
+            trbl "$co_y AURHelper: $helper specified but not found..."; fi
     fi
 done
 [[ "$((${hlpr_a[pikaur]}+${hlpr_a[apacman]}))" = "0" ]] && break
 
 #check if AUR pkgs need rebuild
-if [[ "${conf_a[repair_aurrbld_bool]}" = "$ctrue" ]]; then
+if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_aurrbld_bool]}" = "$ctrue" ]]; then
     if ! chk_pkgisinst "rebuild-detector"; then
-        trouble "AUR Helper installed and enabled, and rebuilds are enabled. Installing missing dependency: rebuild-detector"
-        $pcmbin -S --needed --noconfirm rebuild-detector 2>&1 |tee -a $log_f
+        trbl "AUR Helper installed and enabled, and rebuilds are enabled. Installing missing dependency: rebuild-detector"
+        $pcmbin -S --needed --noconfirm rebuild-detector 2>&1 |sed $ss_a|tr $ss_b|tee -a $log_f
     fi
     if chk_pkgisinst "rebuild-detector"; then
-        trouble "Checking if AUR packages need rebuild..."
-        for pkg in ${!rbld_a[*]}; do
+        trbl "Checking if AUR packages need rebuild..."
+        for pkg in ${!rbld_a[@]}; do
             if perst_isneeded "${conf_a[repair_aurrbldfail_freq]}" "${perst_a[zrbld:$pkg]}"; then perst_reset "zrbld:$pkg"; continue; fi
         done
         rbaur_curpkg="$(aurrebuildlist)"
         if [[ "$rbaur_curpkg" = "" ]] || [[ "$rbaur_curpkg" =~ ^[[:space:]]+$ ]]; then unset rbaur_curpkg
-            else trouble "AUR Rebuilds required; AUR timestamps have been reset"; perst_reset "last_aur_update"; fi
+            else trblm "AUR Rebuilds required; AUR timestamps have been reset"; perst_reset "last_aur_update"; fi
     fi
 fi
 
@@ -910,21 +927,21 @@ if ! perst_isneeded "${conf_a[aur_update_freq]}" "${perst_a[last_aur_update]}"; 
 #ensure pikaur functional if enabled
 if [ "${hlpr_a[pikaur]}" = "1" ]; then
     pikpkg="$($pcmbin -Qq pikaur)"
-    pikerr=0; pikaur -S --needed --noconfirm ${pikpkg:-pikaur} 2>&1 |tee -a $log_f
+    pikerr=0; pikaur -S --needed --noconfirm ${pikpkg:-pikaur} 2>&1 |sed $ss_a|tr $ss_b|tee -a $log_f
     if [[ ! "${PIPESTATUS[0]}" = "0" ]]; then pikerr=1
         else pikaur -Q pikaur 2>&1|grep "rebuild" >/dev/null && pikerr=1
     fi
     if [[ "$pikerr" = "1" ]]; then
-        trouble "Warning: AURHelper: pikaur not functioning"
-        if [[ "${conf_a[repair_pikaur01_bool]}" = "$ctrue" ]] && $pcmbin -Q pikaur >/dev/null 2>&1; then
-            troublem "Attempting to re-install ${pikpkg:-pikaur}..."
+        trbl "$co_y AURHelper: pikaur not functioning"
+        if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_pikaur01_bool]}" = "$ctrue" ]] && $pcmbin -Q pikaur >/dev/null 2>&1; then
+            trblm "Attempting to re-install ${pikpkg:-pikaur}..."
             mkdir "/tmp/xs-autmp-2delete"; pushd "/tmp/xs-autmp-2delete"
             git clone https://github.com/actionless/pikaur.git && cd pikaur
-            python3 ./pikaur.py -S --rebuild --noconfirm ${pikpkg:-pikaur} 2>&1 |tee -a $log_f
+            python3 ./pikaur.py -S --rebuild --noconfirm ${pikpkg:-pikaur} 2>&1 |sed $ss_a|tr $ss_b|tee -a $log_f
             sync; popd; rm -rf /tmp/xs-autmp-2delete
         fi
         if ! pikaur --help >/dev/null 2>&1; then
-            trouble "Warning: AURHelper: pikaur will be disabled"; fi
+            trbl "$co_y AURHelper: pikaur will be disabled"; fi
     fi
 fi
 
@@ -948,16 +965,16 @@ fi
 #Update AUR packages
 
 #rebuild AUR packages before AUR updates to minimize AUR package update failure
-if [ "${conf_a[repair_aurrbld_bool]}" = "$ctrue" ]; then
+if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_aurrbld_bool]}" = "$ctrue" ]]; then
     if [[ ! "$rbaur_curpkg" = "" ]]; then
-        trouble "Rebuilding AUR packages..."
+        trbl "Rebuilding AUR packages..."
         err_rbaur=0; while [[ ! "$rbaur_curpkg" = "$rbaur_oldpkg" ]]; do
             for pkg in $rbaur_curpkg; do
-                troublem "Rebuilding/reinstalling $pkg"
+                trblm "Rebuilding/reinstalling $pkg"
                 if [ "${hlpr_a[pikaur]}" = "1" ]; then
-                    rbcst="$(echo "${!flag_a[*]}"|grep -E "(^|,)$pkg(,|$)")"
+                    rbcst="$(echo "${!flag_a[@]}"|grep -E "(^|,)$pkg(,|$)")"
                     [[ ! "$rbcst" = "" ]] && rbcst_flg="--mflags=${flag_a[$rbcst]}"
-                    test_online && pikaur -Sa --noconfirm $rbcst_flg $pkg 2>&1 |tee -a $log_f
+                    test_online && pikaur -Sa --noconfirm $rbcst_flg $pkg 2>&1 |sed $ss_a|tr $ss_b|tee -a $log_f
                     err_rbaur=${PIPESTATUS[0]}; unset rbcst rbcst_flg
                 elif [ "${hlpr_a[apacman]}" = "1" ]; then
                     apacman -S --auronly --noconfirm $pkg 2>&1 |tee -a $log_f
@@ -965,36 +982,35 @@ if [ "${conf_a[repair_aurrbld_bool]}" = "$ctrue" ]; then
                 fi
             done
             rbaur_oldpkg="$rbaur_curpkg"; rbaur_curpkg="$(aurrebuildlist)"
-        done; #let "err_aur=err_aur+err_rbaur"
-        for pkg in $rbaur_curpkg; do perst_update "zrbld:$pkg"; done
+        done; for pkg in $rbaur_curpkg; do perst_update "zrbld:$pkg"; done
     fi
 fi; unset err_rbaur rbaur_curpkg rbaur_oldpkg
 
 #AUR updates with pikaur
 if [[ "${hlpr_a[pikaur]}" = "1" ]]; then
     if [[ ! "${#flag_a[@]}" = "0" ]]; then
-        trouble "Updating AUR packages with custom flags [pikaur]..."
-        for i in ${!flag_a[*]}; do
+        trbl "Updating AUR packages with custom flags [pikaur]..."
+        for i in ${!flag_a[@]}; do
             for j in $(echo "$i" | tr ',' ' '); do
                 $pcmbin -Q $j >/dev/null 2>&1 && custpkg+=" $j"; done
             if [[ ! "$custpkg" = "" ]]; then
                 if test_online; then
-                    troublem "Updating: $custpkg"
-                    pikaur -S --needed --noconfirm --noprogressbar --mflags=${flag_a[$i]} $custpkg 2>&1 |tee -a $log_f
-                    let "err_aur=err_aur+${PIPESTATUS[0]}"; unset custpkg
-                else trouble "Not online - skipping pikaur command"; unset custpkg; break; fi
+                    trblm "Updating: $custpkg"
+                    pikaur -S --needed --noconfirm --noprogressbar --mflags=${flag_a[$i]} $custpkg 2>&1 |sed $ss_a|tr $ss_b|tee -a $log_f
+                    ((err[aur]+=PIPESTATUS[0])); unset custpkg
+                else trbl "$co_y not online - skipping pikaur command"; unset custpkg; break; fi
             fi
         done
     fi
     perst_isneeded "${conf_a[aur_devel_freq]}" "${perst_a[last_aurdev_update]}" && devel="--devel"
     if test_online; then
-        trouble "Updating remaining AUR packages [pikaur $devel]..."
-        pikaur -Sau$pacdown $devel --needed --noconfirm --noprogressbar $pacignore 2>&1 |tee -a $log_f
-        let "err_aur=err_aur+${PIPESTATUS[0]}"; if [[ $err_aur -eq 0 ]]; then
+        trbl "Updating remaining AUR packages [pikaur $devel]..."
+        pikaur -Sau$pacdown $devel --needed --noconfirm --noprogressbar $pacignore 2>&1 |sed $ss_a|tr $ss_b|tee -a $log_f
+        ((err[aur]+=PIPESTATUS[0])); if [[ ${err[aur]} -eq 0 ]]; then
             perst_update "last_aur_update"
             [[ "$devel" == "--devel" ]] && perst_update "last_aurdev_update"
-        else trouble "ERR: pikaur exited with error"; fi
-    else err_aur="1"; trouble "Not online - skipping pikaur command"; fi
+        else trbl "$co_y pikaur exited with error"; fi
+    else err[aur]="1"; trbl "$co_y not online - skipping pikaur command"; fi
 fi
 
 #AUR updates with apacman
@@ -1007,11 +1023,10 @@ if [[ "${hlpr_a[apacman]}" = "1" ]]; then
     chmod +x $dummystty
     export PATH=$(dirname $dummystty):$PATH
 
-    trouble "Updating AUR packages [apacman]..."
-    apacman -Su$pacdown --auronly --needed --noconfirm $pacignore 2>&1 |\
-        sed 's/\x1B\[[0-9;]\+[A-Za-z]//g' |tr -cd '\11\12\15\40-\176' |grep -Fv "%" |tee -a $log_f
-    err_aur=${PIPESTATUS[0]}; if [[ $err_aur -eq 0 ]]; then 
-        perst_update "last_aur_update"; else trouble "ERR: apacman exited with error"; fi
+    trbl "Updating AUR packages [apacman]..."
+    apacman -Su$pacdown --auronly --needed --noconfirm $pacignore 2>&1 |sed $ss_a|tr $ss_b|grep -Fv "%" |tee -a $log_f
+    err[aur]=${PIPESTATUS[0]}; if [[ ${err[aur]} -eq 0 ]]; then 
+        perst_update "last_aur_update"; else trbl "$co_y apacman exited with error"; fi
     if [ -d "$(dirname $dummystty)" ]; then rm -rf "$(dirname $dummystty)"; fi
 fi
 
@@ -1022,51 +1037,62 @@ done
 
 #Remove orphan packages, cleanup
 if [[ "${conf_a[cln_1enable_bool]}" = "$ctrue" ]]; then 
-    if [[ "${conf_a[cln_orphan_bool]}" = "$ctrue" ]] && [[ "$err_repo" = "0" ]]; then
+    if [[ "${conf_a[cln_orphan_bool]}" = "$ctrue" ]] && [[ "${err[repo]}" = "0" ]]; then
         if [[ ! "$($pcmbin -Qtdq)" = "" ]]; then
-            trouble "Removing orphan packages..."
-            $pcmbin -Rnsc $($pcmbin -Qtdq) --noconfirm 2>&1 |tee -a $log_f
-            err_orphan=${PIPESTATUS[0]}; [[ $err_orphan -gt 0 ]] && trouble "ERR: pacman exited with error code $err_orphan"
+            trbl "Removing orphan packages..."
+            $pcmbin -Rnsc $($pcmbin -Qtdq) --noconfirm 2>&1 |sed $ss_a|tr $ss_b|tee -a $log_f
+            err[orphan]=${PIPESTATUS[0]}; [[ ${err[orphan]} -gt 0 ]] && trbl "$co_y pacman exited with error code ${err[orphan]}"
         fi
     fi
 fi
 pacclean
-if [[ "$pcmbin" = "pacman-static" ]]; then $pcmbin -Rdd --noconfirm pacman-static 2>&1 |tee -a $log_f
+if [[ "$pcmbin" = "pacman-static" ]]; then $pcmbin -Rdd --noconfirm pacman-static 2>&1 |sed $ss_a|tr $ss_b|tee -a $log_f
     elif [[ ! "$pcmbin" = "pacman" ]]; then dl_clean "pacmanstatic"; fi
 
 #Update Flatpak
 if perst_isneeded "${conf_a[flatpak_update_freq]}" "${perst_a[last_flatpak_update]}"; then
     if flatpak --help >/dev/null 2>&1; then
-        trouble "Updating flatpak..."
+        trbl "Updating flatpak..."
         flatpak update -y | grep -Fv "[" 2>&1 |tee -a $log_f
-        err_fpak=${PIPESTATUS[0]}; if [[ $err_fpak -eq 0 ]]; then
-            perst_update "last_flatpak_update"; else trouble "ERR: flatpak exited with error code $err_fpak"; fi
-        if [[ "${conf_a[cln_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[cln_flatpakorphan_bool]}" = "$ctrue" ]] && [[ "$err_fpak" = "0" ]]; then
-            trouble "Removing unused flatpak packages..."
+        err[fpak]=${PIPESTATUS[0]}; if [[ ${err[fpak]} -eq 0 ]]; then
+            perst_update "last_flatpak_update"; else trbl "$co_y flatpak exited with error code ${err[fpak]}"; fi
+        if [[ "${conf_a[cln_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[cln_flatpakorphan_bool]}" = "$ctrue" ]] && [[ "${err[fpak]}" = "0" ]]; then
+            trbl "Removing unused flatpak packages..."
             flatpak uninstall --unused -y | grep -Fv "[" 2>&1 |tee -a $log_f
-            err_fpakorphan=${PIPESTATUS[0]}; if [[ $err_fpakorphan -ne 0 ]]; then
-                trouble "ERR: flatpak orphan removal exited with error code $err_fpakorphan"; fi
+            err[fpakorphan]=${PIPESTATUS[0]}; if [[ ${err[fpakorphan]} -ne 0 ]]; then
+                trbl "$co_y flatpak orphan removal exited with error code ${err[fpakorphan]}"; fi
         fi
     fi
 fi
 
 #Finish
-trouble "Update completed, final notifications and cleanup..."
+trbl "Update completed, final notifications and cleanup..."
 touch "${perst_d}\auto-update_termnotify.dat"
+
+#Log error codes
+[[ "$(( $(echo ${err[@]}|sed 's/ /+/g') ))" = "0" ]] || codes="$co_y"
+[[ "$err_crit" = "" ]] || codes="$co_r"
+trbl "$(
+	echo -n "$codes${co_n} error codes: "
+	for i in sys repo mirrors keys aur fpak orphan fpakorphan; do
+        if [[ "$err_crit" = "$i" ]]; then echo -n "\033[1;31m[$i:${err[$i]}]"
+        elif [[ ! "$((err[$i]+0))" = "0" ]]; then echo -n "\033[1;33m[$i:${err[$i]}]"
+        else echo -n "$co_n[$i:${err[$i]}]"; fi
+    done
+)"
 
 msg="System update finished"
 grep "Total Installed Size:\|new signatures:\|Total Removed Size:" $log_f >/dev/null || msg="$msg; no changes made"
 
 if [ "${conf_a[notify_errors_bool]}" = "$ctrue" ]; then 
-    trouble "error codes: [mirrors:$err_mirrors][sys:$err_sys][keys:$err_keys][repo:$err_repo][aur:$err_aur][fpak:$err_fpak][orphan:$err_orphan][fpakorphan:$err_fpakorphan]"
-    [[ "$err_mirrors" -gt 0 ]] && errmsg="\n-Mirrors failed to update"
-    [[ "$err_sys" -gt 0 ]] && errmsg="$errmsg \n-System packages failed to update"
-    [[ "$err_keys" -gt 0 ]] && errmsg="$errmsg \n-Security signatures failed to update"
-    [[ "$err_repo" -gt 0 ]] && errmsg="$errmsg \n-Packages from main repos failed to update"
-    [[ "$err_aur" -gt 0 ]] && errmsg="$errmsg \n-Packages from AUR failed to update"
-    [[ "$err_fpak" -gt 0 ]] && errmsg="$errmsg \n-Packages from Flatpak failed to update"
-    [[ "$err_orphan" -gt 0 ]] && errmsg="$errmsg \n-Failed to remove orphan packages"
-    [[ "$err_fpakorphan" -gt 0 ]] && errmsg="$errmsg \n-Failed to remove flatpak orphan packages"
+    [[ "${err[mirrors]}" -gt 0 ]] && errmsg="\n-Mirrors failed to update"
+    [[ "${err[sys]}" -gt 0 ]] && errmsg="$errmsg \n-System packages failed to update"
+    [[ "${err[keys]}" -gt 0 ]] && errmsg="$errmsg \n-Security signatures failed to update"
+    [[ "${err[repo]}" -gt 0 ]] && errmsg="$errmsg \n-Packages from main repos failed to update"
+    [[ "${err[aur]}" -gt 0 ]] && errmsg="$errmsg \n-Packages from AUR failed to update"
+    [[ "${err[fpak]}" -gt 0 ]] && errmsg="$errmsg \n-Packages from Flatpak failed to update"
+    [[ "${err[orphan]}" -gt 0 ]] && errmsg="$errmsg \n-Failed to remove orphan packages"
+    [[ "${err[fpakorphan]}" -gt 0 ]] && errmsg="$errmsg \n-Failed to remove flatpak orphan packages"
     [[ "$errmsg" = "" ]] || msg="$msg \n\nSome update tasks encountered errors:$errmsg"
 fi
 
