@@ -1,6 +1,6 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.9.0-rc2"; vsndsp="$vsn 2021-10-10"
+vsn="v3.9.0-rc3"; vsndsp="$vsn 2021-10-14"
 #-Downloads and Installs new updates
 #-Depends: coreutils, grep, pacman, pacman-mirrors, iputils
 #-Optional Depends: flatpak, notify-desktop, pikaur, rebuild-detector, wget
@@ -194,7 +194,7 @@ perst_export(){
     echo "#Last day specific tasks were performed" > "$perst_f"
     IFS=$'\n'; for i in $(sort <<< "${!perst_a[@]}"); do
         echo "$i=${perst_a[$i]}" >> "$perst_f"
-    done; IFS=$DEFAULTIFS
+    done; unset IFS
 }
 
 perst_reset(){
@@ -232,9 +232,10 @@ aurrebuildlist(){
 
 #Notification Functions
 
-iconnormal(){ icon=ElectrodeXS; }
-iconwarn(){ icon=important; }
-iconcritical(){ icon=system-shutdown; }
+iconnormal(){ icon=emblem-default; [[ -f "/usr/share/pixmaps/ElectrodeXS.png" ]] && icon=ElectrodeXS; }
+iconwarn(){ icon=dialog-warning; }
+iconcritical(){ icon=emblem-important; }
+iconerror(){ icon=dialog-error; }
 
 sendmsg(){
 #$1=user; $2=msg; [$3=timeout]
@@ -276,17 +277,15 @@ getsessions(){
     IFS=$'\n\b'; unset s_usr[@] s_disp[@] s_home[@]
     i=0; for sssn in $(loginctl list-sessions --no-legend); do
         IFS=' '; sssnarr=($sssn)
-        actv="$(loginctl show-session -p Active ${sssnarr[0]}|cut -d'=' -f2)"
-        [[ "$actv" = "yes" ]] || continue
+        loginctl show-session -p Active ${sssnarr[0]}|grep -F "yes" >/dev/null || continue
         usr="$(loginctl show-session -p Name ${sssnarr[0]}|cut -d'=' -f2)"
         disp="$(loginctl show-session -p Display ${sssnarr[0]}|cut -d'=' -f2)"
         [[ "$disp" = "" ]] && disp=":0" #workaround for gnome, which returns nothing
         usrhome="$(getent passwd "$usr"|cut -d: -f6)"
         [[  ${usr-x} && ${disp-x} && ${usrhome-x} ]] || continue
-        s_usr[$i]=$usr; s_disp[$i]=$disp; s_home[$i]=$usrhome; ((i+=1)); IFS=$'\n\b';
-    done
-    if [ ${#s_usr[@]} -eq 0 ]; then sleep 5; fi
-    IFS=$DEFAULTIFS; unset i usr disp usrhome actv sssnarr sssn
+        s_usr[$i]=$usr; s_disp[$i]=$disp; s_home[$i]=$usrhome; ((i++)); IFS=$'\n\b';
+    done; sleep 1
+    unset IFS i usr disp usrhome sssnarr sssn
 }
 
 sendall(){
@@ -295,22 +294,23 @@ sendall(){
             DISPLAY=${s_disp[$i]} XAUTHORITY="${s_home[$i]}/.Xauthority" \
                 DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u ${s_usr[$i]})/bus" \
                 sendmsg "${s_usr[$i]}" "$1" "$2" || sa_err=1
-            ((i+=1))
+            ((i++))
         done; unset i; return $sa_err
     fi
 }
 
 backgroundnotify(){
 iconwarn; while : ; do
-    if [[ -f "${perst_d}\auto-update_termnotify.dat" ]]; then 
-        sendall "dismiss"; rm -f "${perst_d}\auto-update_termnotify.dat" >/dev/null 2>&1; disown -a; sleep 2; exit 0; fi
+    if [[ -f "${perst_d}/auto-update_termnotify.dat" ]]; then 
+        sendall "dismiss"; rm -f "${perst_d}/auto-update_termnotify.dat"; sleep 2; exit 0; fi
     sleep 2; getsessions; i=0; while [ $i -lt ${#s_usr[@]} ]; do
         if [ -f "${s_home[$i]}/.cache/xs/logonnotify" ]; then
             DISPLAY=${s_disp[$i]} XAUTHORITY="${s_home[$i]}/.Xauthority" \
                 DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u ${s_usr[$i]})/bus" \
-                sendmsg "${s_usr[$i]}" "System is updating (please do not turn off the $device)\nDetails: $log_f" && rm -f "${s_home[$i]}/.cache/xs/logonnotify"
-        fi; ((i+=1))
-    done
+                sendmsg "${s_usr[$i]}" "System is updating (please do not turn off the $device)\nDetails: $log_f" \
+                && rm -f "${s_home[$i]}/.cache/xs/logonnotify"
+        fi; ((i++))
+    done; [[ ${#s_usr[@]} -eq 0 ]] && sleep 3
 done; }
 
 userlogon(){
@@ -324,7 +324,8 @@ userlogon(){
 }
 
 exit_passive(){
-    trbl "XS-done"; sync; disown -a; sleep 1
+    trbl "XS-done"; sync; n=0
+    while jobs|grep Running >/dev/null && [[ $n -le 15 ]] ; do ((n++)); sleep 2; done
     systemctl stop xs-autoupdate.service >/dev/null 2>&1; exit 0
 }
 
@@ -401,74 +402,75 @@ return 0
 }
 
 conf_export(){
-if [ ! -d "$(dirname $xs_autoupdate_conf)" ]; then mkdir "$(dirname $xs_autoupdate_conf)"; fi
-echo '#Config for XS-AutoUpdate' > "$xs_autoupdate_conf"
-echo '#' >> "$xs_autoupdate_conf"
-echo '# AUR Settings #' >> "$xs_autoupdate_conf"
-echo '#aur_1helper_str:          Valid options are auto,none,all,pikaur,apacman' >> "$xs_autoupdate_conf"
-echo '#aur_aftercritical_bool:   Enable/Disable AUR updates immediately after critical system updates' >> "$xs_autoupdate_conf"
-echo '#aur_update_freq:          Update AUR packages every X days' >> "$xs_autoupdate_conf"
-echo '#aur_devel_freq:           Update -git and -svn AUR packages every X days (-1 to disable, best if a multiple of aur_update_freq, pikaur only)' >> "$xs_autoupdate_conf"
-echo '#' >> "$xs_autoupdate_conf"
-echo '# Cleanup Settings #' >> "$xs_autoupdate_conf"
-echo '#cln_1enable_bool:         Enable/Disable ALL package cleanup (overrides following cleanup settings)' >> "$xs_autoupdate_conf"
-echo '#cln_aurpkg_bool:          Enable/Disable AUR package cleanup' >> "$xs_autoupdate_conf"
-echo '#cln_aurbuild_bool:        Enable/Disable AUR build cleanup' >> "$xs_autoupdate_conf"
-echo '#cln_flatpakorphan_bool:   Enable/Disable uninstall of uneeded flatpak packages' >> "$xs_autoupdate_conf"
-echo '#cln_orphan_bool:          Enable/Disable uninstall of uneeded repo packages' >> "$xs_autoupdate_conf"
-echo '#cln_paccache_num:         Number of official packages to keep (-1 to keep all)' >> "$xs_autoupdate_conf"
-echo '#' >> "$xs_autoupdate_conf"
-echo '# Flatpak Settings #' >> "$xs_autoupdate_conf"
-echo '#flatpak_update_freq:      Check for Flatpak package updates every X days (-1 to disable)' >> "$xs_autoupdate_conf"
-echo '#' >> "$xs_autoupdate_conf"
-echo '# Notification Settings #' >> "$xs_autoupdate_conf"
-echo '#notify_1enable_bool:      Enable/Disable nofications' >> "$xs_autoupdate_conf"
-echo '#notify_function_str:      Valid options are auto,gdbus,desk,send' >> "$xs_autoupdate_conf"
-echo '#notify_lastmsg_num:       Seconds before final normal notification expires (0=never)' >> "$xs_autoupdate_conf"
-echo '#notify_errors_bool:       Include failed tasks in summary notification' >> "$xs_autoupdate_conf"
-echo '#notify_vsn_bool:          Include version number in notifications' >> "$xs_autoupdate_conf"
-echo '#' >> "$xs_autoupdate_conf"
-echo '# Main Settings #' >> "$xs_autoupdate_conf"
-echo '#main_ignorepkgs_str:      List of packages to ignore separated by spaces (in addition to pacman.conf)' >> "$xs_autoupdate_conf"
-echo '#main_systempkgs_str:      List of packages to update before any other packages (i.e. archlinux-keyring)' >> "$xs_autoupdate_conf"
-echo '#main_logdir_str:          Path to the log directory' >> "$xs_autoupdate_conf"
-echo '#main_perstdir_str:        Path to the persistant timestamp directory (uses main_logdir_str if not defined)' >> "$xs_autoupdate_conf"
-echo '#main_country_str:         Countries separated by commas from which to pull updates. Default is automatic (geoip)' >> "$xs_autoupdate_conf"
-echo '#main_testsite_str:        URL (without protocol) used to test internet connection' >> "$xs_autoupdate_conf"
-echo '#' >> "$xs_autoupdate_conf"
-echo '# Reboot Settings #' >> "$xs_autoupdate_conf"
-echo '#reboot_1enable_num:       Perform system power action: 2=always, 1=only after critical updates, 0=only if normal reboot may not be possible, -1=never' >> "$xs_autoupdate_conf"
-echo '#reboot_action_str:        System power action. Valid options are reboot, halt, poweroff' >> "$xs_autoupdate_conf"
-echo "#reboot_delayiflogin_bool: Only delay rebooting $device if users are logged in" >> "$xs_autoupdate_conf"
-echo "#reboot_delay_num:         Delay in seconds to wait before rebooting the $device" >> "$xs_autoupdate_conf"
-echo '#reboot_notifyrep_num:     Reboot notification is updated every X seconds. Best if reboot_delay_num is evenly divisible by this' >> "$xs_autoupdate_conf"
-echo '#reboot_ignoreusers_str:   Ignore these users even if logged on. List users separated by spaces' >> "$xs_autoupdate_conf"
-echo '#' >> "$xs_autoupdate_conf"
-echo '# Automatic Repair Settings #' >> "$xs_autoupdate_conf"
-echo '#repair_1enable_bool:      Enable/Disable all repairs' >> "$xs_autoupdate_conf"
-echo '#repair_db01_bool:         Enable/Disable Repair missing "desc"/"files" files in package database' >> "$xs_autoupdate_conf"
-echo '#repair_keyringpkg_bool:   Enable/Disable Manual update of obsolete keyring packages' >> "$xs_autoupdate_conf"
-echo '#repair_manualpkg_bool:    Enable/Disable Perform critical package changes required for continued updates' >> "$xs_autoupdate_conf"
-echo '#repair_pikaur01_bool:     Enable/Disable Re-install pikaur if not functioning' >> "$xs_autoupdate_conf"
-echo '#repair_aurrbld_bool:      Enable/Disable Rebuild AUR packages after dependency updates (requires AUR helper enabled)' >> "$xs_autoupdate_conf"
-echo '#repair_aurrbldfail_freq:  Retry rebuild/reinstall of AUR packages after dependency updates every X days (-1=never, 0=always)' >> "$xs_autoupdate_conf"
-echo '#' >> "$xs_autoupdate_conf"
-echo '# Self-update Settings #' >> "$xs_autoupdate_conf"
-echo '#self_1enable_bool:        Enable/Disable updating self (this script)' >> "$xs_autoupdate_conf"
-echo '#self_branch_str:          Update branch (this script only): stable, beta' >> "$xs_autoupdate_conf"
-echo '#' >> "$xs_autoupdate_conf"
-echo '# Update Settings #' >> "$xs_autoupdate_conf"
-echo '#update_downgrades_bool:   Directs pacman to downgrade package if remote is older than local' >> "$xs_autoupdate_conf"
-echo '#update_mirrors_freq:      Update mirror list every X days (-1 to disable)' >> "$xs_autoupdate_conf"
-echo '#update_keys_freq:         Check for security signature/key updates every X days (-1 to disable)' >> "$xs_autoupdate_conf"
-echo '#' >> "$xs_autoupdate_conf"
-echo '# Custom Makepkg Flags for AUR packages (requires pikaur)' >> "$xs_autoupdate_conf"
-echo '#zflag:packagename1,packagename2=--flag1,--flag2,--flag3' >> "$xs_autoupdate_conf"
-echo '#' >> "$xs_autoupdate_conf"
-echo '#' >> "$xs_autoupdate_conf"
+[[ -d "$(dirname $xs_autoupdate_conf)" ]] || mkdir "$(dirname $xs_autoupdate_conf)"
+cat << 'EOF' > "$xs_autoupdate_conf"
+#Config for XS-AutoUpdate
+# AUR Settings #
+#aur_1helper_str:          Valid options are auto,none,all,pikaur,apacman
+#aur_aftercritical_bool:   Enable/Disable AUR updates immediately after critical system updates
+#aur_update_freq:          Update AUR packages every X days
+#aur_devel_freq:           Update -git and -svn AUR packages every X days (-1 to disable, best if a multiple of aur_update_freq, pikaur only)
+
+# Cleanup Settings #
+#cln_1enable_bool:         Enable/Disable ALL package cleanup (overrides following cleanup settings)
+#cln_aurpkg_bool:          Enable/Disable AUR package cleanup
+#cln_aurbuild_bool:        Enable/Disable AUR build cleanup
+#cln_flatpakorphan_bool:   Enable/Disable uninstall of uneeded flatpak packages
+#cln_orphan_bool:          Enable/Disable uninstall of uneeded repo packages
+#cln_paccache_num:         Number of official packages to keep (-1 to keep all)
+
+# Flatpak Settings #
+#flatpak_update_freq:      Check for Flatpak package updates every X days (-1 to disable)
+
+# Notification Settings #
+#notify_1enable_bool:      Enable/Disable nofications
+#notify_function_str:      Valid options are auto,gdbus,desk,send
+#notify_lastmsg_num:       Seconds before final normal notification expires (0=never)
+#notify_errors_bool:       Include failed tasks in summary notification
+#notify_vsn_bool:          Include version number in notifications
+
+# Main Settings #
+#main_ignorepkgs_str:      List of packages to ignore separated by spaces (in addition to pacman.conf)
+#main_systempkgs_str:      List of packages to update before any other packages (i.e. archlinux-keyring)
+#main_logdir_str:          Path to the log directory
+#main_perstdir_str:        Path to the persistant timestamp directory (uses main_logdir_str if not defined)
+#main_country_str:         Countries separated by commas from which to pull updates. Default is automatic (geoip)
+#main_testsite_str:        URL (without protocol) used to test internet connection
+
+# Reboot Settings #
+#reboot_1enable_num:       Perform system power action: 2=always, 1=only after critical updates, 0=only if normal reboot may not be possible, -1=never
+#reboot_action_str:        System power action. Valid options are reboot, halt, poweroff
+#reboot_delayiflogin_bool: Only delay rebooting $device if users are logged in" >> "$xs_autoupdate_conf"
+#reboot_delay_num:         Delay in seconds to wait before rebooting the $device" >> "$xs_autoupdate_conf"
+#reboot_notifyrep_num:     Reboot notification is updated every X seconds. Best if reboot_delay_num is evenly divisible by this
+#reboot_ignoreusers_str:   Ignore these users even if logged on. List users separated by spaces
+
+# Automatic Repair Settings #
+#repair_1enable_bool:      Enable/Disable all repairs
+#repair_db01_bool:         Enable/Disable Repair missing "desc"/"files" files in package database
+#repair_keyringpkg_bool:   Enable/Disable Manual update of obsolete keyring packages
+#repair_manualpkg_bool:    Enable/Disable Perform critical package changes required for continued updates
+#repair_pikaur01_bool:     Enable/Disable Re-install pikaur if not functioning
+#repair_aurrbld_bool:      Enable/Disable Rebuild AUR packages after dependency updates (requires AUR helper enabled)
+#repair_aurrbldfail_freq:  Retry rebuild/reinstall of AUR packages after dependency updates every X days (-1=never, 0=always)
+
+# Self-update Settings #
+#self_1enable_bool:        Enable/Disable updating self (this script)
+#self_branch_str:          Update branch (this script only): stable, beta
+
+# Update Settings #
+#update_downgrades_bool:   Directs pacman to downgrade package if remote is older than local
+#update_mirrors_freq:      Update mirror list every X days (-1 to disable)
+#update_keys_freq:         Check for security signature/key updates every X days (-1 to disable)
+
+# Custom Makepkg Flags for AUR packages (requires pikaur)
+#zflag:packagename1,packagename2=--flag1,--flag2,--flag3
+
+
+EOF
 IFS=$'\n'; for i in $(sort <<< "${!conf_a[@]}"); do
 	echo "$i=${conf_a[$i]}" >> "$xs_autoupdate_conf"
-done; IFS=$DEFAULTIFS
+done; unset IFS
 }
 
 
@@ -486,7 +488,6 @@ co_n='\033[0m';co_g='\033[1;32m';co_g2='\033[0;32m';co_r='\033[1;31m[Error]';co_
 url_repo="https://raw.githubusercontent.com/lectrode/xs-update-manjaro"
 url_aur="https://aur.archlinux.org/rpc/"
 typeset -A err; typeset -A logqueue; logqueue_i=-1
-[[ "$DEFAULTIFS" = "" ]] && DEFAULTIFS="$IFS"
 [[ "$xs_autoupdate_conf" = "" ]] && xs_autoupdate_conf='/etc/xs/auto-update.conf'
 device="device"; [[ "$(uname -m)" = "x86_64" ]] && device="computer"
 sf_ignore="$(get_pacmancfg SyncFirst)"; if [[ ! "$sf_ignore" = "" ]]; then sf_ignore="--ignore $(echo $sf_ignore|sed -e 's/\s/ --ignore /g')"; fi
@@ -612,7 +613,7 @@ esac
 
 IFS=$' '; for i in $(sort <<< "$conf_legacy"); do
 	unset conf_a[$i]
-done; IFS=$DEFAULTIFS
+done; unset IFS
 
 
 # notifications: get method
@@ -769,10 +770,11 @@ if [[ -f "$(get_pacmancfg DBPath)db.lck" ]]; then rm -f "$(get_pacmancfg DBPath)
 #init background notifications
 trbl "init notifier..."
 rm -f "${perst_d}\auto-update_termnotify.dat" >/dev/null 2>&1
+rm -f "${perst_d}/auto-update_termnotify.dat" >/dev/null 2>&1
 getsessions; i=0; while [ $i -lt ${#s_usr[@]} ]; do
 if [ -d "${s_home[$i]}/.cache" ]; then
     mkdir -p "${s_home[$i]}/.cache/xs"; echo "tmp" > "${s_home[$i]}/.cache/xs/logonnotify"
-    chown -R ${s_usr[$i]} "${s_home[$i]}/.cache/xs"; fi; ((i+=1)); done
+    chown -R ${s_usr[$i]} "${s_home[$i]}/.cache/xs"; fi; ((i++)); done
 "$0" "backnotify"& bkntfypid=$!
 
 #Check for, download, and install main updates
@@ -835,8 +837,8 @@ for p in $(pacman -Sl core | grep "\[installed"|grep -oP "[^ ]*\-keyring"); do
             kr_date="$(get_pkgbuilddate $p)"; if [[ "$kr_date" = "" ]]; then kr_date="20000101"; fi
             #if build date of the keyring package is 546 or more days ago (~1.5 years), assume too old to update normally
             if perst_isneeded 546 "$kr_date"; then
-                trblm "$1 is old and failed to update; attempting fix..."
-                if ! disableSigsUpdate "$p"; then trbl "$co_r could not update $1"; err[sys]=1; break; fi; fi
+                trblm "[$p] is old and failed to update; attempting fix..."
+                if ! disableSigsUpdate "$p"; then trbl "$co_r could not update [$p]"; err[sys]=1; break; fi; fi
         else err[sys]=1; fi
     fi
 done
@@ -875,7 +877,7 @@ if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_db01
             if [[ ! -f "${rp_pathd[$i]}/files" ]] || [[ ! -f "${rp_pathd[$i]}/desc" ]]; then trbl "$co_y could not touch files and/or desc"; continue; fi
         fi
     done< <($pcmbin -Qo pacman 2>&1 | grep -Ei "error: could not open file [[:alnum:]\.@_\/-]*\/(files|desc): No such file or directory")
-    unset rp_errmsg; IFS=$DEFAULTIFS
+    unset rp_errmsg IFS
     m=$i; i=-1; while [[ $i -lt $m ]]; do
         ((i++))
         trblm "reinstalling ${rp_pkgn[$i]}"
@@ -1067,11 +1069,11 @@ fi
 
 #Finish
 trbl "Update completed, final notifications and cleanup..."
-touch "${perst_d}\auto-update_termnotify.dat"
+touch "${perst_d}/auto-update_termnotify.dat"
 
 #Log error codes
 [[ "$(( $(echo ${err[@]}|sed 's/ /+/g') ))" = "0" ]] || codes="$co_y"
-[[ "$err_crit" = "" ]] || codes="$co_r"
+iconnormal; if [[ ! "$err_crit" = "" ]]; then codes="$co_r"; iconerror; fi
 trbl "$(
 	echo -n "$codes${co_n} error codes: "
 	for i in sys repo mirrors keys aur fpak orphan fpakorphan; do
@@ -1105,7 +1107,7 @@ if [[ "$(chk_crit)" = "norm" ]]; then
     if [[ "${conf_a[reboot_1enable_num]}" = "2" ]]; then
         exit_active "$msg\n"
     else
-        iconnormal; sendall "$msg" "${conf_a[notify_lastmsg_num]}"
+        sendall "$msg" "${conf_a[notify_lastmsg_num]}"
         exit_passive
     fi
 else
