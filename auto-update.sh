@@ -1,6 +1,6 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.9.0-rc3"; vsndsp="$vsn 2021-10-14"
+vsn="v3.9.0-rc4"; vsndsp="$vsn 2021-10-15"
 #-Downloads and Installs new updates
 #-Depends: coreutils, grep, pacman, pacman-mirrors, iputils
 #-Optional Depends: flatpak, notify-desktop, pikaur, rebuild-detector, wget
@@ -170,8 +170,7 @@ return 0
 #Persistant Data Functions
 
 perst_isneeded(){
-#$1 = frequency: xxxx_freq
-#$2 = previous date: perst_a[last_xxxx]
+#$1 = xxx_xxx_freq,$2 = perst_a[var]
 
     if [[ "$1" -eq "-1" ]]; then return 1; fi
     curdate=$(date +'%Y%m%d')
@@ -183,22 +182,21 @@ perst_isneeded(){
 }
 
 perst_update(){
-#$1 = last_*
-    perst_a[$1]=$(date +'%Y%m%d'); echo "$1=$(date +'%Y%m%d')" >> "$perst_f"
+#$1=var
+    perst_a[$1]=$(date +'%Y%m%d'); echo "$1=${perst_a[$1]}" >> "$perst_f"
     echo "$1" | grep -F "zrbld:" >/dev/null && \
         rbld_a["$(echo "$1" | cut -d ':' -f 2)"]=$(date +'%Y%m%d')
 }
 
 perst_export(){
     touch "$perst_f"
-    echo "#Last day specific tasks were performed" > "$perst_f"
+    echo "#persistent cache data for xs-update-manjaro" > "$perst_f"
     IFS=$'\n'; for i in $(sort <<< "${!perst_a[@]}"); do
         echo "$i=${perst_a[$i]}" >> "$perst_f"
     done; unset IFS
 }
 
 perst_reset(){
-#$1 = last_*
     if echo "$1" | grep -F "zrbld:" >/dev/null; then
         unset rbld_a["$(echo "$1" | cut -d ':' -f 2)"] perst_a[$1]
         perst_export #cannot use sed, as [] is treated as regex
@@ -234,7 +232,7 @@ aurrebuildlist(){
 
 iconnormal(){ icon=emblem-default; [[ -f "/usr/share/pixmaps/ElectrodeXS.png" ]] && icon=ElectrodeXS; }
 iconwarn(){ icon=dialog-warning; }
-iconcritical(){ icon=emblem-important; }
+iconcritical(){ icon=emblem-urgent; }
 iconerror(){ icon=dialog-error; }
 
 sendmsg(){
@@ -688,11 +686,17 @@ perst_f="${perst_d}/auto-update_persist.dat"
 
 typeset -A rbld_a
 typeset -A perst_a; perst_a=(
-    [last_aur_update]="20000101"
-    [last_aurdev_update]="20000101"
-    [last_flatpak_update]="20000101"
-    [last_keys_update]="20000101"
-    [last_mirrors_update]="20000101"
+    [aur_up_date]="20000101"
+    [aurdev_up_date]="20000101"
+    [flatpak_up_date]="20000101"
+    [keys_up_date]="20000101"
+    [mirrors_up_date]="20000101"
+    #legacy
+    [last_aur_update]=""
+    [last_aurdev_update]=""
+    [last_flatpak_update]=""
+    [last_keys_update]=""
+    [last_mirrors_update]=""
 )
 
 validconf=$(echo "${!perst_a[@]}"|sed 's/ /\\|/g')
@@ -709,6 +713,16 @@ if [[ -f "$perst_f" ]]; then
             rbld_a["$(echo "$varname" | cut -d ':' -f 2)"]=$val
     done < "$perst_f"; unset line parse varname val
 fi; unset validconf
+
+#convert legacy (to be removed next release)
+[[ ! "${perst_a[last_aur_update]}" = "" ]] && perst_a[aur_up_date]="${perst_a[last_aur_update]}"
+[[ ! "${perst_a[last_aurdev_update]}" = "" ]] && perst_a[aurdev_up_date]="${perst_a[last_aurdev_update]}"
+[[ ! "${perst_a[last_flatpak_update]}" = "" ]] && perst_a[flatpak_up_date]="${perst_a[last_flatpak_update]}"
+[[ ! "${perst_a[last_keys_update]}" = "" ]] && perst_a[keys_up_date]="${perst_a[last_keys_update]}"
+[[ ! "${perst_a[last_mirrors_update]}" = "" ]] && perst_a[mirrors_up_date]="${perst_a[last_mirrors_update]}"
+for p in last_aur_update last_aurdev_update last_flatpak_update last_keys_update last_mirrors_update; do unset perst_a[$p]; done
+
+
 
 #finish init
 conf_export; perst_export
@@ -775,23 +789,23 @@ getsessions; i=0; while [ $i -lt ${#s_usr[@]} ]; do
 if [ -d "${s_home[$i]}/.cache" ]; then
     mkdir -p "${s_home[$i]}/.cache/xs"; echo "tmp" > "${s_home[$i]}/.cache/xs/logonnotify"
     chown -R ${s_usr[$i]} "${s_home[$i]}/.cache/xs"; fi; ((i++)); done
-"$0" "backnotify"& bkntfypid=$!
+"$0" "backnotify"&
 
 #Check for, download, and install main updates
 pacclean
 
 if ! type pacman-mirrors >/dev/null 2>&1; then trbl "pacman-mirrors not found - skipping"
-elif perst_isneeded "${conf_a[update_mirrors_freq]}" "${perst_a[last_mirrors_update]}"; then
+elif perst_isneeded "${conf_a[update_mirrors_freq]}" "${perst_a[mirrors_up_date]}"; then
     trbl "Updating Mirrors... [branch: $(pacman-mirrors -G 2>/dev/null)]"
     (pacman-mirrors $pacmirArgs || pacman-mirrors -g) 2>&1 |sed $ss_a|tr $ss_b|tee -a $log_f
     err[mirrors]=${PIPESTATUS[0]}; if [[ ${err[mirrors]} -eq 0 ]]; then
-        perst_update "last_mirrors_update"; else trbl "$co_y pacman-mirrors exited with code ${err[mirrors]}"; fi
+        perst_update "mirrors_up_date"; else trbl "$co_y pacman-mirrors exited with code ${err[mirrors]}"; fi
 fi
 
-if perst_isneeded "${conf_a[update_keys_freq]}" "${perst_a[last_keys_update]}"; then
+if perst_isneeded "${conf_a[update_keys_freq]}" "${perst_a[keys_up_date]}"; then
     trbl "Refreshing keys..."; pacman-key --refresh-keys  2>&1 |tee -a $log_f |tee /dev/tty |grep "Total number processed:" >/dev/null
     err_keys=("${PIPESTATUS[@]}"); if [[ "${err_keys[0]}" -eq 0 ]] || [[ "${err_keys[3]}" -eq 0 ]]; then
-        perst_update "last_keys_update"; err[keys]=0; else err[keys]=${err_keys[0]}; trbl "$co_y pacman-key exited with code ${err[keys]}"; fi
+        perst_update "keys_up_date"; err[keys]=0; else err[keys]=${err_keys[0]}; trbl "$co_y pacman-key exited with code ${err[keys]}"; fi
 unset err_keys; fi
 
 #While loop for updating main and AUR packages
@@ -920,11 +934,11 @@ if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_aurr
         done
         rbaur_curpkg="$(aurrebuildlist)"
         if [[ "$rbaur_curpkg" = "" ]] || [[ "$rbaur_curpkg" =~ ^[[:space:]]+$ ]]; then unset rbaur_curpkg
-            else trblm "AUR Rebuilds required; AUR timestamps have been reset"; perst_reset "last_aur_update"; fi
+            else trblm "AUR Rebuilds required; AUR timestamps have been reset"; perst_reset "aur_up_date"; fi
     fi
 fi
 
-if ! perst_isneeded "${conf_a[aur_update_freq]}" "${perst_a[last_aur_update]}";  then break; fi
+if ! perst_isneeded "${conf_a[aur_update_freq]}" "${perst_a[aur_up_date]}";  then break; fi
 
 #ensure pikaur functional if enabled
 if [ "${hlpr_a[pikaur]}" = "1" ]; then
@@ -1004,13 +1018,13 @@ if [[ "${hlpr_a[pikaur]}" = "1" ]]; then
             fi
         done
     fi
-    perst_isneeded "${conf_a[aur_devel_freq]}" "${perst_a[last_aurdev_update]}" && devel="--devel"
+    perst_isneeded "${conf_a[aur_devel_freq]}" "${perst_a[aurdev_up_date]}" && devel="--devel"
     if test_online; then
         trbl "Updating remaining AUR packages [pikaur $devel]..."
         pikaur -Sau$pacdown $devel --needed --noconfirm --noprogressbar $pacignore 2>&1 |sed $ss_a|tr $ss_b|tee -a $log_f
         ((err[aur]+=PIPESTATUS[0])); if [[ ${err[aur]} -eq 0 ]]; then
-            perst_update "last_aur_update"
-            [[ "$devel" == "--devel" ]] && perst_update "last_aurdev_update"
+            perst_update "aur_up_date"
+            [[ "$devel" == "--devel" ]] && perst_update "aurdev_up_date"
         else trbl "$co_y pikaur exited with error"; fi
     else err[aur]="1"; trbl "$co_y not online - skipping pikaur command"; fi
 fi
@@ -1028,7 +1042,7 @@ if [[ "${hlpr_a[apacman]}" = "1" ]]; then
     trbl "Updating AUR packages [apacman]..."
     apacman -Su$pacdown --auronly --needed --noconfirm $pacignore 2>&1 |sed $ss_a|tr $ss_b|grep -Fv "%" |tee -a $log_f
     err[aur]=${PIPESTATUS[0]}; if [[ ${err[aur]} -eq 0 ]]; then 
-        perst_update "last_aur_update"; else trbl "$co_y apacman exited with error"; fi
+        perst_update "aur_up_date"; else trbl "$co_y apacman exited with error"; fi
     if [ -d "$(dirname $dummystty)" ]; then rm -rf "$(dirname $dummystty)"; fi
 fi
 
@@ -1052,12 +1066,12 @@ if [[ "$pcmbin" = "pacman-static" ]]; then $pcmbin -Rdd --noconfirm pacman-stati
     elif [[ ! "$pcmbin" = "pacman" ]]; then dl_clean "pacmanstatic"; fi
 
 #Update Flatpak
-if perst_isneeded "${conf_a[flatpak_update_freq]}" "${perst_a[last_flatpak_update]}"; then
+if perst_isneeded "${conf_a[flatpak_update_freq]}" "${perst_a[flatpak_up_date]}"; then
     if flatpak --help >/dev/null 2>&1; then
         trbl "Updating flatpak..."
         flatpak update -y | grep -Fv "[" 2>&1 |tee -a $log_f
         err[fpak]=${PIPESTATUS[0]}; if [[ ${err[fpak]} -eq 0 ]]; then
-            perst_update "last_flatpak_update"; else trbl "$co_y flatpak exited with error code ${err[fpak]}"; fi
+            perst_update "flatpak_up_date"; else trbl "$co_y flatpak exited with error code ${err[fpak]}"; fi
         if [[ "${conf_a[cln_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[cln_flatpakorphan_bool]}" = "$ctrue" ]] && [[ "${err[fpak]}" = "0" ]]; then
             trbl "Removing unused flatpak packages..."
             flatpak uninstall --unused -y | grep -Fv "[" 2>&1 |tee -a $log_f
