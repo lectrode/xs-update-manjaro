@@ -273,7 +273,7 @@ Every once in a while, updating Manjaro requires manual package changes to allow
 * Setup and use `pacman-static` if `pacman`<5.2
 * Package removal and/or replacement:
 <table>
-  <tr><td><code>[lib32-]libcanberra-gstreamer</code></td><td><=0.30+2+gc0620e4-3</td><td>2021/06: consolidated with <code>lib32-/libcanberra-pulse</code></td></tr>
+  <tr><td><code>[lib32-]libcanberra-gstreamer</code></td><td><=0.30+2+gc0620e4-3</td><td>2021/06: merged into <code>lib32-/libcanberra-pulse</code></td></tr>
   <tr><td><code>python2-dbus</code></td><td><=1.2.16-3</td><td>2021/03: removed from <code>dbus-python</code></td></tr>
   <tr><td><code>pyqt5-common</code></td><td><=5.13.2-1</td><td>2019/12: removed from repos</td></tr>
   <tr><td><code>ilmbase</code></td><td><=2.3.0-1</td><td>2019/10: merged into <code>openexr</code></td></tr>
@@ -420,7 +420,7 @@ cln_flatpakorphan_bool=1
 cln_orphan_bool=1
 cln_paccache_num=1
 flatpak_update_freq=3
-main_country_str=
+main_country_str=Global,United_States
 main_ignorepkgs_str=
 main_logdir_str=/var/log/xs
 main_perstdir_str=
