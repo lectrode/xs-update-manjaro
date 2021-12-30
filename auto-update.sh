@@ -1,6 +1,6 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.9.1"; vsndsp="$vsn 2021-10-16"
+vsn="v3.9.3"; vsndsp="$vsn 2021-12-30"
 #-Downloads and Installs new updates
 #-Depends: coreutils, grep, pacman, pacman-mirrors, iputils
 #-Optional Depends: flatpak, notify-desktop, pikaur, rebuild-detector, wget
@@ -24,7 +24,9 @@ if [ $# -eq 0 ]; then "$0" "XS"& exit 0; fi # fork to background (start with "no
 debgn=+x; # -x =debugging | +x =no debugging
 
 
-#---Define Functions---
+#-----------------------
+#----Define Functions---
+#-----------------------
 
 to_int(){ [[ "$1" =~ ^[\-]?[0-9]+$ ]] && echo $1 || echo 0; }
 
@@ -42,7 +44,7 @@ trblqout(){
 test_online(){ ping -c 1 "${conf_a[main_testsite_str]}" >/dev/null 2>&1 && return 0; return 1; }
 
 pacclean(){
-[[ ! "${conf_a[cln_1enable_bool]}" = "$ctrue" ]] && return
+[[ "${conf_a[cln_1enable_bool]}" = "$ctrue" ]] || return
 
 [[ "$((conf_a[cln_aurpkg_bool]+conf_a[cln_aurbuild_bool]+conf_a[cln_paccache_num]))" -gt "-1" ]] && trbl "Performing cleanup operations..."
 
@@ -191,9 +193,9 @@ perst_update(){
 perst_export(){
     touch "$perst_f"
     echo "#persistent cache data for xs-update-manjaro" > "$perst_f"
-    IFS=$'\n'; for i in $(sort <<< "${!perst_a[@]}"); do
+    for i in $(sort <<< "${!perst_a[@]}"); do
         echo "$i=${perst_a[$i]}" >> "$perst_f"
-    done; unset IFS
+    done
 }
 
 perst_reset(){
@@ -272,7 +274,7 @@ sendmsg(){
 }
 
 getsessions(){
-    IFS=$'\n\b'; unset s_usr[@] s_disp[@] s_home[@]
+    IFS=$'\n\b'; unset s_usr s_disp s_home
     i=0; for sssn in $(loginctl list-sessions --no-legend); do
         IFS=' '; sssnarr=($sssn)
         loginctl show-session -p Active ${sssnarr[0]}|grep -F "yes" >/dev/null || continue
@@ -281,9 +283,8 @@ getsessions(){
         [[ "$disp" = "" ]] && disp=":0" #workaround for gnome, which returns nothing
         usrhome="$(getent passwd "$usr"|cut -d: -f6)"
         [[  ${usr-x} && ${disp-x} && ${usrhome-x} ]] || continue
-        s_usr[$i]=$usr; s_disp[$i]=$disp; s_home[$i]=$usrhome; ((i++)); IFS=$'\n\b';
-    done; sleep 1
-    unset IFS i usr disp usrhome sssnarr sssn
+        s_usr[$i]=$usr; s_disp[$i]=$disp; s_home[$i]=$usrhome; ((i++))
+    done; sleep 1; unset IFS i usr disp usrhome sssnarr sssn
 }
 
 sendall(){
@@ -316,7 +317,7 @@ userlogon(){
     sleep 5; if [ ! -d "$HOME/.cache/xs" ]; then mkdir -p "$HOME/.cache/xs"; fi
     if [ ! -f "${conf_a[main_logdir_str]}/auto-update.log" ]; then
     if [[ $(ls "${conf_a[main_logdir_str]}" | grep -F "auto-update.log_" 2>/dev/null) ]]; then
-        iconcritical; notify-send -i $icon XS-AutoUpdate -u critical \
+        iconcritical; notify-send -i $icon xs-auto-update -u critical \
             "Kernel and/or drivers were updated. Please restart your $device to finish"
     fi; else touch "$HOME/.cache/xs/logonnotify"; fi
 }
@@ -473,9 +474,9 @@ done; unset IFS
 
 
 
-#----------------------
-#---Initialize---
-#----------------------
+#-----------------------
+#-------Initialize------
+#-----------------------
 
 # misc vars
 
@@ -691,12 +692,6 @@ typeset -A perst_a; perst_a=(
     [flatpak_up_date]="20000101"
     [keys_up_date]="20000101"
     [mirrors_up_date]="20000101"
-    #legacy
-    [last_aur_update]=""
-    [last_aurdev_update]=""
-    [last_flatpak_update]=""
-    [last_keys_update]=""
-    [last_mirrors_update]=""
 )
 
 validconf=$(echo "${!perst_a[@]}"|sed 's/ /\\|/g')
@@ -714,15 +709,6 @@ if [[ -f "$perst_f" ]]; then
     done < "$perst_f"; unset line parse varname val
 fi; unset validconf
 
-#convert legacy (to be removed next release)
-[[ ! "${perst_a[last_aur_update]}" = "" ]] && perst_a[aur_up_date]="${perst_a[last_aur_update]}"
-[[ ! "${perst_a[last_aurdev_update]}" = "" ]] && perst_a[aurdev_up_date]="${perst_a[last_aurdev_update]}"
-[[ ! "${perst_a[last_flatpak_update]}" = "" ]] && perst_a[flatpak_up_date]="${perst_a[last_flatpak_update]}"
-[[ ! "${perst_a[last_keys_update]}" = "" ]] && perst_a[keys_up_date]="${perst_a[last_keys_update]}"
-[[ ! "${perst_a[last_mirrors_update]}" = "" ]] && perst_a[mirrors_up_date]="${perst_a[last_mirrors_update]}"
-for p in last_aur_update last_aurdev_update last_flatpak_update last_keys_update last_mirrors_update; do unset perst_a[$p]; done
-
-
 
 #finish init
 conf_export; perst_export
@@ -730,12 +716,12 @@ export perst_d log_f #needed for backgroundnotify
 [[ "${conf_a[main_country_str]}" = "" ]] || pacmirArgs="-c ${conf_a[main_country_str]}"
 [[ "${conf_a[main_ignorepkgs_str]}" = "" ]] || pacignore="--ignore ${conf_a[main_ignorepkgs_str]}"
 [[ "${conf_a[update_downgrades_bool]}" = "$ctrue" ]] && pacdown="u"
-(echo)>$log_f;trbl "${co_g}XS-Update $vsndsp initialized..."
+(echo)>$log_f;trbl "${co_g}xs-auto-update $vsndsp initialized..."
 trblm "Config file: $xs_autoupdate_conf"; trblqout
 
 
 #-----------------------
-#---Main Script---
+#------Main Script------
 #-----------------------
 
 
@@ -794,12 +780,13 @@ if [ -d "${s_home[$i]}/.cache" ]; then
 #Check for, download, and install main updates
 pacclean
 
-if ! type pacman-mirrors >/dev/null 2>&1; then trbl "pacman-mirrors not found - skipping"
-elif perst_isneeded "${conf_a[update_mirrors_freq]}" "${perst_a[mirrors_up_date]}"; then
-    trbl "Updating Mirrors... [branch: $(pacman-mirrors -G 2>/dev/null)]"
-    (pacman-mirrors $pacmirArgs || pacman-mirrors -g) 2>&1 |sed $ss_a|tr $ss_b|tee -a $log_f
-    err[mirrors]=${PIPESTATUS[0]}; if [[ ${err[mirrors]} -eq 0 ]]; then
-        perst_update "mirrors_up_date"; else trbl "$co_y pacman-mirrors exited with code ${err[mirrors]}"; fi
+if perst_isneeded "${conf_a[update_mirrors_freq]}" "${perst_a[mirrors_up_date]}"; then
+    if type pacman-mirrors >/dev/null 2>&1; then
+        trbl "Updating Mirrors... [branch: $(pacman-mirrors -G 2>/dev/null)]"
+        (pacman-mirrors $pacmirArgs || pacman-mirrors -g) 2>&1 |sed $ss_a|tr $ss_b|tee -a $log_f
+        err[mirrors]=${PIPESTATUS[0]}; if [[ ${err[mirrors]} -eq 0 ]]; then
+            perst_update "mirrors_up_date"; else trbl "$co_y pacman-mirrors exited with code ${err[mirrors]}"; fi
+    else trbl "pacman-mirrors not found - skipping"; fi
 fi
 
 if perst_isneeded "${conf_a[update_keys_freq]}" "${perst_a[keys_up_date]}"; then
@@ -844,7 +831,7 @@ fi
 
 #Update keyring packages
 trbl "Updating system keyrings..."
-for p in $(pacman -Sl core | grep "\[installed"|grep -oP "[^ ]*\-keyring"); do
+for p in $(pacman -Sl | grep "\[installed"|grep -oP "[^ ]*\-keyring"); do
     $pcmbin -S --needed --noconfirm $p $sf_ignore 2>&1 |sed $ss_a|tr $ss_b|tee -a $log_f
     if [[ "${PIPESTATUS[0]}" -gt 0 ]]; then
         if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_keyringpkg_bool]}" = "$ctrue" ]]; then
@@ -869,7 +856,7 @@ if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_manu
 fi
 
 trbl "Updating system packages..."
-for p in $(pacman -Sl core | grep "\[installed"|grep -oP "[^ ]*\-system") ${conf_a[main_systempkgs_str]}; do
+for p in $(pacman -Sl | grep "\[installed"|grep -oP "[^ ]*\-system$") ${conf_a[main_systempkgs_str]}; do
     chk_pkgisinst $p && $pcmbin -S --needed --noconfirm $p 2>&1 |sed $ss_a|tr $ss_b|tee -a $log_f
     ((err[sys]+=PIPESTATUS[0])); done
 if [[ ${err[sys]} -ne 0 ]]; then trbl "$co_y system packages failed to update - err:${err[sys]}"; fi
@@ -943,7 +930,7 @@ if ! perst_isneeded "${conf_a[aur_update_freq]}" "${perst_a[aur_up_date]}";  the
 #ensure pikaur functional if enabled
 if [ "${hlpr_a[pikaur]}" = "1" ]; then
     pikpkg="$($pcmbin -Qq pikaur)"
-    pikerr=0; pikaur -S --needed --noconfirm ${pikpkg:-pikaur} 2>&1 |sed $ss_a|tr $ss_b|tee -a $log_f
+    pikerr=0; pikaur -Sa --needed --noconfirm ${pikpkg:-pikaur} 2>&1 |sed $ss_a|tr $ss_b|tee -a $log_f
     if [[ ! "${PIPESTATUS[0]}" = "0" ]]; then pikerr=1
         else pikaur -Q pikaur 2>&1|grep "rebuild" >/dev/null && pikerr=1
     fi
@@ -953,7 +940,7 @@ if [ "${hlpr_a[pikaur]}" = "1" ]; then
             trblm "Attempting to re-install ${pikpkg:-pikaur}..."
             mkdir "/tmp/xs-autmp-2delete"; pushd "/tmp/xs-autmp-2delete"
             git clone https://github.com/actionless/pikaur.git && cd pikaur
-            python3 ./pikaur.py -S --rebuild --noconfirm ${pikpkg:-pikaur} 2>&1 |sed $ss_a|tr $ss_b|tee -a $log_f
+            python3 ./pikaur.py -Sa --rebuild --noconfirm ${pikpkg:-pikaur} 2>&1 |sed $ss_a|tr $ss_b|tee -a $log_f
             sync; popd; rm -rf /tmp/xs-autmp-2delete
         fi
         if ! pikaur --help >/dev/null 2>&1; then
@@ -1012,7 +999,7 @@ if [[ "${hlpr_a[pikaur]}" = "1" ]]; then
             if [[ ! "$custpkg" = "" ]]; then
                 if test_online; then
                     trblm "Updating: $custpkg"
-                    pikaur -S --needed --noconfirm --noprogressbar --mflags=${flag_a[$i]} $custpkg 2>&1 |sed $ss_a|tr $ss_b|tee -a $log_f
+                    pikaur -Sa --needed --noconfirm --noprogressbar --mflags=${flag_a[$i]} $custpkg 2>&1 |sed $ss_a|tr $ss_b|tee -a $log_f
                     ((err[aur]+=PIPESTATUS[0])); unset custpkg
                 else trbl "$co_y not online - skipping pikaur command"; unset custpkg; break; fi
             fi
