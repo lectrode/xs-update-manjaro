@@ -1,6 +1,6 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.9.4-rc1"; vsndsp="$vsn 2022-05-13"
+vsn="v3.9.4-rc2"; vsndsp="$vsn 2022-05-19"
 #-Downloads and Installs new updates
 #-Depends: coreutils, grep, pacman, pacman-mirrors, iputils
 #-Optional Depends: flatpak, notify-desktop, pikaur, rebuild-detector, wget
@@ -28,6 +28,7 @@ debgn=+x; # -x =debugging | +x =no debugging
 #----Define Functions---
 #-----------------------
 
+slp(){ sleep "$1" || read -rt "$1" < /dev/tty; }
 to_int(){ [[ "$1" =~ ^[\-]?[0-9]+$ ]] && echo "$1" || echo 0; }
 trbl_s(){ cat < /dev/stdin|sed 's/\x1B\[[0-9;]\+[A-Za-z]//g' |tr -cd '\11\12\15\40-\176'; }
 trbl_t(){ cat < /dev/stdin|trbl_s|tee -a "$log_f"; }
@@ -63,11 +64,13 @@ fi
 
 if [[ "${conf_a[cln_paccache_num]}" -gt "-1" ]]; then
     trblm "Cleaning pacman cache..."
-    paccache -rfqk"${conf_a[cln_paccache_num]}"
+    if paccache --help >/dev/null 2>&1; then paccache -rfqk"${conf_a[cln_paccache_num]}"
+    else trbl "$co_y cln_paccache_num is enabled, but paccache not found/functioning"; fi
 fi
 }
 
 chk_pkgisinst(){ if [[ "$($pcmbin -Qq "$1" 2>/dev/null | grep -m1 -x "$1")" == "$1" ]]; then [[ "$2" = "1" ]] && echo "$1"; return 0; else return 1; fi; }
+chk_pkgisexplicit(){ $pcmbin -Qi "$1" 2>/dev/null|grep -F "Install Reason"|grep -F "Explicitly" >/dev/null && return 0; return 1; }
 get_pkgvsn(){ $pcmbin -Q "$1" | grep "$1 " -m1 | cut -d' ' -f2; }
 chk_pkgvsndiff(){ cpvd_t1="$(get_pkgvsn "$1")"; vercmp "${cpvd_t1:-0}" "$2"; unset cpvd_t1; }
 chk_sha256(){ [[ "$(sha256sum "$1" |cut -d ' ' -f 1 |tr -cd '[:alnum:]')" = "$2" ]] && return 0; return 1; }
@@ -139,17 +142,24 @@ if grep -Ei "(up|down)(grad|dat)ing (linux[0-9]{2,3}|linux|systemd|mesa|(intel|a
 then echo crit; else echo norm; fi
 }
 
+manualExplicit(){
+chk_pkgisinst "$1" || return 0
+chk_pkgisexplicit "$1" && return 0
+$pcmbin -D --asexplicit "$1"|trbl_t
+chk_pkgisexplicit "$1" && return 0 || return 1
+}
+
 manualRemoval(){
-#$1=pkg|$2=vsn (or older) to remove|[$3 replacement pkg]
-if chk_pkgisinst "$1" && [[ "$(chk_pkgvsndiff "$1" "$2")" -le 0 ]]; then
+#$1=(pkgs)|$2=vsn (or older) to remove|[$3=new pkgs]
+IFS=" " read -ra mr_pkgo <<< "$1"
+if chk_pkgisinst "${mr_pkgo[0]}" && [[ "$(chk_pkgvsndiff "${mr_pkgo[0]}" "$2")" -le 0 ]]; then
     trbl "attempting manual package removal/replacement of $1..."
     if [[ ! "$3" = "" ]]; then
         # shellcheck disable=SC2086
         $pcmbin -Sw --noconfirm $3 $sf_ignore 2>&1|trbl_t
         if [[ ! "${PIPESTATUS[0]}" = "0" ]]; then trbl "$co_r failed to download $3"; return 1; fi
     fi
-    # shellcheck disable=SC2086
-    pacman -Rdd --noconfirm $1 2>&1|trbl_t
+    for p in "${mr_pkgo[@]}"; do chk_pkgisinst "$p" && $pcmbin -Rdd --noconfirm "$p" 2>&1|trbl_t; done
     # shellcheck disable=SC2086
     [[ "$3" = "" ]] || $pcmbin -S --noconfirm $3 $sf_ignore 2>&1|trbl_t
     if [[ ! "${PIPESTATUS[0]}" = "0" ]]; then trbl "$co_r failed to replace $1 with $3"; return 1; fi
@@ -281,7 +291,7 @@ getsessions(){
         usrhome="$(getent passwd "$usr"|cut -d: -f6)"
         [[  ${usr-x} && ${disp-x} && ${usrhome-x} ]] || continue
         s_usr[$i]=$usr; s_disp[$i]=$disp; s_home[$i]=$usrhome; ((i++))
-    done <<< "$(loginctl list-sessions --no-legend)"; sleep 1; unset i usr disp usrhome sssn
+    done <<< "$(loginctl list-sessions --no-legend)"; slp 1; unset i usr disp usrhome sssn
 }
 
 sendall(){
@@ -298,31 +308,36 @@ sendall(){
 backgroundnotify(){
 iconwarn; while : ; do
     if [[ -f "${perst_d}/auto-update_termnotify.dat" ]]; then 
-        sendall "dismiss"; rm -f "${perst_d}/auto-update_termnotify.dat"; sleep 2; exit 0; fi
-    sleep 2; getsessions; i=0; while [ $i -lt ${#s_usr[@]} ]; do
+        sendall "dismiss"; rm -f "${perst_d}/auto-update_termnotify.dat"; slp 2; exit 0; fi
+    slp 2; getsessions; i=0; while [ $i -lt ${#s_usr[@]} ]; do
         if [ -f "${s_home[$i]}/.cache/xs/logonnotify" ]; then
             DISPLAY=${s_disp[$i]} XAUTHORITY="${s_home[$i]}/.Xauthority" \
                 DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u "${s_usr[$i]}")/bus" \
                 sendmsg "${s_usr[$i]}" "System is updating (please do not turn off the $device)\nDetails: $log_f" \
                 && rm -f "${s_home[$i]}/.cache/xs/logonnotify"
         fi; ((i++))
-    done; [[ ${#s_usr[@]} -eq 0 ]] && sleep 3
+    done; [[ ${#s_usr[@]} -eq 0 ]] && slp 3
 done; }
 
+userlogon_crit(){
+iconcritical; notify-send -i $icon xs-auto-update -u critical \
+"Kernel and/or drivers were updated. Please restart your $device to finish"
+}
 userlogon(){
-    #This uses notify-send directly as it is run directly in user session for final message only
-    sleep 5; if [ ! -d "$HOME/.cache/xs" ]; then mkdir -p "$HOME/.cache/xs"; fi
-    if [ ! -f "${conf_a[main_logdir_str]}/auto-update.log" ]; then
-      if [[ ! "$(echo "${conf_a[main_logdir_str]}"/auto-update.log_*)" = "${conf_a[main_logdir_str]}/auto-update.log_*" ]]; then
-        iconcritical; notify-send -i $icon xs-auto-update -u critical \
-            "Kernel and/or drivers were updated. Please restart your $device to finish"
-      fi
-    else touch "$HOME/.cache/xs/logonnotify"; fi
+slp 5; [[ -d "$HOME/.cache/xs" ]] || mkdir -p "$HOME/.cache/xs"
+if pidof -o %PPID -x "$(basename "$0")">/dev/null; then touch "$HOME/.cache/xs/logonnotify"
+else
+    kernup=1; for k in $(file /boot/vmlinuz*|grep -oE "version [^ ]+"|sed 's/version //g'); do
+        [[ "$k" = "$(uname -r)" ]] && kernup=0; done
+    if [[ "$kernup" = "1" ]]; then userlogon_crit
+    elif lsof -h >/dev/null 2>&1; then
+        lsof +c 0|grep 'DEL.*lib' >/dev/null && userlogon_crit; fi
+fi
 }
 
 exit_passive(){
     trbl "XS-done"; sync; n=0
-    while jobs|grep Running >/dev/null && [[ $n -le 15 ]] ; do ((n++)); sleep 2; done
+    while jobs|grep Running >/dev/null && [[ $n -le 15 ]] ; do ((n++)); slp 2; done
     systemctl stop xs-autoupdate.service >/dev/null 2>&1; exit 0
 }
 
@@ -336,10 +351,10 @@ exit_active(){
         usersexist=$false; loginctl list-sessions --no-legend |grep -v "$ignoreusers" |grep "seat\|pts" >/dev/null && usersexist=$true
 
         if [ "${conf_a[reboot_delayiflogin_bool]}" = "$ctrue" ]; then
-            if [ "$usersexist" = "$false" ]; then trblm "No logged-in users detected; System will $actn_cmd now"; secremain=0; sleep 1; continue; fi; fi
+            if [ "$usersexist" = "$false" ]; then trblm "No logged-in users detected; System will $actn_cmd now"; secremain=0; slp 1; continue; fi; fi
 
         if [[ "$usersexist" = "$true" ]]; then sendall "$1\nYour $device will $actn_cmd in \n$secremain seconds..."; fi
-        sleep "${conf_a[reboot_notifyrep_num]}"
+        slp "${conf_a[reboot_notifyrep_num]}"
         ((secremain-=conf_a[reboot_notifyrep_num]))
     done
     sync; $actn_cmd || systemctl --force "$actn_cmd" || systemctl --force --force "$actn_cmd"
@@ -402,6 +417,8 @@ conf_export(){
 [[ -d "$(dirname "$xs_autoupdate_conf")" ]] || mkdir "$(dirname "$xs_autoupdate_conf")"
 cat << 'EOF' > "$xs_autoupdate_conf"
 #Config for XS-AutoUpdate
+#bool: 1=true; 0=false
+
 # AUR Settings #
 #aur_1helper_str:          Valid options are auto,none,all,pikaur,apacman
 #aur_aftercritical_bool:   Enable/Disable AUR updates immediately after critical system updates
@@ -528,6 +545,7 @@ typeset -A conf_a; conf_a=(
     [reboot_ignoreusers_str]="nobody lightdm sddm gdm"
     [repair_1enable_bool]=$ctrue
     [repair_db01_bool]=$ctrue
+    [repair_db02_bool]=$ctrue
     [repair_keyringpkg_bool]=$ctrue
     [repair_manualpkg_bool]=$ctrue
     [repair_pikaur01_bool]=$ctrue
@@ -667,7 +685,7 @@ if pidof -o %PPID -x "$(basename "$0")">/dev/null; then exit 0; fi #only 1 main 
 #logs
 mkdir -p "${conf_a[main_logdir_str]}"; if [ ! -d "${conf_a[main_logdir_str]}" ]; then conf_a[main_logdir_str]="/var/log/xs"; fi
 mkdir -p "${conf_a[main_logdir_str]}"; if [ ! -d "${conf_a[main_logdir_str]}" ]; then
-    echo "Critical error: could not create log directory"; sleep 10; exit; fi
+    echo "Critical error: could not create log directory"; slp 10; exit; fi
 log_d="${conf_a[main_logdir_str]}"; log_f="${log_d}/auto-update.log"
 if [ ! -f "$log_f" ]; then echo "init">$log_f; fi
 
@@ -724,11 +742,11 @@ waiting=1;waited=0; while [ $waiting = 1 ]; do
     test_online && waiting=0
     if [ $waiting = 1 ]; then
         if [ $waited -ge 60 ]; then exit; fi
-        sleep 5; ((waited++))
+        slp 5; ((waited++))
     fi
 done; unset waiting waited
 
-sleep 8 # In case connection just established
+slp 8 # In case connection just established
 
 #Check for updates for self
 if [[ "${conf_a[self_1enable_bool]}" = "$ctrue" ]]; then
@@ -754,7 +772,7 @@ waiting=1;waited=0; while [ $waiting = 1 ]; do
     [[ $isRunning = 1 ]] || waiting=0
     if [ $waiting = 1 ]; then
         if [ $waited -ge 60 ]; then exit; fi
-        sleep 5; ((waited++))
+        slp 5; ((waited++))
     fi
 done;  unset waiting waited isRunning
 
@@ -767,7 +785,7 @@ rm -f "${perst_d}/auto-update_termnotify.dat" >/dev/null 2>&1
 getsessions; i=0; while [ $i -lt ${#s_usr[@]} ]; do
 if [ -d "${s_home[$i]}/.cache" ]; then
     mkdir -p "${s_home[$i]}/.cache/xs"; echo "tmp" > "${s_home[$i]}/.cache/xs/logonnotify"
-    chown -R "${s_usr[$i]}" "${s_home[$i]}/.cache/xs"; fi; ((i++)); done
+chown -R "${s_usr[$i]}" "${s_home[$i]}/.cache/xs"; fi; ((i++)); done
 "$0" "backnotify"&
 
 #Check for, download, and install main updates
@@ -799,17 +817,34 @@ if ! chk_freespace_all; then err[repo]=1; err_crit="repo"; break; fi
 if chk_pkgisinst "xproto" && [[ "$(chk_pkgvsndiff "xproto" "7.0.31-1")" -le 0 ]]; then
     trbl "$co_r old xproto installed - system too old for script to update"; err[repo]=1; err_crit="repo"; break; fi
 
-trbl "Downloading packages from main repos..."
-# shellcheck disable=SC2086
-pacman -Syyuw$pacdown --needed --noconfirm $pacignore 2>&1|trbl_t
-err_repodl=${PIPESTATUS[0]}; if [[ $err_repodl -ne 0 ]]; then trbl "$co_y pacman failed to download packages - err code:$err_repodl"; fi
 
-[[ "${conf_a[cln_paccache_num]}" = "0" ]] || pacclean
+trbl "Updating package databases..."
+while : ; do test_online || break
+pacman -Syy 2>&1|trbl_t|tee /dev/tty|grep "error: GPGME error: No data" >/dev/null
+err_repodb=("${PIPESTATUS[@]}"); if [[ ! "${err_repodb[0]}" -eq 0 ]] && [[ "${err_repodb[3]}" -eq 0 ]]; then
+    if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_db02_bool]}" = "$ctrue" ]]; then
+        if [[ "$uprepodb" = "" ]]; then
+            trbl "$co_y Package databases corrupt, fixing..."
+            uprepodb=0; [[ -d "$(get_pacmancfg DBPath)/sync" ]] && rm -rf "$(get_pacmancfg DBPath)/sync"/*; continue
+        else trbl "$co_y Failed to fix package database corruption. Continuing..."; break; fi
+    else trbl "$co_y Package databases corrupt, but fix is disabled. Continuing..."; break; fi
+fi; break; done; err[repodb]="${err_repodb[0]}"; unset uprepodb err_repodb
+
+
+trbl "Downloading packages from main repos..."
+while : ; do test_online || break
+# shellcheck disable=SC2086
+pacman -Suw$pacdown$pacdep --needed --noconfirm $pacignore 2>&1|trbl_t|tee /dev/tty|grep "could not satisfy dependencies" >/dev/null
+err_repodl=("${PIPESTATUS[@]}"); [[ "${conf_a[cln_paccache_num]}" = "0" ]] || pacclean
+if [[ ! "${err_repodl[0]}" -eq 0 ]] && [[ "${err_repodl[3]}" -eq 0 ]]; then
+    if [[ ! "$pacdep" = "dd" ]]; then pacdep="${pacdep}d"; trbl "$co_y skipping dependency detection ($pacdep)"; continue
+    else trbl "$co_y pacman failed to download packages - err code:${err_repodl[0]}"; fi
+fi; break; done; unset err_repodl pacdep
+
 if ! chk_freespace_all; then err[repo]=1; err_crit="repo"; break; fi
 
 #pacman-static
 if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_manualpkg_bool]}" = "$ctrue" ]]; then
-    trbl "Checking for required manual package changes..."
     #Fix for pacman<5.2 (18.1.1 and earlier)
     if [[ "$(chk_pkgvsndiff "pacman" "5.2.0-1")" -lt 0 ]]; then
         trbl "Old pacman detected, attempting to use pacman-static..."
@@ -834,7 +869,7 @@ for p in $(pacman -Sl | grep "\[installed"|grep -oP "[^ ]*\-keyring"); do
             kr_date="$(get_pkgbuilddate "$p")"; if [[ "$kr_date" = "" ]]; then kr_date="20000101"; fi
             #if build date of the keyring package is 546 or more days ago (~1.5 years), assume too old to update normally
             if perst_isneeded 546 "$kr_date"; then
-                trblm "[$p] is old and failed to update; attempting fix..."
+                trbl "$co_y [$p] is old and failed to update; attempting fix..."
                 if ! disableSigsUpdate "$p"; then trbl "$co_r could not update [$p]"; err[sys]=1; break; fi; fi
         else err[sys]=1; fi
     fi
@@ -842,8 +877,18 @@ done
 if [[ ${err[sys]} -ne 0 ]]; then trbl "$co_r failed to update system keyrings"; err_crit="sys"; break; fi
 
 if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_manualpkg_bool]}" = "$ctrue" ]]; then
+    trbl "Checking for required manual package changes..."
+    if chk_pkgisinst "kvantum-manjaro" && [[ "$(chk_pkgvsndiff "kvantum-manjaro" "0.13.5-1")" -le 0 ]]; then
+        for t in adapta-black-breath-theme adapta-black-maia-theme adapta-breath-theme adapta-gtk-theme adapta-maia-theme arc-themes-maia \
+            arc-themes-breath matcha-gtk-theme; do manualExplicit "$t"; done; fi #removed from depends of kvmantum-manjaro 2022/02/23
+    manualRemoval "galculator-gtk2" "2.1.4-5" "galculator" #Removed from galculator 2021/11/13
+    manualRemoval "manjaro-gdm-theme" "20210528-1"; #removed from repos 2022/04/23 (conflicts with gnome>=40)
+    manualRemoval "manjaro-kde-settings-19.0 breath2-icon-themes plasma5-themes-breath2" "20200426-1" "plasma5-themes-breath manjaro-kde-settings" #manjaro kde cleanup 2021/11
+    manualRemoval "jack" "0.125.0-10" "jack2"; manualRemoval "lib32-jack" "0.125.0-10" "lib32-jack2" #moved to AUR on 2021-07-26
     manualRemoval "libcanberra-gstreamer" "0.30+2+gc0620e4-3"; manualRemoval "lib32-libcanberra-gstreamer" "0.30+2+gc0620e4-3" #consolidated with lib32-/libcanberra-pulse 2021/06
     manualRemoval "python2-dbus" "1.2.16-3" #Removed from dbus-python 2021/03
+    manualRemoval "knetattach" "5.20.5-1" #Merged into plasma-desktop 2021/01/09
+    manualRemoval "gksu-polkit" "0.0.3-2" "zensu" #Removed from manjaro repos 2020/10
     manualRemoval "pyqt5-common" "5.13.2-1" #Removed from repos early 2019/12
     manualRemoval "ilmbase" "2.3.0-1" #Merged into openexr 2019/10
     manualRemoval "colord" "1.4.4-1" #Conflicts with libcolord mid-2019
@@ -925,26 +970,34 @@ fi
 
 if ! perst_isneeded "${conf_a[aur_update_freq]}" "${perst_a[aur_up_date]}";  then break; fi
 
-#ensure pikaur functional if enabled
-if [ "${hlpr_a[pikaur]}" = "1" ]; then
+#check and/or fix pikaur if enabled
+testpikaur(){
+pikbin="pikaur"; pikarg=(-Sa --needed --noconfirm)
+if [[ -f "./pikaur.py" ]]; then pikbin="python3"; pikarg=(./pikaur.py -Sa --rebuild --noconfirm); fi
+pikerr=0; $pikbin "${pikarg[@]}"  "${pikpkg:-pikaur}" 2>&1|trbl_t
+if [[ ! "${PIPESTATUS[0]}" = "0" ]]; then pikerr=1
+    else pikaur -Q pikaur 2>&1|grep "rebuild" >/dev/null && pikerr=1
+fi; return $pikerr;
+}
+if [ "${hlpr_a[pikaur]}" = "1" ]; then while :; do
     pikpkg="$($pcmbin -Qq pikaur)"
-    pikerr=0; pikaur -Sa --needed --noconfirm ${pikpkg:-pikaur} 2>&1 |sed $ss_a|tr $ss_b|tee -a $log_f
-    if [[ ! "${PIPESTATUS[0]}" = "0" ]]; then pikerr=1
-        else pikaur -Q pikaur 2>&1|grep "rebuild" >/dev/null && pikerr=1
+    if ! test_online; then hlpr_a[pikaur]=0; break; fi
+    trbl "Checking if pikaur functional..."
+    if testpikaur; then break; fi
+    hlpr_a[pikaur]=0; trbl "$co_y AURHelper: pikaur not functioning"
+    if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_pikaur01_bool]}" = "$ctrue" ]] && $pcmbin -Q pikaur >/dev/null 2>&1; then
+        trblm "Attempting to re-install ${pikpkg:-pikaur}..."
+        mkdir "/tmp/xs-autmp-2delete"; if pushd "/tmp/xs-autmp-2delete"; then
+            git clone https://github.com/actionless/pikaur.git; if cd pikaur; then
+                if test_online && testpikaur; then hlpr_a[pikaur]=1; trblm "Successfully fixed pikaur"; fi
+            fi
+        sync; popd && rm -rf /tmp/xs-autmp-2delete; fi
     fi
-    if [[ "$pikerr" = "1" ]]; then
-        trbl "$co_y AURHelper: pikaur not functioning"
-        if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_pikaur01_bool]}" = "$ctrue" ]] && $pcmbin -Q pikaur >/dev/null 2>&1; then
-            trblm "Attempting to re-install ${pikpkg:-pikaur}..."
-            mkdir "/tmp/xs-autmp-2delete"; pushd "/tmp/xs-autmp-2delete"
-            git clone https://github.com/actionless/pikaur.git && cd pikaur
-            python3 ./pikaur.py -Sa --rebuild --noconfirm ${pikpkg:-pikaur} 2>&1 |sed $ss_a|tr $ss_b|tee -a $log_f
-            sync; popd; rm -rf /tmp/xs-autmp-2delete
-        fi
-        if ! pikaur --help >/dev/null 2>&1; then
-            trbl "$co_y AURHelper: pikaur will be disabled"; fi
-    fi
-fi
+    [[ "${hlpr_a[pikaur]}" = "0" ]] && trbl "$co_y AURHelper: pikaur will be disabled"
+break; done; fi
+
+if [[ "$((hlpr_a[pikaur]+hlpr_a[apacman]))" = "0" ]]; then
+    trblm "No working AUR helpers available or not online, skipping AUR changes"; break; fi
 
 if [[ "${conf_a[aur_1helper_str]}" = "auto" ]]; then
     if [ "${hlpr_a[pikaur]}" = "1" ]; then hlpr_a[apacman]=0; fi; fi
@@ -1079,7 +1132,7 @@ touch "${perst_d}/auto-update_termnotify.dat"
 iconnormal; if [[ ! "$err_crit" = "" ]]; then codes="$co_r"; iconerror; fi
 trbl "$(
 	echo -n "$codes${co_n} error codes: "
-	for i in sys repo mirrors keys aur fpak orphan fpakorphan; do
+	for i in repodb sys repo mirrors keys aur fpak orphan fpakorphan; do
         if [[ "$err_crit" = "$i" ]]; then echo -n "\033[1;31m[$i:${err[$i]}]"
         elif [[ ! "$((err[$i]+0))" = "0" ]]; then echo -n "\033[1;33m[$i:${err[$i]}]"
         else echo -n "${co_n}[$i:${err[$i]}]"; fi
@@ -1091,6 +1144,7 @@ grep "Total Installed Size:\|new signatures:\|Total Removed Size:" "$log_f" >/de
 
 if [ "${conf_a[notify_errors_bool]}" = "$ctrue" ]; then 
     [[ "${err[mirrors]}" -gt 0 ]] && errmsg="\n-Mirrors failed to update"
+    [[ "${err[repodb]}" -gt 0 ]] && errmsg="$errmsg \n-Package databases failed to update"
     [[ "${err[sys]}" -gt 0 ]] && errmsg="$errmsg \n-System packages failed to update"
     [[ "${err[keys]}" -gt 0 ]] && errmsg="$errmsg \n-Security signatures failed to update"
     [[ "${err[repo]}" -gt 0 ]] && errmsg="$errmsg \n-Packages from main repos failed to update"
@@ -1114,9 +1168,8 @@ if [[ "$(chk_crit)" = "norm" ]]; then
         exit_passive
     fi
 else
-    orig_log="$log_f"
-    mv -f "$log_f" "${log_f}_$(date -I)"; log_f=${log_f}_$(date -I)
-    echo "init">$orig_log
+    log_fnew="${log_f}_$(date -I)"
+    mv -f "$log_f" "$log_fnew"; log_f="$log_fnew"; unset log_fnew
 
     activeExit=1; msgFail=0; [[ "${conf_a[reboot_1enable_num]}" -le "0" ]] && activeExit=0
     if [[ "$activeExit" = "0" ]]; then
