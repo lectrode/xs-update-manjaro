@@ -1,6 +1,6 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.9.4-rc2"; vsndsp="$vsn 2022-05-19"
+vsn="v3.9.4-rc3"; vsndsp="$vsn 2022-05-26"
 #-Downloads and Installs new updates
 #-Depends: coreutils, grep, pacman, pacman-mirrors, iputils
 #-Optional Depends: flatpak, notify-desktop, pikaur, rebuild-detector, wget
@@ -104,7 +104,7 @@ chk_remoteany(){ chk_remoterepo "$1" && return 0; chk_remoteaur "$1" && return 0
 
 get_pkgfilename(){
 #$1=pkg name
-gpfn_f="$(echo "$(get_pacmancfg CacheDir)"/* |tr ' ' '\n'\
+gpfn_f="$(compgen -G "$(get_pacmancfg CacheDir)/$1-*.pkg.*" \
   |grep -E "^$(get_pacmancfg CacheDir)/$1-[0-9\.+:a-z]+-[0-9\.]+-[0-9a-z_]+.pkg.[0-9a-z]+.[0-9a-z]+$"|sort -rV|head -n1)"
 [[ -f "$gpfn_f" ]] && echo "$gpfn_f"; unset gpfn_f
 }
@@ -243,7 +243,7 @@ aurrebuildlist(){
 
 iconnormal(){ icon=emblem-default; [[ -f "/usr/share/pixmaps/ElectrodeXS.png" ]] && icon=ElectrodeXS; }
 iconwarn(){ icon=dialog-warning; }
-iconcritical(){ icon=emblem-urgent; }
+iconcritical(){ icon=system-shutdown; }
 iconerror(){ icon=dialog-error; }
 
 sendmsg(){
@@ -259,12 +259,12 @@ sendmsg(){
                 noti_id["$1"]="$(su "$1" -c "notify-desktop -u normal -r ${noti_id["$1"]} \" \" -t 1")"
             else
                 tmp_m1="${2//\\n/$'\n'}"
-                noti_id["$1"]="$(su "$1" -c "notify-desktop -i $icon $tmp_t1 -r ${noti_id["$1"]} xs-update-manjaro \"$notifyvsn$tmp_m1\" 2>/dev/null || echo error")"
+                noti_id["$1"]="$(su "$1" -c "notify-desktop -i $icon $tmp_t1 -r ${noti_id["$1"]} xs-auto-update \"$notifyvsn$tmp_m1\" 2>/dev/null || echo error")"
             fi
         fi
         if [ "$noti_send" = "$true" ]; then
             if [[ ! "$2" = "dismiss" ]]; then
-                noti_id["$1"]="$(su "$1" -c "notify-send -i $icon $tmp_t1 xs-update-manjaro \"$notifyvsn$2\" 2>/dev/null || echo error")"
+                noti_id["$1"]="$(su "$1" -c "notify-send -i $icon $tmp_t1 xs-auto-update \"$notifyvsn$2\" 2>/dev/null || echo error")"
             fi
         fi
         if [ "$noti_gdbus" = "$true" ]; then
@@ -274,7 +274,7 @@ sendmsg(){
             else
                 noti_id["$1"]="$(su "$1" -c "gdbus call --session --dest org.freedesktop.Notifications \
                     --object-path /org/freedesktop/Notifications --method org.freedesktop.Notifications.Notify \
-                    xs-update-manjaro ${noti_id["$1"]} $icon xs-update-manjaro \"$notifyvsn$2\" [] {} $tmp_t0 2>/dev/null || echo error"|cut -d' ' -f2|cut -d',' -f1)"
+                    xs-auto-update ${noti_id["$1"]} $icon xs-auto-update \"$notifyvsn$2\" [] {} $tmp_t0 2>/dev/null || echo error"|cut -d' ' -f2|cut -d',' -f1)"
             fi
         fi
         unset tmp_t0 tmp_t1; if [[ "${noti_id["$1"]}" = "error" ]]; then noti_id["$1"]=0; return 1; fi
@@ -323,13 +323,20 @@ userlogon_crit(){
 iconcritical; notify-send -i $icon xs-auto-update -u critical \
 "Kernel and/or drivers were updated. Please restart your $device to finish"
 }
+userlogon_chkkrnl(){
+for k in $(file /boot/vmlinuz*|grep -oE "version [^ ]+"|sed 's/version //g'); do
+    [[ "$k" = "$(uname -r)" ]] && return 0; done
+pacman --help >/dev/null 2>&1 || return 1
+kerns="$((pacman -Qq;pacman -Slq)|grep -oE "^linux[^ ]+-headers$"|sed 's/-headers//g'|tr '\n' '|'|sed 's:|*$::')"
+for k in $(pacman -Qq|grep "^linux"|grep -E "^($kerns)$"); do
+    [[ "$(get_pkgvsn "$k"|grep -oE "[0-9]+.[0-9]+.[0-9]+")" = "$(uname -r|grep -oE "[0-9]+.[0-9]+.[0-9]+")" ]] && return 0
+done; return 1
+}
 userlogon(){
 slp 5; [[ -d "$HOME/.cache/xs" ]] || mkdir -p "$HOME/.cache/xs"
 if pidof -o %PPID -x "$(basename "$0")">/dev/null; then touch "$HOME/.cache/xs/logonnotify"
 else
-    kernup=1; for k in $(file /boot/vmlinuz*|grep -oE "version [^ ]+"|sed 's/version //g'); do
-        [[ "$k" = "$(uname -r)" ]] && kernup=0; done
-    if [[ "$kernup" = "1" ]]; then userlogon_crit
+    if ! userlogon_chkkrnl; then userlogon_crit
     elif lsof -h >/dev/null 2>&1; then
         lsof +c 0|grep 'DEL.*lib' >/dev/null && userlogon_crit; fi
 fi
@@ -344,6 +351,7 @@ exit_passive(){
 exit_active(){
 #$1 = reason
     secremain=${conf_a[reboot_delay_num]}
+    systemd-inhibit --what="sleep:idle:handle-suspend-key:handle-hibernate-key:handle-lid-switch" sleep $((secremain+60)) &
     actn_cmd="${conf_a[reboot_action_str]}"
     ignoreusers="${conf_a[reboot_ignoreusers_str]// /\\|}"
     iconcritical; trbl "Active Exit: $actn_cmd";trbl "XS-done"; sync &
@@ -446,6 +454,7 @@ cat << 'EOF' > "$xs_autoupdate_conf"
 # Main Settings #
 #main_ignorepkgs_str:      List of packages to ignore separated by spaces (in addition to pacman.conf)
 #main_systempkgs_str:      List of packages to update before any other packages (i.e. archlinux-keyring)
+#main_inhibit_bool:        Enable/Disable preventing normal user shutdown,reboot,suspend while updating
 #main_logdir_str:          Path to the log directory
 #main_perstdir_str:        Path to the persistant timestamp directory (uses main_logdir_str if not defined)
 #main_country_str:         Countries separated by commas from which to pull updates. Default is automatic (geoip)
@@ -528,6 +537,7 @@ typeset -A conf_a; conf_a=(
     [notify_vsn_bool]=$cfalse
     [main_ignorepkgs_str]=""
     [main_systempkgs_str]=""
+    [main_inhibit_bool]=$ctrue
     [main_logdir_str]="/var/log/xs"
     [main_perstdir_str]=""
     [main_country_str]=""
@@ -786,7 +796,8 @@ getsessions; i=0; while [ $i -lt ${#s_usr[@]} ]; do
 if [ -d "${s_home[$i]}/.cache" ]; then
     mkdir -p "${s_home[$i]}/.cache/xs"; echo "tmp" > "${s_home[$i]}/.cache/xs/logonnotify"
 chown -R "${s_usr[$i]}" "${s_home[$i]}/.cache/xs"; fi; ((i++)); done
-"$0" "backnotify"&
+if [[ "${conf_a[main_inhibit_bool]}" = "$cfalse" ]]; then "$0" "backnotify"&
+else systemd-inhibit --what="shutdown:sleep:idle:handle-power-key:handle-suspend-key:handle-hibernate-key:handle-lid-switch" "$0" "backnotify"& fi
 
 #Check for, download, and install main updates
 pacclean

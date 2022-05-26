@@ -33,6 +33,7 @@
   * [notify_vsn_bool](#notify_vsn_bool "")
   * [main_ignorepkgs_str](#main_ignorepkgs_str "")
   * [main_systempkgs_str](#main_systempkgs_str "")
+  * [main_inhibit_bool](#main_inhibit_bool "")
   * [main_logdir_str](#main_logdir_str "")
   * [main_perstdir_str](#main_perstdir_str "")
   * [main_country_str](#main_country_str "")
@@ -335,6 +336,7 @@ Optional:
   <tr><td><a href="#supported-aur-helpers">AUR Helper</a></td><td>for AUR package support</td></tr>
   <tr><td><code>flatpak</code></td><td>for flatpak package support</td></tr>
   <tr><td>notification daemon</td><td>usually a part of the desktop environment; for notification support</td></tr>
+  <tr><td><code>lsof</code></td><td>for more thorough detection of reboot needed on login</td></tr>
   <tr><td><a href="https://aur.archlinux.org/packages/notify-desktop-git"><code>notify-desktop</code></a></td><td>required for KDE notifications, optional alternative for Xfce, Gnome</td></tr>
   <tr><td><code>wget</code></td><td>if available, will use instead of <code>curl</code></td></tr>
 </table>
@@ -643,6 +645,18 @@ zflag:dropbox,tor-browser=--skippgpcheck
 
 * Default: (blank)
 * Packages to update before any other packages (i.e. `archlinux-keyring`), separated by spaces
+</details>
+
+<details>
+<summary><a name="main_inhibit_bool"></a>main_inhibit_bool</summary>
+
+* Default: `1` (True)
+* If true, script will inhibit accidental restart/shutdown/hibernate/suspend while the script is updating the system
+* This can be manually overridden with one of the following methods:
+  * WARNING: interupting a system update can result in a non-functoinal system! Use with caution!
+  * Execute with elevated permissions, i.e. `sudo reboot`, or `sudo systemctl suspend`
+  * Stop the script with `sudo pkill auto-update`
+* NOTE: On KDE, while inhibited, selecting shutdown or restart results in a black screen (use different TTY to get back in)
 </details>
 
 <details>
