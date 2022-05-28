@@ -85,21 +85,45 @@ Some of the manual steps have been incorporated into this script, but your syste
 Always have external bootable media (like a flash drive with manjaro on it) available in case the system becomes unbootable.
 
 ## Support of other distributions based on Arch Linux
-Most functions in this script are distro-agnostic and should work with any distro that uses pacman. Manjaro Linux continues to be the primary testing environment, but feel free to submit issues/pull requests concerning other distributions.
+
+Functions in this script are designed to be distro-agnostic and should work with any distro that uses pacman. Manjaro Linux continues to be the primary testing environment, but feel free to submit issues/pull requests concerning other distributions.
+
+<details>
+<summary>↕VMs tested before each Release (updated from old/original snapshots)↕</summary>
+
+<table>
+  <tr><td>Distro</td><td>Desktop</td><td>Arch</td><td>Snapshot Date/Version</td></tr>
+  <tr><td><a href="https://manjaro.org/">Manjaro Linux</a></td><td><a href="https://manjaro.org/downloads/official/xfce">Xfce</a></td><td>x86_64</td><td><code>17.1.7</code> <code>18.0</code> <code>18.1.0</code> <code>2021/06/08</code></tr></tr>
+  <tr><td><a href="https://manjaro.org/">Manjaro Linux</a></td><td><a href="https://manjaro.org/downloads/official/kde">KDE</a></td><td>x86_64</td><td><code>20.0-rc3</code> <code>2020/10/11</code></tr></tr>
+  <tr><td><a href="https://manjaro.org/">Manjaro Linux</a></td><td><a href="https://manjaro.org/downloads/official/gnome">Gnome</a></td><td>x86_64</td><td><code>2021/03/21</code></tr></tr>
+  <tr><td><a href="https://archlinux.org">Arch Linux</a></td><td>Xfce</td><td>x86_64</td><td><code>2022/02/04</code></tr></tr>
+  <tr><td><a href="https://endeavouros.com">EndeavourOS</a></td><td>Xfce</td><td>x86_64</td><td><code>2021/08/30</code></tr></tr>
+  <tr><td><a href="https://garudalinux.org">Garuda Linux</a></td><td>Xfce</td><td>x86_64</td><td><code>2021/08/09</code></tr></tr>
+</table>
+</details>
+
+<details>
+<summary>↕Hardware tested before each Release (continuously updated)↕</summary>
+
+<table>
+  <tr><td>Hardware</td><td>Distro</td><td>Desktop</td><td>Arch</td><td>Fresh install version/date</td></tr>
+  <tr><td>AMD Ryzen 3500u (thinkpad laptop)</td><td><a href="https://manjaro.org/">Manjaro Linux</a></td><td><a href="https://manjaro.org/downloads/official/xfce">Xfce</a></td><td>x86_64</td><td><code>2021/11/26</code></tr></tr>
+  <tr><td>Intel core i7-3770 + Nvidia gtx 970 (dell tower)</td><td><a href="https://manjaro.org/">Manjaro Linux</a></td><td><a href="https://manjaro.org/downloads/official/xfce">Xfce</a></td><td>x86_64</td><td><code>2018/10/28</code></tr></tr>
+  <tr><td>Pinephone <a href="https://wiki.pine64.org/wiki/PinePhone_v1.2b">v1.2b</a></td><td><a href="https://manjaro.org/">Manjaro Linux</a></td><td><a href="https://manjaro.org/downloads/arm/pinephone/arm8-pinephone-phosh">Phosh</a></td><td>arm</td><td><code>beta 23</code></tr></tr>
+</table>
+</details>
 
 
 ## Legal stuff
 <details>
 <summary>↕</summary>
 
-No warranty or guarantee is included or implied. **Use at your own risk**.
-
 This is licensed under [Apache 2.0](https://opensource.org/licenses/Apache-2.0)
-* TL/DR (as I understand it): You can modify, redistribute, or include in sold products as long as you include the license. You lose this right if you start throwing around litigation.
+* TL/DR (as I understand it): You can modify, redistribute, or include in sold products as long as you include the license. You lose this right if you start throwing around litigation. No warranty or guarantee is included or implied. **Use at your own risk**.
 <details>
 <summary>= Expand for License details =</summary>
 
-   Copyright 2016-2021 Steven Hoff (aka "lectrode")
+   Copyright 2016-2023 Steven Hoff (aka "lectrode")
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -273,7 +297,7 @@ Note: All current and future automatic repair and manual package changes can be 
 
 ### Automatic Repair
 This script supports detecting and repairing the following potential issues:
-* [Package database errors](#repair_db01_bool "")
+* Package database errors [error 1](#repair_db01_bool "") | [error 2](#repair_db02_bool "")
 * [Obsolete keyring packages](#repair_keyringpkg_bool "")
 * [Non-functioning Pikaur](#repair_pikaur01_bool "")
 * [AUR packages requiring rebuild after dependency update](#repair_aurrbld_bool "")
@@ -311,10 +335,6 @@ Every once in a while, updating Manjaro requires manual package changes to allow
           <code>arc-themes-breath</code><br />
           <code>matcha-gtk-theme</code></td><td>mistakenly marked as orphans after <code>kvantum-manjaro</code>>0.13.5-1</td></tr>
 </table>
-
-
-The oldest fresh install this script has successfully updated is Manjaro Xfce 17.1.7 (as of May of 2022).
-Oldest KDE and Gnome fresh installs are unknown.
 
 ----
 
@@ -764,7 +784,7 @@ zflag:dropbox,tor-browser=--skippgpcheck
 </details>
 
 <details>
-<summary><a name="repair_db01_bool"></a>repair_db02_bool</summary>
+<summary><a name="repair_db02_bool"></a>repair_db02_bool</summary>
 
  * Default: `1` (True)
  * If true, the script will detect and attempt to redownload corrupt package database files

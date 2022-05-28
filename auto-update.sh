@@ -1,11 +1,11 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.9.4-rc3"; vsndsp="$vsn 2022-05-26"
+vsn="v3.9.5"; vsndsp="$vsn 2022-05-27"
 #-Downloads and Installs new updates
 #-Depends: coreutils, grep, pacman, pacman-mirrors, iputils
 #-Optional Depends: flatpak, notify-desktop, pikaur, rebuild-detector, wget
 
-#   Copyright 2016-2021 Steven Hoff (aka "lectrode")
+#   Copyright 2016-2023 Steven Hoff (aka "lectrode")
 
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
@@ -327,7 +327,7 @@ userlogon_chkkrnl(){
 for k in $(file /boot/vmlinuz*|grep -oE "version [^ ]+"|sed 's/version //g'); do
     [[ "$k" = "$(uname -r)" ]] && return 0; done
 pacman --help >/dev/null 2>&1 || return 1
-kerns="$((pacman -Qq;pacman -Slq)|grep -oE "^linux[^ ]+-headers$"|sed 's/-headers//g'|tr '\n' '|'|sed 's:|*$::')"
+kerns="$( (pacman -Qq;pacman -Slq)|grep -oE "^linux[^ ]+-headers$"|sed 's/-headers//g'|tr '\n' '|'|sed 's:|*$::' )"
 for k in $(pacman -Qq|grep "^linux"|grep -E "^($kerns)$"); do
     [[ "$(get_pkgvsn "$k"|grep -oE "[0-9]+.[0-9]+.[0-9]+")" = "$(uname -r|grep -oE "[0-9]+.[0-9]+.[0-9]+")" ]] && return 0
 done; return 1
