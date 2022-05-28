@@ -33,6 +33,7 @@
   * [notify_vsn_bool](#notify_vsn_bool "")
   * [main_ignorepkgs_str](#main_ignorepkgs_str "")
   * [main_systempkgs_str](#main_systempkgs_str "")
+  * [main_inhibit_bool](#main_inhibit_bool "")
   * [main_logdir_str](#main_logdir_str "")
   * [main_perstdir_str](#main_perstdir_str "")
   * [main_country_str](#main_country_str "")
@@ -45,6 +46,7 @@
   * [reboot_ignoreusers_str](#reboot_ignoreusers_str "")
   * [repair_1enable_bool](#repair_1enable_bool "")
   * [repair_db01_bool](#repair_db01_bool "")
+  * [repair_db02_bool](#repair_db02_bool "")
   * [repair_keyringpkg_bool](#repair_keyringpkg_bool "")
   * [repair_manualpkg_bool](#repair_manualpkg_bool "")
   * [repair_pikaur01_bool](#repair_pikaur01_bool "")
@@ -83,21 +85,45 @@ Some of the manual steps have been incorporated into this script, but your syste
 Always have external bootable media (like a flash drive with manjaro on it) available in case the system becomes unbootable.
 
 ## Support of other distributions based on Arch Linux
-Most functions in this script are distro-agnostic and should work with any distro that uses pacman. Manjaro Linux continues to be the primary testing environment, but feel free to submit issues/pull requests concerning other distributions.
+
+Functions in this script are designed to be distro-agnostic and should work with any distro that uses pacman. Manjaro Linux continues to be the primary testing environment, but feel free to submit issues/pull requests concerning other distributions.
+
+<details>
+<summary>↕VMs tested before each Release (updated from old/original snapshots)↕</summary>
+
+<table>
+  <tr><td>Distro</td><td>Desktop</td><td>Arch</td><td>Snapshot Date/Version</td></tr>
+  <tr><td><a href="https://manjaro.org/">Manjaro Linux</a></td><td><a href="https://manjaro.org/downloads/official/xfce">Xfce</a></td><td>x86_64</td><td><code>17.1.7</code> <code>18.0</code> <code>18.1.0</code> <code>2021/06/08</code></tr></tr>
+  <tr><td><a href="https://manjaro.org/">Manjaro Linux</a></td><td><a href="https://manjaro.org/downloads/official/kde">KDE</a></td><td>x86_64</td><td><code>20.0-rc3</code> <code>2020/10/11</code></tr></tr>
+  <tr><td><a href="https://manjaro.org/">Manjaro Linux</a></td><td><a href="https://manjaro.org/downloads/official/gnome">Gnome</a></td><td>x86_64</td><td><code>2021/03/21</code></tr></tr>
+  <tr><td><a href="https://archlinux.org">Arch Linux</a></td><td>Xfce</td><td>x86_64</td><td><code>2022/02/04</code></tr></tr>
+  <tr><td><a href="https://endeavouros.com">EndeavourOS</a></td><td>Xfce</td><td>x86_64</td><td><code>2021/08/30</code></tr></tr>
+  <tr><td><a href="https://garudalinux.org">Garuda Linux</a></td><td>Xfce</td><td>x86_64</td><td><code>2021/08/09</code></tr></tr>
+</table>
+</details>
+
+<details>
+<summary>↕Hardware tested before each Release (continuously updated)↕</summary>
+
+<table>
+  <tr><td>Hardware</td><td>Distro</td><td>Desktop</td><td>Arch</td><td>Fresh install version/date</td></tr>
+  <tr><td>AMD Ryzen 3500u (thinkpad laptop)</td><td><a href="https://manjaro.org/">Manjaro Linux</a></td><td><a href="https://manjaro.org/downloads/official/xfce">Xfce</a></td><td>x86_64</td><td><code>2021/11/26</code></tr></tr>
+  <tr><td>Intel core i7-3770 + Nvidia gtx 970 (dell tower)</td><td><a href="https://manjaro.org/">Manjaro Linux</a></td><td><a href="https://manjaro.org/downloads/official/xfce">Xfce</a></td><td>x86_64</td><td><code>2018/10/28</code></tr></tr>
+  <tr><td>Pinephone <a href="https://wiki.pine64.org/wiki/PinePhone_v1.2b">v1.2b</a></td><td><a href="https://manjaro.org/">Manjaro Linux</a></td><td><a href="https://manjaro.org/downloads/arm/pinephone/arm8-pinephone-phosh">Phosh</a></td><td>arm</td><td><code>beta 23</code></tr></tr>
+</table>
+</details>
 
 
 ## Legal stuff
 <details>
 <summary>↕</summary>
 
-No warranty or guarantee is included or implied. **Use at your own risk**.
-
 This is licensed under [Apache 2.0](https://opensource.org/licenses/Apache-2.0)
-* TL/DR (as I understand it): You can modify, redistribute, or include in sold products as long as you include the license. You lose this right if you start throwing around litigation.
+* TL/DR (as I understand it): You can modify, redistribute, or include in sold products as long as you include the license. You lose this right if you start throwing around litigation. No warranty or guarantee is included or implied. **Use at your own risk**.
 <details>
 <summary>= Expand for License details =</summary>
 
-   Copyright 2016-2021 Steven Hoff (aka "lectrode")
+   Copyright 2016-2023 Steven Hoff (aka "lectrode")
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -157,8 +183,16 @@ Overview of what the script does from start to finish. Some steps may be slightl
   * Partial [cache cleanup](#cleanup-tasks "")
   * Check Free space
 
-* Update repo databases, download package updates
-  * `pacman -Syyu[`[`u`](#update_downgrades_bool "")`]w --needed --noconfirm [--ignore `[`$main_ignorepkgs_str`](#main_ignorepkgs_str "")`]`
+* Update repo databases
+  * `pacman -Syy`
+    * Repair upon detection of "error: GPGME error: No data" (*config: [enable](#repair_db02_bool "")*): 
+      * delete package database files (normally stored in `/var/lib/pacman/sync`)
+      * re-attempt `pacman -Syy`
+
+* Download package updates
+  * `pacman -Su[`[`u`](#update_downgrades_bool "")`]w --needed --noconfirm [--ignore `[`$main_ignorepkgs_str`](#main_ignorepkgs_str "")`]`
+    * Upon dependency resolution issues, this will be re-attempted, but with 'd' and 'dd' parameters to skip dependency checks
+    * This ensures that as many packages are downloaded as possible before making any major changes
 
 * Update keyring packages
   * manual update if packages are older than 1.5 years (*config: [enable](#repair_keyringpkg_bool "")*)
@@ -168,8 +202,8 @@ Overview of what the script does from start to finish. Some steps may be slightl
   * Required removal and/or replacement of known conflicting packages
 
 * Update System packages
-  * Installed core packages that end with "-keyring"
-  * Installed core packages that end with "-system"
+  * Installed repo packages that end with "-keyring"
+  * Installed repo packages that end with "-system"
   * Packages specified in [`$main_systempkgs_str`](#main_systempkgs_str "")
 
 * Check for package database errors (*config: [enable](#repair_db01_bool "")*)
@@ -263,18 +297,25 @@ Note: All current and future automatic repair and manual package changes can be 
 
 ### Automatic Repair
 This script supports detecting and repairing the following potential issues:
-* [Package database errors](#repair_db01_bool "")
+* Package database errors [error 1](#repair_db01_bool "") | [error 2](#repair_db02_bool "")
 * [Obsolete keyring packages](#repair_keyringpkg_bool "")
 * [Non-functioning Pikaur](#repair_pikaur01_bool "")
 * [AUR packages requiring rebuild after dependency update](#repair_aurrbld_bool "")
+
 
 ### Manual Package Changes
 Every once in a while, updating Manjaro requires manual package changes to allow updates to succeed. This script [supports](#repair_manualpkg_bool "") automatically performing the following:
 * Setup and use `pacman-static` if `pacman`<5.2
 * Package removal and/or replacement:
 <table>
+  <tr><td><code>galculator-gtk2</code></td><td><=2.1.4-5</td><td>2021/11/13: replaced with <code>galculator</code></td></tr>
+  <tr><td><code>manjaro-gdm-theme</code></td><td><=20210528-1</td><td>2022/04/23: removed from repos</td></tr>
+  <tr><td><code>manjaro-kde-settings-19.0</code>,<code>breath2-icon-themes</code>,<code>plasma5-themes-breath2</code></td><td><=20200426-1</td><td>2021/11: replaced with <code>plasma5-themes-breath</code>,<code>manjaro-kde-settings</code></td></tr>
+  <tr><td><code>[lib32-]jack</code></td><td><=0.125.0-10</td><td>2021/07/26: replaced with <code>lib32-/jack2</code></td></tr>
   <tr><td><code>[lib32-]libcanberra-gstreamer</code></td><td><=0.30+2+gc0620e4-3</td><td>2021/06: merged into <code>lib32-/libcanberra-pulse</code></td></tr>
   <tr><td><code>python2-dbus</code></td><td><=1.2.16-3</td><td>2021/03: removed from <code>dbus-python</code></td></tr>
+  <tr><td><code>knetattach</code></td><td><=5.20.5-1</td><td>2021/01/09: merged into <code>plasma-desktop</code></td></tr>
+  <tr><td><code>gksu-polkit</code></td><td><=0.0.3-2</td><td>2020/10: replaced with <code>zensu</code></td></tr>
   <tr><td><code>pyqt5-common</code></td><td><=5.13.2-1</td><td>2019/12: removed from repos</td></tr>
   <tr><td><code>ilmbase</code></td><td><=2.3.0-1</td><td>2019/10: merged into <code>openexr</code></td></tr>
   <tr><td><code>colord</code></td><td><=1.4.4-1</td><td>2019/??: conflicts with <code>libcolord</code></td></tr>
@@ -282,9 +323,18 @@ Every once in a while, updating Manjaro requires manual package changes to allow
   <tr><td><code>engrampa-thunar-plugin</code></td><td><=1.0-2</td><td>Xfce 17.1.10: removed from repos</td></tr>
 </table>
 
+* Mark packages as explicitely installed:
 
-The oldest fresh install this script has successfully updated is Manjaro Xfce 17.1.7 (as of August of 2021). 
-Oldest KDE and Gnome fresh installs are unknown, and not tested.
+<table>
+  <tr><td><code>adapta-black-breath-theme</code><br />
+          <code>adapta-black-maia-theme</code><br />
+          <code>adapta-breath-theme</code><br />
+          <code>adapta-gtk-theme</code><br />
+          <code>adapta-maia-theme</code><br />
+          <code>arc-themes-maia</code><br />
+          <code>arc-themes-breath</code><br />
+          <code>matcha-gtk-theme</code></td><td>mistakenly marked as orphans after <code>kvantum-manjaro</code>>0.13.5-1</td></tr>
+</table>
 
 ----
 
@@ -297,13 +347,16 @@ Oldest KDE and Gnome fresh installs are unknown, and not tested.
 ### Dependencies:
 
 Required:
- * `coreutils`, `pacman`, `pacman-mirrors`, `grep`, `iputils`
+ * `coreutils`, `pacman`, `grep`, `iputils`
 
 Optional:
 <table>
+  <tr><td><code>pacman-contrib</code></td><td>for package cache cleanup support (if packaged separately, i.e. Arch Linux)</td></tr>
+  <tr><td><code>pacman-mirrors</code></td><td>for mirror update support</td></tr>
   <tr><td><a href="#supported-aur-helpers">AUR Helper</a></td><td>for AUR package support</td></tr>
-  <tr><td><code>flatpak</code></td><td>for flatpak support</td></tr>
+  <tr><td><code>flatpak</code></td><td>for flatpak package support</td></tr>
   <tr><td>notification daemon</td><td>usually a part of the desktop environment; for notification support</td></tr>
+  <tr><td><code>lsof</code></td><td>for more thorough detection of reboot needed on login</td></tr>
   <tr><td><a href="https://aur.archlinux.org/packages/notify-desktop-git"><code>notify-desktop</code></a></td><td>required for KDE notifications, optional alternative for Xfce, Gnome</td></tr>
   <tr><td><code>wget</code></td><td>if available, will use instead of <code>curl</code></td></tr>
 </table>
@@ -438,6 +491,7 @@ reboot_delay_num=120
 reboot_ignoreusers_str=nobody lightdm sddm gdm
 reboot_notifyrep_num=10
 repair_db01_bool=1
+repair_db02_bool=1
 repair_manualpkg_bool=1
 repair_pikaur01_bool=1
 repair_aurrbld_bool=1
@@ -614,6 +668,18 @@ zflag:dropbox,tor-browser=--skippgpcheck
 </details>
 
 <details>
+<summary><a name="main_inhibit_bool"></a>main_inhibit_bool</summary>
+
+* Default: `1` (True)
+* If true, script will inhibit accidental restart/shutdown/hibernate/suspend while the script is updating the system
+* This can be manually overridden with one of the following methods:
+  * WARNING: interupting a system update can result in a non-functoinal system! Use with caution!
+  * Execute with elevated permissions, i.e. `sudo reboot`, or `sudo systemctl suspend`
+  * Stop the script with `sudo pkill auto-update`
+* NOTE: On KDE, while inhibited, selecting shutdown or restart results in a black screen (use different TTY to get back in)
+</details>
+
+<details>
 <summary><a name="main_logdir_str"></a>main_logdir_str</summary>
 
 * Default: `/var/log/xs`
@@ -713,7 +779,16 @@ zflag:dropbox,tor-browser=--skippgpcheck
 
  * Default: `1` (True)
  * If true, the script will detect and attempt to repair missing "desc"/"files" files in package database
- * NOTE: It does this by creating the missing files and re-installing the package(s) with `overwrite=*` specified
+ * NOTE: It repairs this by creating the missing files and re-installing the package(s) with `overwrite=*` specified
+
+</details>
+
+<details>
+<summary><a name="repair_db02_bool"></a>repair_db02_bool</summary>
+
+ * Default: `1` (True)
+ * If true, the script will detect and attempt to redownload corrupt package database files
+ * NOTE: It repairs this by removing existing package database files, then running 'pacman -Syy'
 
 </details>
 
