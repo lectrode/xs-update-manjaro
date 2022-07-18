@@ -1,6 +1,6 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.9.6-rc2"; vsndsp="$vsn 2022-07-18"
+vsn="v3.9.7"; vsndsp="$vsn 2022-07-18"
 #-Downloads and Installs new updates
 #-Depends: coreutils, grep, pacman, pacman-mirrors, iputils
 #-Optional Depends: flatpak, notify-desktop, pikaur, rebuild-detector, wget
@@ -772,11 +772,11 @@ trblm "Config file: $xs_autoupdate_conf"; trblqout
 
 
 #Wait up to 5 minutes for network
-trbl "Waiting for network..."
+trbl "Waiting up to 5 minutes for network..."
 waiting=1;waited=0; while [ $waiting = 1 ]; do
     test_online && waiting=0
     if [ $waiting = 1 ]; then
-        if [ $waited -ge 60 ]; then exit; fi
+        if [ $waited -ge 60 ]; then trbl "No network, quitting..."; exit; fi
         slp 5; ((waited++))
     fi
 done; unset waiting waited
