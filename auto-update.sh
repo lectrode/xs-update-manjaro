@@ -1,6 +1,6 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.9.5"; vsndsp="$vsn 2022-05-27"
+vsn="v3.9.7"; vsndsp="$vsn 2022-07-18"
 #-Downloads and Installs new updates
 #-Depends: coreutils, grep, pacman, pacman-mirrors, iputils
 #-Optional Depends: flatpak, notify-desktop, pikaur, rebuild-detector, wget
@@ -45,32 +45,9 @@ trblqout(){
 
 test_online(){ ping -c 1 "${conf_a[main_testsite_str]}" >/dev/null 2>&1 && return 0; return 1; }
 
-pacclean(){
-[[ "${conf_a[cln_1enable_bool]}" = "$ctrue" ]] || return
-
-[[ "$((conf_a[cln_aurpkg_bool]+conf_a[cln_aurbuild_bool]+conf_a[cln_paccache_num]))" -gt "-1" ]] && trbl "Performing cleanup operations..."
-
-if [[ "${conf_a[cln_aurpkg_bool]}" = "$ctrue" ]]; then
-    trblm "Cleaning AUR package cache..."
-    if [ -d /var/cache/apacman/pkg ]; then rm -rf /var/cache/apacman/pkg/*; fi
-    if [ -d /var/cache/pikaur/pkg ]; then rm -rf /var/cache/pikaur/pkg/*; fi
-fi
-
-if [[ "${conf_a[cln_aurbuild_bool]}" = "$ctrue" ]]; then
-    trblm "Cleaning AUR build cache..."
-    if [ -d /var/cache/pikaur/aur_repos ]; then rm -rf /var/cache/pikaur/aur_repos/*; fi
-    if [ -d /var/cache/pikaur/build ]; then rm -rf /var/cache/pikaur/build/*; fi
-fi
-
-if [[ "${conf_a[cln_paccache_num]}" -gt "-1" ]]; then
-    trblm "Cleaning pacman cache..."
-    if paccache --help >/dev/null 2>&1; then paccache -rfqk"${conf_a[cln_paccache_num]}"
-    else trbl "$co_y cln_paccache_num is enabled, but paccache not found/functioning"; fi
-fi
-}
-
-chk_pkgisinst(){ if [[ "$($pcmbin -Qq "$1" 2>/dev/null | grep -m1 -x "$1")" == "$1" ]]; then [[ "$2" = "1" ]] && echo "$1"; return 0; else return 1; fi; }
-chk_pkgisexplicit(){ $pcmbin -Qi "$1" 2>/dev/null|grep -F "Install Reason"|grep -F "Explicitly" >/dev/null && return 0; return 1; }
+chk_pkginst(){ $pcmbin -Q "$1" >/dev/null 2>&1 || return 1; }
+chk_pkginstx(){ [[ "$($pcmbin -Qq "$1" 2>/dev/null | grep -m1 -x "$1")" == "$1" ]] || return 1; }
+chk_pkgexplicit(){ $pcmbin -Qi "$1" 2>/dev/null|grep -F "Install Reason"|grep -F "Explicitly" >/dev/null && return 0; return 1; }
 get_pkgvsn(){ $pcmbin -Q "$1" | grep "$1 " -m1 | cut -d' ' -f2; }
 chk_pkgvsndiff(){ cpvd_t1="$(get_pkgvsn "$1")"; vercmp "${cpvd_t1:-0}" "$2"; unset cpvd_t1; }
 chk_sha256(){ [[ "$(sha256sum "$1" |cut -d ' ' -f 1 |tr -cd '[:alnum:]')" = "$2" ]] && return 0; return 1; }
@@ -126,6 +103,45 @@ if [[ "$1" = "DBPath" ]]; then echo "/var/lib/pacman"; fi
 if [[ "$1" = "CacheDir" ]]; then echo "/var/cache/pacman/pkg"; fi
 }
 
+inst_misspkg(){
+trbl "$2. Installing missing dependency: $1"
+if chk_remoterepo "$1"; then $pcmbin -S --noconfirm "$1"|trbl_t; return; fi
+for h in pikaur apacman; do if [ "${hlpr_a[$h]}" = "1" ]; then $h -S --needed --noconfirm "$1"; break; fi; done
+}
+
+pcln_fol(){
+#$1=num, $2=fol
+[[ -d "$2" ]] || return
+# shellcheck disable=SC2115
+if [[ "$1" = "0" ]]; then rm -rf "$2"/*; return; fi
+if ! paccache --help >/dev/null 2>&1 && chk_remoterepo "pacman-contrib"; then
+    inst_misspkg "pacman-contrib" "Cleanup enabled and configured to use paccache"; fi
+if paccache --help >/dev/null 2>&1; then paccache -rfqk"$1" -c "$2"
+else trbl "$co_y cannot clean $2, paccache not found/functioning"; fi
+}
+pacclean(){
+[[ "${conf_a[cln_1enable_bool]}" = "$ctrue" ]] || return
+
+[[ "$((conf_a[cln_aurpkg_num]+conf_a[cln_aurbuild_bool]+conf_a[cln_paccache_num]))" -gt "-2" ]] && trbl "Performing cleanup operations..."
+
+if [[ "${conf_a[cln_aurpkg_num]}" -gt "-1" ]]; then
+    trblm "Cleaning AUR package cache..."
+    pcln_fol "${conf_a[cln_aurpkg_num]}" "/var/cache/apacman/pkg"
+    pcln_fol "${conf_a[cln_aurpkg_num]}" "/var/cache/pikaur/pkg"
+fi
+
+if [[ "${conf_a[cln_aurbuild_bool]}" = "$ctrue" ]]; then
+    trblm "Cleaning AUR build cache..."
+    pcln_fol 0 "/var/cache/pikaur/aur_repos"
+    pcln_fol 0 "/var/cache/pikaur/build"
+fi
+
+if [[ "${conf_a[cln_paccache_num]}" -gt "-1" ]]; then
+    trblm "Cleaning pacman cache..."
+    pcln_fol "${conf_a[cln_paccache_num]}" "$(get_pacmancfg CacheDir)"
+fi
+}
+
 chk_freespace(){
 [[ "$(($(stat -f --format="%a*%S" "$1")))" -ge "$(($2*1024*1024*1024))" ]] && return 0
 trbl "$co_r Less than $2GB free on $1; please free up some space"; return 1; }
@@ -143,23 +159,30 @@ then echo crit; else echo norm; fi
 }
 
 manualExplicit(){
-chk_pkgisinst "$1" || return 0
-chk_pkgisexplicit "$1" && return 0
+chk_pkginstx "$1" || return 0
+chk_pkgexplicit "$1" && return 0
 $pcmbin -D --asexplicit "$1"|trbl_t
-chk_pkgisexplicit "$1" && return 0 || return 1
+chk_pkgexplicit "$1" && return 0 || return 1
+}
+
+manualDepend(){
+chk_pkginstx "$1" || return 0
+chk_pkgexplicit "$1" || return 0
+$pcmbin -D --asdeps "$1"|trbl_t
+chk_pkgexplicit "$1" && return 1 || return 0
 }
 
 manualRemoval(){
 #$1=(pkgs)|$2=vsn (or older) to remove|[$3=new pkgs]
 IFS=" " read -ra mr_pkgo <<< "$1"
-if chk_pkgisinst "${mr_pkgo[0]}" && [[ "$(chk_pkgvsndiff "${mr_pkgo[0]}" "$2")" -le 0 ]]; then
+if chk_pkginstx "${mr_pkgo[0]}" && [[ "$(chk_pkgvsndiff "${mr_pkgo[0]}" "$2")" -le 0 ]]; then
     trbl "attempting manual package removal/replacement of $1..."
     if [[ ! "$3" = "" ]]; then
         # shellcheck disable=SC2086
         $pcmbin -Sw --noconfirm $3 $sf_ignore 2>&1|trbl_t
         if [[ ! "${PIPESTATUS[0]}" = "0" ]]; then trbl "$co_r failed to download $3"; return 1; fi
     fi
-    for p in "${mr_pkgo[@]}"; do chk_pkgisinst "$p" && $pcmbin -Rdd --noconfirm "$p" 2>&1|trbl_t; done
+    for p in "${mr_pkgo[@]}"; do chk_pkginstx "$p" && $pcmbin -Rdd --noconfirm "$p" 2>&1|trbl_t; done
     # shellcheck disable=SC2086
     [[ "$3" = "" ]] || $pcmbin -S --noconfirm $3 $sf_ignore 2>&1|trbl_t
     if [[ ! "${PIPESTATUS[0]}" = "0" ]]; then trbl "$co_r failed to replace $1 with $3"; return 1; fi
@@ -435,11 +458,11 @@ cat << 'EOF' > "$xs_autoupdate_conf"
 
 # Cleanup Settings #
 #cln_1enable_bool:         Enable/Disable ALL package cleanup (overrides following cleanup settings)
-#cln_aurpkg_bool:          Enable/Disable AUR package cleanup
+#cln_aurpkg_num:           Number of AUR packages to keep (-1 to keep all)(any values greater than 0 require paccache)
 #cln_aurbuild_bool:        Enable/Disable AUR build cleanup
 #cln_flatpakorphan_bool:   Enable/Disable uninstall of uneeded flatpak packages
 #cln_orphan_bool:          Enable/Disable uninstall of uneeded repo packages
-#cln_paccache_num:         Number of official packages to keep (-1 to keep all)
+#cln_paccache_num:         Number of repo packages to keep (-1 to keep all)(any values greater than 0 require paccache)
 
 # Flatpak Settings #
 #flatpak_update_freq:      Check for Flatpak package updates every X days (-1 to disable)
@@ -524,7 +547,7 @@ typeset -A conf_a; conf_a=(
     [aur_update_freq]=3
     [aur_devel_freq]=6
     [cln_1enable_bool]=$ctrue
-    [cln_aurpkg_bool]=$ctrue
+    [cln_aurpkg_num]=1
     [cln_aurbuild_bool]=$ctrue
     [cln_flatpakorphan_bool]=$ctrue
     [cln_orphan_bool]=$ctrue
@@ -575,13 +598,14 @@ typeset -A conf_a; conf_a=(
     [aur_devel_bool]=""
     [flatpak_1enable_bool]=""
     [reboot_1enable_bool]=""
+    [cln_aurpkg_bool]=""
 )
 validconf="$(IFS='|'; echo "${!conf_a[*]}")"
 conf_int0="notify_lastmsg_num reboot_delay_num reboot_notifyrep_num"
-conf_intn1="cln_paccache_num reboot_1enable_num"
+conf_intn1="cln_aurpkg_num cln_paccache_num reboot_1enable_num"
 conf_legacy="bool_detectErrors bool_Downgrades bool_notifyMe bool_updateFlatpak bool_updateKeys str_cleanLevel \
     str_ignorePackages str_log_d str_mirrorCountry str_testSite aur_devel_bool flatpak_1enable_bool \
-    reboot_1enable_bool repair_pythonrebuild_bool"
+    reboot_1enable_bool repair_pythonrebuild_bool cln_aurpkg_bool"
 
 #config: load from file
 
@@ -633,6 +657,7 @@ esac
 [[ "${conf_a[flatpak_1enable_bool]}" = "0" ]] && conf_a[flatpak_update_freq]="-1"
 [[ ! "${conf_a[reboot_1enable_bool]}" = "" ]] && conf_a[reboot_1enable_num]="${conf_a[reboot_1enable_bool]}"
 [[ ! "${conf_a[repair_pythonrebuild_bool]}" = "" ]] && conf_a[repair_aurrbld_bool]="${conf_a[repair_pythonrebuild_bool]}"
+[[ "${conf_a[cln_aurpkg_bool]}" = "0" ]] && conf_a[cln_aurpkg_num]="-1"
 
 for i in $(printf "%s\n" "$conf_legacy"); do unset "conf_a[$i]"; done
 
@@ -665,7 +690,7 @@ if [ "${conf_a[notify_1enable_bool]}" = "$ctrue" ]; then
         if notify-desktop --help >/dev/null 2>&1; then
             noti_gdbus=$false; noti_send=$false
             trblqin "notify-desktop found, using for notifications"
-        elif chk_pkgisinst "plasma-desktop"; then
+        elif chk_pkginst "plasma-desktop"; then
             if notify-send --help >/dev/null 2>&1; then
                 noti_gdbus=$false; noti_desk=$false
                 trblqin "$co_y KDE Plasma desktop found, falling back to legacy. Please install notify-desktop-git for fully-supported notifications in KDE Plasma"
@@ -747,11 +772,11 @@ trblm "Config file: $xs_autoupdate_conf"; trblqout
 
 
 #Wait up to 5 minutes for network
-trbl "Waiting for network..."
+trbl "Waiting up to 5 minutes for network..."
 waiting=1;waited=0; while [ $waiting = 1 ]; do
     test_online && waiting=0
     if [ $waiting = 1 ]; then
-        if [ $waited -ge 60 ]; then exit; fi
+        if [ $waited -ge 60 ]; then trbl "No network, quitting..."; exit; fi
         slp 5; ((waited++))
     fi
 done; unset waiting waited
@@ -786,8 +811,9 @@ waiting=1;waited=0; while [ $waiting = 1 ]; do
     fi
 done;  unset waiting waited isRunning
 
-#remove .lck file (pacman is not running at this point)
+#remove .lck file (updaters not running at this point)
 if [[ -f "$(get_pacmancfg DBPath)/db.lck" ]]; then rm -f "$(get_pacmancfg DBPath)/db.lck"; fi
+if [[ -f "/tmp/pikaur_build_deps.lock" ]]; then rm -f "/tmp/pikaur_build_deps.lock"; fi
 
 #init background notifications
 trbl "init notifier..."
@@ -813,10 +839,12 @@ if perst_isneeded "${conf_a[update_mirrors_freq]}" "${perst_a[mirrors_up_date]}"
 fi
 
 if perst_isneeded "${conf_a[update_keys_freq]}" "${perst_a[keys_up_date]}"; then
-    trbl "Refreshing keys..."; pacman-key --refresh-keys  2>&1|trbl_t |tee /dev/tty |grep "Total number processed:" >/dev/null
-    err_keys=("${PIPESTATUS[@]}"); if [[ "${err_keys[0]}" -eq 0 ]] || [[ "${err_keys[3]}" -eq 0 ]]; then
-        perst_update "keys_up_date"; err[keys]=0; else err[keys]=${err_keys[0]}; trbl "$co_y pacman-key exited with code ${err[keys]}"; fi
-unset err_keys; fi
+while : ; do
+    if chk_pkginstx "archlinux-keyring" && [[ "$(chk_pkgvsndiff "archlinux-keyring" "20220713-1")" -lt 0 ]]; then break; fi
+        trbl "Refreshing keys..."; pacman-key --refresh-keys  2>&1|trbl_t |tee /dev/tty |grep "Total number processed:" >/dev/null
+        err_keys=("${PIPESTATUS[@]}"); if [[ "${err_keys[0]}" -eq 0 ]] || [[ "${err_keys[3]}" -eq 0 ]]; then
+            perst_update "keys_up_date"; err[keys]=0; else err[keys]=${err_keys[0]}; trbl "$co_y pacman-key exited with code ${err[keys]}"; fi
+unset err_keys; break; done; fi
 
 #While loop for updating main and AUR packages
 #Any critical errors will disable further changes
@@ -825,7 +853,7 @@ while : ; do
 if ! chk_freespace_all; then err[repo]=1; err_crit="repo"; break; fi
 
 #Does not support installs with xproto<=7.0.31-1
-if chk_pkgisinst "xproto" && [[ "$(chk_pkgvsndiff "xproto" "7.0.31-1")" -le 0 ]]; then
+if chk_pkginstx "xproto" && [[ "$(chk_pkgvsndiff "xproto" "7.0.31-1")" -le 0 ]]; then
     trbl "$co_r old xproto installed - system too old for script to update"; err[repo]=1; err_crit="repo"; break; fi
 
 
@@ -841,19 +869,6 @@ err_repodb=("${PIPESTATUS[@]}"); if [[ ! "${err_repodb[0]}" -eq 0 ]] && [[ "${er
     else trbl "$co_y Package databases corrupt, but fix is disabled. Continuing..."; break; fi
 fi; break; done; err[repodb]="${err_repodb[0]}"; unset uprepodb err_repodb
 
-
-trbl "Downloading packages from main repos..."
-while : ; do test_online || break
-# shellcheck disable=SC2086
-pacman -Suw$pacdown$pacdep --needed --noconfirm $pacignore 2>&1|trbl_t|tee /dev/tty|grep "could not satisfy dependencies" >/dev/null
-err_repodl=("${PIPESTATUS[@]}"); [[ "${conf_a[cln_paccache_num]}" = "0" ]] || pacclean
-if [[ ! "${err_repodl[0]}" -eq 0 ]] && [[ "${err_repodl[3]}" -eq 0 ]]; then
-    if [[ ! "$pacdep" = "dd" ]]; then pacdep="${pacdep}d"; trbl "$co_y skipping dependency detection ($pacdep)"; continue
-    else trbl "$co_y pacman failed to download packages - err code:${err_repodl[0]}"; fi
-fi; break; done; unset err_repodl pacdep
-
-if ! chk_freespace_all; then err[repo]=1; err_crit="repo"; break; fi
-
 #pacman-static
 if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_manualpkg_bool]}" = "$ctrue" ]]; then
     #Fix for pacman<5.2 (18.1.1 and earlier)
@@ -861,7 +876,7 @@ if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_manu
         trbl "Old pacman detected, attempting to use pacman-static..."
         pacman -Sw --noconfirm pacman-static 2>&1|trbl_t
         pacman -U --noconfirm "$(get_pkgfilename "pacman-static")" 2>&1|trbl_t && pcmbin="pacman-static"
-        if ! chk_pkgisinst "pacman-static"; then
+        if ! chk_pkginst "pacman-static"; then
             if dl_verify "pacmanstatic" "$url_repo/master/external/hash_pacman-static" "$url_repo/master/external/pacman-static"; then
                 chmod +x /tmp/xs-autmp-pacmanstatic/pacman-static && pcmbin="/tmp/xs-autmp-pacmanstatic/pacman-static"; fi; fi
         if echo "$pcmbin"|grep "pacman-static" >/dev/null 2>&1 && $pcmbin --help >/dev/null 2>&1; then
@@ -872,7 +887,7 @@ fi
 
 #Update keyring packages
 trbl "Updating system keyrings..."
-for p in $(pacman -Sl | grep "\[installed"|grep -oP "[^ ]*\-keyring"); do
+for p in $(pacman -Sl | grep "\[installed"|grep -oP "[^ ]*\-keyring"|grep -Ev "^gnome-keyring$"); do
     # shellcheck disable=SC2086
     $pcmbin -S --needed --noconfirm $p $sf_ignore 2>&1|trbl_t
     if [[ "${PIPESTATUS[0]}" -gt 0 ]]; then
@@ -887,9 +902,24 @@ for p in $(pacman -Sl | grep "\[installed"|grep -oP "[^ ]*\-keyring"); do
 done
 if [[ ${err[sys]} -ne 0 ]]; then trbl "$co_r failed to update system keyrings"; err_crit="sys"; break; fi
 
+trbl "Downloading packages from main repos..."
+while : ; do test_online || break
+# shellcheck disable=SC2086
+$pcmbin -Suw$pacdown$pacdep --needed --noconfirm $pacignore 2>&1|trbl_t|tee /dev/tty|grep "could not satisfy dependencies" >/dev/null
+err_repodl=("${PIPESTATUS[@]}"); [[ "${conf_a[cln_paccache_num]}" = "0" ]] || pacclean
+if [[ ! "${err_repodl[0]}" -eq 0 ]] && [[ "${err_repodl[3]}" -eq 0 ]]; then
+    if [[ ! "$pacdep" = "dd" ]]; then pacdep="${pacdep}d"; trbl "$co_y skipping dependency detection ($pacdep)"; continue
+    else trbl "$co_y pacman failed to download packages - err code:${err_repodl[0]}"; fi
+fi; break; done; unset err_repodl pacdep
+
+if ! chk_freespace_all; then err[repo]=1; err_crit="repo"; break; fi
+
 if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_manualpkg_bool]}" = "$ctrue" ]]; then
     trbl "Checking for required manual package changes..."
-    if chk_pkgisinst "kvantum-manjaro" && [[ "$(chk_pkgvsndiff "kvantum-manjaro" "0.13.5-1")" -le 0 ]]; then
+    manualRemoval "wxgtk2" "3.0.5.1-3" #Removed from arch repos 2022-07-14
+    manualRemoval "pipewire-media-session" "1:0.4.1-1" "wireplumber" #Replaced 2022-05-10 (bump version when demoted)
+    manualRemoval "qpdfview" "0.4.18-1" "evince" #Moved to AUR 2022-04-01 (bump version when updated)
+    if chk_pkginstx "kvantum-manjaro" && [[ "$(chk_pkgvsndiff "kvantum-manjaro" "0.13.5-1")" -le 0 ]]; then
         for t in adapta-black-breath-theme adapta-black-maia-theme adapta-breath-theme adapta-gtk-theme adapta-maia-theme arc-themes-maia \
             arc-themes-breath matcha-gtk-theme; do manualExplicit "$t"; done; fi #removed from depends of kvmantum-manjaro 2022/02/23
     manualRemoval "galculator-gtk2" "2.1.4-5" "galculator" #Removed from galculator 2021/11/13
@@ -900,6 +930,10 @@ if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_manu
     manualRemoval "python2-dbus" "1.2.16-3" #Removed from dbus-python 2021/03
     manualRemoval "knetattach" "5.20.5-1" #Merged into plasma-desktop 2021/01/09
     manualRemoval "gksu-polkit" "0.0.3-2" "zensu" #Removed from manjaro repos 2020/10
+    manualRemoval "breeze-kde4" "5.13.4-1"; manualRemoval "oxygen-kde4" "5.13.4-1"; manualRemoval "sni-qt" "0.2.6-5" #removed from repos 2019/05
+    if chk_pkginstx "phonon-qt4" && [[ "$(chk_pkgvsndiff "phonon-qt4" "4.10.3-1")" -le 0 ]]; then
+        for t in phonon-qt4-gstreamer phonon-qt4-vlc phonon-qt4-mplayer-git; do manualDepend "$t"; done; fi #these should be depends of phonon-qt4, moved to AUR 2019/05
+    manualRemoval "ms-office-online" "20.1.0-1" #moved to AUR 2020/06
     manualRemoval "pyqt5-common" "5.13.2-1" #Removed from repos early 2019/12
     manualRemoval "ilmbase" "2.3.0-1" #Merged into openexr 2019/10
     manualRemoval "colord" "1.4.4-1" #Conflicts with libcolord mid-2019
@@ -909,7 +943,7 @@ fi
 
 trbl "Updating system packages..."
 for p in $(pacman -Sl | grep "\[installed"|grep -oP "[^ ]*\-system$") ${conf_a[main_systempkgs_str]}; do
-    chk_pkgisinst "$p" && $pcmbin -S --needed --noconfirm "$p" 2>&1|trbl_t
+    chk_pkginstx "$p" && $pcmbin -S --needed --noconfirm "$p" 2>&1|trbl_t
     ((err[sys]+=PIPESTATUS[0])); done
 if [[ ${err[sys]} -ne 0 ]]; then trbl "$co_y system packages failed to update - err:${err[sys]}"; fi
 
@@ -964,11 +998,8 @@ done
 
 #check if AUR pkgs need rebuild
 if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_aurrbld_bool]}" = "$ctrue" ]]; then
-    if ! chk_pkgisinst "rebuild-detector"; then
-        trbl "AUR Helper installed and enabled, and rebuilds are enabled. Installing missing dependency: rebuild-detector"
-        $pcmbin -S --needed --noconfirm rebuild-detector 2>&1|trbl_t
-    fi
-    if chk_pkgisinst "rebuild-detector"; then
+    chk_pkginst "rebuild-detector" || inst_misspkg "rebuild-detector" "AUR Helper installed and enabled, and rebuilds are enabled"
+    if chk_pkginst "rebuild-detector"; then
         trbl "Checking if AUR packages need rebuild..."
         for pkg in $(printf "%s\n" "${!perst_a[@]}"|grep -E "^zrbld:"); do
             if perst_isneeded "${conf_a[repair_aurrbldfail_freq]}" "${perst_a[$pkg]}"; then perst_reset "$pkg"; continue; fi
@@ -996,7 +1027,7 @@ if [ "${hlpr_a[pikaur]}" = "1" ]; then while :; do
     trbl "Checking if pikaur functional..."
     if testpikaur; then break; fi
     hlpr_a[pikaur]=0; trbl "$co_y AURHelper: pikaur not functioning"
-    if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_pikaur01_bool]}" = "$ctrue" ]] && $pcmbin -Q pikaur >/dev/null 2>&1; then
+    if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_pikaur01_bool]}" = "$ctrue" ]] && chk_pkginst "pikaur"; then
         trblm "Attempting to re-install ${pikpkg:-pikaur}..."
         mkdir "/tmp/xs-autmp-2delete"; if pushd "/tmp/xs-autmp-2delete"; then
             git clone https://github.com/actionless/pikaur.git; if cd pikaur; then
@@ -1015,15 +1046,9 @@ if [[ "${conf_a[aur_1helper_str]}" = "auto" ]]; then
 
 
 #Install KDE notifier dependency (if auto|desk on KDE)
-if [ "${conf_a[notify_1enable_bool]}" = "$ctrue" ]; then 
-    if echo "${conf_a[notify_function_str]}"|grep "auto\|desk" >/dev/null; then
-        if $pcmbin -Q plasma-desktop >/dev/null 2>&1; then
-            if ! $pcmbin -Q notify-desktop-git; then
-                if [ "${hlpr_a[pikaur]}" = "1" ]; then pikaur -S --needed --noconfirm notify-desktop-git; fi
-                if [ "${hlpr_a[apacman]}" = "1" ]; then apacman -S --needed --noconfirm notify-desktop-git; fi
-            fi
-        fi
-    fi
+if [ "${conf_a[notify_1enable_bool]}" = "$ctrue" ] && echo "${conf_a[notify_function_str]}"|grep "auto\|desk" >/dev/null &&\
+chk_pkginst "plasma-desktop" && ! chk_pkginst "notify-desktop-git" && [[ "$((hlpr_a[pikaur]+hlpr_a[apacman]))" -gt "0" ]]; then
+    inst_misspkg "notify-desktop-git" "Notifications enabled and KDE detected"
 fi
 
 
@@ -1040,7 +1065,7 @@ if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_aurr
                     rbcst="$(echo "${!flag_a[@]}"|grep -E "(^|,)$pkg(,|$)")"
                     [[ ! "$rbcst" = "" ]] && rbcst_flg="--mflags=${flag_a[$rbcst]}"
                     # shellcheck disable=SC2086
-                    test_online && pikaur -Sa --noconfirm $rbcst_flg "$pkg" 2>&1|trbl_t
+                    test_online && pikaur -Sa --noconfirm --rebuild $rbcst_flg "$pkg" 2>&1|trbl_t
                     unset rbcst rbcst_flg
                 elif [ "${hlpr_a[apacman]}" = "1" ]; then
                     apacman -S --auronly --noconfirm "$pkg" 2>&1|trbl_t
@@ -1057,7 +1082,7 @@ if [[ "${hlpr_a[pikaur]}" = "1" ]]; then
         trbl "Updating AUR packages with custom flags [pikaur]..."
         for i in $(printf "%s\n" "${!flag_a[@]}"); do
             for j in $(echo "$i" | tr ',' ' '); do
-                $pcmbin -Q "$j" >/dev/null 2>&1 && custpkg+=" $j"; done
+                chk_pkginstx "$j" && custpkg+=" $j"; done
             if [[ ! "$custpkg" = "" ]]; then
                 if test_online; then
                     trblm "Updating: $custpkg"

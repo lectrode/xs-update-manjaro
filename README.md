@@ -20,7 +20,7 @@
   * [aur_update_freq](#aur_update_freq "")
   * [aur_devel_freq](#aur_devel_freq "")
   * [cln_1enable_bool](#cln_1enable_bool "")
-  * [cln_aurpkg_bool](#cln_aurpkg_bool "")
+  * [cln_aurpkg_num](#cln_aurpkg_num "")
   * [cln_aurbuild_bool](#cln_aurbuild_bool "")
   * [cln_orphan_bool](#cln_orphan_bool "")
   * [cln_flatpakorphan_bool](#cln_flatpakorphan_bool "")
@@ -163,6 +163,7 @@ Overview of what the script does from start to finish. Some steps may be slightl
   * Check for script updates (*config: [enable](#self_1enable_bool ""), [branch](#self_branch_str "")*)
   * Wait up to 5 minutes for any already running instances of pacman/pikaur/apacman
   * Check for and remove db.lck
+  * Check for and remove `/tmp/pikaur_build_deps.lock`
 * Start background notification process
 * Package cache cleanup (see [Cleanup Tasks](#cleanup-tasks "") for details)
 </details>
@@ -189,13 +190,13 @@ Overview of what the script does from start to finish. Some steps may be slightl
       * delete package database files (normally stored in `/var/lib/pacman/sync`)
       * re-attempt `pacman -Syy`
 
+* Update keyring packages
+  * manual update if packages are older than 1.5 years (*config: [enable](#repair_keyringpkg_bool "")*)
+
 * Download package updates
   * `pacman -Su[`[`u`](#update_downgrades_bool "")`]w --needed --noconfirm [--ignore `[`$main_ignorepkgs_str`](#main_ignorepkgs_str "")`]`
     * Upon dependency resolution issues, this will be re-attempted, but with 'd' and 'dd' parameters to skip dependency checks
     * This ensures that as many packages are downloaded as possible before making any major changes
-
-* Update keyring packages
-  * manual update if packages are older than 1.5 years (*config: [enable](#repair_keyringpkg_bool "")*)
 
 * Apply manual package changes (*config: [enable](#repair_manualpkg_bool "")*)(see [this section](#supported-automatic-repair-and-manual-changes "") for details)
   * If `pacman`<5.2, switch to `pacman-static`
@@ -249,9 +250,9 @@ Overview of what the script does from start to finish. Some steps may be slightl
     * `pacman -Rnsc $(pacman -Qtdq) --noconfirm`
 
   * Package cache cleanup
-    * Clean AUR package cache (*config: [enable](#cln_aurpkg_bool "")*)
-      * `rm -rf /var/cache/apacman/pkg/*`
-      * `rm -rf /var/cache/pikaur/pkg/*`
+    * Clean AUR package cache
+      * ``paccache -rfqk`[`$cln_aurpkg_num`](#cln_aurpkg_num "") -c /var/cache/apacman/pkg`
+      * ``paccache -rfqk`[`$cln_aurpkg_num`](#cln_aurpkg_num "") -c /var/cache/pikaur/pkg`
     * Clean AUR build cache (*config: [enable](#cln_aurbuild_bool "")*)
       * `rm -rf /var/cache/pikaur/aur_repos/*`
       * `rm -rf /var/cache/pikaur/build/*`
@@ -308,6 +309,9 @@ Every once in a while, updating Manjaro requires manual package changes to allow
 * Setup and use `pacman-static` if `pacman`<5.2
 * Package removal and/or replacement:
 <table>
+  <tr><td><code>wxgtk2</code></td><td><=3.0.5.1-3</td><td>2022/07/14: removed from arch repos</td></tr>
+  <tr><td><code>pipewire-media-session</code></td><td><=1:0.4.1-1</td><td>2022/05/10: replaced with <code>wireplumber</code></td></tr>
+  <tr><td><code>qpdfview</code></td><td><=0.4.18-1</td><td>2022/04/01: former default pkg moved to AUR, replaced with <code>evince</code></td></tr>
   <tr><td><code>galculator-gtk2</code></td><td><=2.1.4-5</td><td>2021/11/13: replaced with <code>galculator</code></td></tr>
   <tr><td><code>manjaro-gdm-theme</code></td><td><=20210528-1</td><td>2022/04/23: removed from repos</td></tr>
   <tr><td><code>manjaro-kde-settings-19.0</code>,<code>breath2-icon-themes</code>,<code>plasma5-themes-breath2</code></td><td><=20200426-1</td><td>2021/11: replaced with <code>plasma5-themes-breath</code>,<code>manjaro-kde-settings</code></td></tr>
@@ -316,8 +320,12 @@ Every once in a while, updating Manjaro requires manual package changes to allow
   <tr><td><code>python2-dbus</code></td><td><=1.2.16-3</td><td>2021/03: removed from <code>dbus-python</code></td></tr>
   <tr><td><code>knetattach</code></td><td><=5.20.5-1</td><td>2021/01/09: merged into <code>plasma-desktop</code></td></tr>
   <tr><td><code>gksu-polkit</code></td><td><=0.0.3-2</td><td>2020/10: replaced with <code>zensu</code></td></tr>
+  <tr><td><code>ms-office-online</code></td><td><=20.1.0-1</td><td>2020/06: former default pkg moved to AUR</td></tr>
   <tr><td><code>pyqt5-common</code></td><td><=5.13.2-1</td><td>2019/12: removed from repos</td></tr>
   <tr><td><code>ilmbase</code></td><td><=2.3.0-1</td><td>2019/10: merged into <code>openexr</code></td></tr>
+  <tr><td><code>breeze-kde4</code></td><td><=5.13.4-1</td><td>2019/05: removed from repos</td></tr>
+  <tr><td><code>oxygen-kde4</code></td><td><=5.13.4-1</td><td>2019/05: removed from repos</td></tr>
+  <tr><td><code>sni-qt</code></td><td><=0.2.6-5</td><td>2019/05: removed from repos</td></tr>
   <tr><td><code>colord</code></td><td><=1.4.4-1</td><td>2019/??: conflicts with <code>libcolord</code></td></tr>
   <tr><td><code>[lib32-]gtk3-classic</code></td><td><=3.24.24-1</td><td>Xfce 18.0.4: replaced with <code>gtk3</code></td></tr>
   <tr><td><code>engrampa-thunar-plugin</code></td><td><=1.0-2</td><td>Xfce 17.1.10: removed from repos</td></tr>
@@ -334,6 +342,14 @@ Every once in a while, updating Manjaro requires manual package changes to allow
           <code>arc-themes-maia</code><br />
           <code>arc-themes-breath</code><br />
           <code>matcha-gtk-theme</code></td><td>mistakenly marked as orphans after <code>kvantum-manjaro</code>>0.13.5-1</td></tr>
+</table>
+
+* Mark packages as dependency:
+
+<table>
+  <tr><td><code>phonon-qt4-gstreamer</code><br />
+          <code>phonon-qt4-vlc</code><br />
+          <code>phonon-qt4-mplayer-git</code></td><td>extras for phonon-qt4<=4.10.3-1 (moved to AUR 2019/05)</td></tr>
 </table>
 
 ----
@@ -468,7 +484,7 @@ aur_update_freq=3
 aur_devel_freq=6
 cln_1enable_bool=1
 cln_aurbuild_bool=0
-cln_aurpkg_bool=1
+cln_aurpkg_num=1
 cln_flatpakorphan_bool=1
 cln_orphan_bool=1
 cln_paccache_num=1
@@ -563,10 +579,13 @@ zflag:dropbox,tor-browser=--skippgpcheck
 </details>
 
 <details>
-<summary><a name="cln_aurpkg_bool"></a>cln_aurpkg_bool</summary>
+<summary><a name="cln_aurpkg_num"></a>cln_aurpkg_num</summary>
 
-* Default: `1` (True)
-* If this is True, all packages built from the AUR will be deleted when finished
+* Default: `1`
+* Specifies the number of AUR (built) package versions to keep in cache
+* If set to "-1" all AUR package versions will be kept
+* pikaur cache:  `/var/cache/pikaur/pkg`
+* apacman cache: `/var/cache/apacman/pkg`
 </details>
 
 <details>
@@ -593,9 +612,9 @@ zflag:dropbox,tor-browser=--skippgpcheck
 <details>
 <summary><a name="cln_paccache_num"></a>cln_paccache_num</summary>
 
-* Default: `0`
-* Specifies the number of official built packages to keep in cache
-* If set to "-1" all official packages will be kept (cache is usually `/var/cache/pacman/pkg`)
+* Default: `1`
+* Specifies the number of repo package versions to keep in cache
+* If set to "-1" all official package versions will be kept (cache is usually `/var/cache/pacman/pkg`)
 </details>
 
 ----
