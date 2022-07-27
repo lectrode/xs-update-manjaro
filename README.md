@@ -191,6 +191,7 @@ Overview of what the script does from start to finish. Some steps may be slightl
       * re-attempt `pacman -Syy`
 
 * Update keyring packages
+  * mark keyring packages as explicitly installed if needed
   * manual update if packages are older than 1.5 years (*config: [enable](#repair_keyringpkg_bool "")*)
 
 * Download package updates
