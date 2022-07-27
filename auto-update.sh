@@ -1,6 +1,6 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.9.8-hf1"; vsndsp="$vsn 2022-07-27"
+vsn="v3.9.8-hf2"; vsndsp="$vsn 2022-07-27"
 #-Downloads and Installs new updates
 #-Depends: coreutils, grep, pacman, pacman-mirrors, iputils
 #-Optional Depends: flatpak, notify-desktop, pikaur, rebuild-detector, wget
@@ -888,7 +888,6 @@ fi
 #Update keyring packages
 trbl "Updating system keyrings..."
 for p in $(pacman -Sl|grep "\[installed"|grep "keyring "|grep -oP "[^ ]*\-keyring"|grep -Ev "^([lib]*gnome|python)-keyring$"); do
-    manualExplicit "$p"
     # shellcheck disable=SC2086
     $pcmbin -S --needed --noconfirm $p $sf_ignore 2>&1|trbl_t
     if [[ "${PIPESTATUS[0]}" -gt 0 ]]; then
@@ -1132,6 +1131,8 @@ done
 #Remove orphan packages, cleanup
 if [[ "${conf_a[cln_1enable_bool]}" = "$ctrue" ]]; then 
     if [[ "${conf_a[cln_orphan_bool]}" = "$ctrue" ]] && [[ "${err[repo]}" = "0" ]]; then
+        if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]]; then
+            for p in $($pcmbin -Qtdq|grep -oP "[^ ]*\-keyring$"|grep -Ev "^([lib]*gnome|python)-keyring$"); do manualExplicit "$p"; done; fi
         if [[ ! "$($pcmbin -Qtdq)" = "" ]]; then
             trbl "Removing orphan packages..."
             # shellcheck disable=SC2046

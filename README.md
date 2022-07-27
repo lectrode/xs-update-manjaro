@@ -191,7 +191,6 @@ Overview of what the script does from start to finish. Some steps may be slightl
       * re-attempt `pacman -Syy`
 
 * Update keyring packages
-  * mark keyring packages as explicitly installed if needed
   * manual update if packages are older than 1.5 years (*config: [enable](#repair_keyringpkg_bool "")*)
 
 * Download package updates
@@ -248,6 +247,7 @@ Overview of what the script does from start to finish. Some steps may be slightl
 * All cleanup operations (*config: [enable](#cln_1enable_bool "")*)
 
   * Remove orphan packages (*config: [enable](#cln_orphan_bool "")*)
+    * mark keyring packages as explicitly installed if they would otherwise be removed
     * `pacman -Rnsc $(pacman -Qtdq) --noconfirm`
 
   * Package cache cleanup
