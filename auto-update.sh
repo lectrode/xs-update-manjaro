@@ -1,6 +1,6 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.9.8-hf2"; vsndsp="$vsn 2022-07-27"
+vsn="v3.9.8-hf3"; vsndsp="$vsn 2022-08-13"
 #-Downloads and Installs new updates
 #-Depends: coreutils, grep, pacman, pacman-mirrors, iputils
 #-Optional Depends: flatpak, notify-desktop, pikaur, rebuild-detector, wget
@@ -47,10 +47,12 @@ test_online(){ ping -c 1 "${conf_a[main_testsite_str]}" >/dev/null 2>&1 && retur
 
 chk_pkginst(){ $pcmbin -Q "$1" >/dev/null 2>&1 || return 1; }
 chk_pkginstx(){ [[ "$($pcmbin -Qq "$1" 2>/dev/null | grep -m1 -x "$1")" == "$1" ]] || return 1; }
-chk_pkgexplicit(){ $pcmbin -Qi "$1" 2>/dev/null|grep -F "Install Reason"|grep -F "Explicitly" >/dev/null && return 0; return 1; }
-get_pkgvsn(){ $pcmbin -Q "$1" | grep "$1 " -m1 | cut -d' ' -f2; }
+get_pkgqi() { $pcmbin -Qi "$1" 2>/dev/null|grep -E "$2[ ]+:"|grep -oP "(?<=\s:\s).*$"; }
+get_pkgqix() { get_pkgqi "$1" "$2"|tr ' ' '\n'|grep -E "[[:alnum:]]"; }
+chk_pkgexplicit(){ get_pkgqi "$1" "Install Reason"|grep "Explicitly" >/dev/null && return 0; return 1; }
+get_pkgvsn(){ $pcmbin -Q "$1"|grep "$1 " -m1|cut -d' ' -f2; }
 chk_pkgvsndiff(){ cpvd_t1="$(get_pkgvsn "$1")"; vercmp "${cpvd_t1:-0}" "$2"; unset cpvd_t1; }
-chk_sha256(){ [[ "$(sha256sum "$1" |cut -d ' ' -f 1 |tr -cd '[:alnum:]')" = "$2" ]] && return 0; return 1; }
+chk_sha256(){ [[ "$(sha256sum "$1"|cut -d ' ' -f 1 |tr -cd '[:alnum:]')" = "$2" ]] && return 0; return 1; }
 
 dl_outstd(){
 #$1=url
@@ -87,7 +89,7 @@ gpfn_f="$(compgen -G "$(get_pacmancfg CacheDir)/$1-*.pkg.*" \
 }
 
 get_pkgbuilddate(){
-gpbd_date="$(pacman -Qi "$1"|grep "Build Date"|grep -oP "(?<=:[[:space:]]).*$" 2>/dev/null)"
+gpbd_date="$(get_pkgqi "$1" "Build Date")"
 [[ "$gpbd_date" = "" ]] && return 1
 date -d "$gpbd_date" +'%Y%m%d' 2>/dev/null || return 1
 unset gpbd_date; return 0
@@ -840,10 +842,10 @@ fi
 
 if perst_isneeded "${conf_a[update_keys_freq]}" "${perst_a[keys_up_date]}"; then
 while : ; do
-    if chk_pkginstx "archlinux-keyring" && [[ "$(chk_pkgvsndiff "archlinux-keyring" "20220713-1")" -lt 0 ]]; then break; fi
-        trbl "Refreshing keys..."; pacman-key --refresh-keys  2>&1|trbl_t |tee /dev/tty |grep "Total number processed:" >/dev/null
-        err_keys=("${PIPESTATUS[@]}"); if [[ "${err_keys[0]}" -eq 0 ]] || [[ "${err_keys[3]}" -eq 0 ]]; then
-            perst_update "keys_up_date"; err[keys]=0; else err[keys]=${err_keys[0]}; trbl "$co_y pacman-key exited with code ${err[keys]}"; fi
+    if chk_pkginstx "archlinux-keyring" && [[ "$(chk_pkgvsndiff "archlinux-keyring" "20220727-1")" -lt 0 ]]; then break; fi
+    trbl "Refreshing keys..."; pacman-key --refresh-keys  2>&1|trbl_t |tee /dev/tty |grep "Total number processed:" >/dev/null
+    err_keys=("${PIPESTATUS[@]}"); if [[ "${err_keys[0]}" -eq 0 ]] || [[ "${err_keys[3]}" -eq 0 ]]; then
+        perst_update "keys_up_date"; err[keys]=0; else err[keys]=${err_keys[0]}; trbl "$co_y pacman-key exited with code ${err[keys]}"; fi
 unset err_keys; break; done; fi
 
 #While loop for updating main and AUR packages
@@ -887,7 +889,7 @@ fi
 
 #Update keyring packages
 trbl "Updating system keyrings..."
-for p in $(pacman -Sl|grep "\[installed"|grep "keyring "|grep -oP "[^ ]*\-keyring"|grep -Ev "^([lib]*gnome|python)-keyring$"); do
+for p in $(pacman -Sl|grep "\[installed"|grep "keyring "|grep -Eo "[^ ]*\-keyring"|grep -Ev "^([lib]*gnome|python)-keyring$"); do
     # shellcheck disable=SC2086
     $pcmbin -S --needed --noconfirm $p $sf_ignore 2>&1|trbl_t
     if [[ "${PIPESTATUS[0]}" -gt 0 ]]; then
@@ -939,10 +941,24 @@ if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_manu
     manualRemoval "colord" "1.4.4-1" #Conflicts with libcolord mid-2019
     manualRemoval "gtk3-classic" "3.24.24-1" "gtk3"; manualRemoval "lib32-gtk3-classic" "3.24.24-1" "lib32-gtk3" #Replaced around 18.0.4
     manualRemoval "engrampa-thunar-plugin" "1.0-2" #Xfce 17.1.10 and earlier
+    
+    #transition packages from 'electron' to 'electronXX' when required
+    if chk_pkginstx "electron" && $pcmbin -Sl|grep -E "[^ ]+ electron "|grep "installed:" >/dev/null; then
+        electron_need=0; electron_prov="$(get_pkgqix "electron" "Provides"|grep -E "electron[0-9]+")"
+        if [[ ! "$electron_prov" = "" ]] && chk_remoterepo "$electron_prov"; then
+            for p in $(get_pkgqix "electron" "Required By"|tr '<' '\n'|tr '>' '\n'|grep -v "="); do
+                if get_pkgqix "$p" "Depends On"|grep "$electron_prov" >/dev/null; then electron_need=1; break; fi; done
+            if [[ "$electron_need" = "1" ]]; then
+                trbl "Attempting to install new required electron package: $electron_prov"
+                # shellcheck disable=SC2086
+                $pcmbin -S --noconfirm --asdeps electron $electron_prov 2>&1|trbl_t
+            fi
+        fi; unset electron_need electron_prov
+    fi
 fi
 
 trbl "Updating system packages..."
-for p in $(pacman -Sl | grep "\[installed"|grep -oP "[^ ]*\-system$") ${conf_a[main_systempkgs_str]}; do
+for p in $(pacman -Sl | grep "\[installed"|grep "system "|grep -Eo "[^ ]*\-system") ${conf_a[main_systempkgs_str]}; do
     chk_pkginstx "$p" && $pcmbin -S --needed --noconfirm "$p" 2>&1|trbl_t
     ((err[sys]+=PIPESTATUS[0])); done
 if [[ ${err[sys]} -ne 0 ]]; then trbl "$co_y system packages failed to update - err:${err[sys]}"; fi
@@ -963,7 +979,7 @@ if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_db01
             touch "${rp_pathd[$i]}/files"; touch "${rp_pathd[$i]}/desc"
             if [[ ! -f "${rp_pathd[$i]}/files" ]] || [[ ! -f "${rp_pathd[$i]}/desc" ]]; then trbl "$co_y could not touch files and/or desc"; continue; fi
         fi
-    done< <($pcmbin -Qo pacman 2>&1 | grep -Ei "error: could not open file [[:alnum:]\.@_\/-]*\/(files|desc): No such file or directory")
+    done< <($pcmbin -Dk 2>&1 | grep -Ei "error: could not open file [[:alnum:]\.@_\/-]*\/(files|desc): No such file or directory")
     unset rp_errmsg IFS
     m=$i; i=-1; while [[ $i -lt $m ]]; do
         ((i++))
@@ -1131,8 +1147,6 @@ done
 #Remove orphan packages, cleanup
 if [[ "${conf_a[cln_1enable_bool]}" = "$ctrue" ]]; then 
     if [[ "${conf_a[cln_orphan_bool]}" = "$ctrue" ]] && [[ "${err[repo]}" = "0" ]]; then
-        if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]]; then
-            for p in $($pcmbin -Qtdq|grep -oP "[^ ]*\-keyring$"|grep -Ev "^([lib]*gnome|python)-keyring$"); do manualExplicit "$p"; done; fi
         if [[ ! "$($pcmbin -Qtdq)" = "" ]]; then
             trbl "Removing orphan packages..."
             # shellcheck disable=SC2046
