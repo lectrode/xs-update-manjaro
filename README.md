@@ -308,6 +308,7 @@ This script supports detecting and repairing the following potential issues:
 ### Manual Package Changes
 Every once in a while, updating Manjaro requires manual package changes to allow updates to succeed. This script [supports](#repair_manualpkg_bool "") automatically performing the following:
 * Setup and use `pacman-static` if `pacman`<5.2
+* Transition packages that depend on `electron` to `electronXX` where required
 * Package removal and/or replacement:
 <table>
   <tr><td><code>wxgtk2</code></td><td><=3.0.5.1-3</td><td>2022/07/14: removed from arch repos</td></tr>
