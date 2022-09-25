@@ -1,6 +1,6 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.9.8-hf3"; vsndsp="$vsn 2022-08-13"
+vsn="v3.9.8-rc1"; vsndsp="$vsn 2022-09-20"
 #-Downloads and Installs new updates
 #-Depends: coreutils, grep, pacman, pacman-mirrors, iputils
 #-Optional Depends: flatpak, notify-desktop, pikaur, rebuild-detector, wget
@@ -57,15 +57,20 @@ chk_sha256(){ [[ "$(sha256sum "$1"|cut -d ' ' -f 1 |tr -cd '[:alnum:]')" = "$2" 
 dl_outstd(){
 #$1=url
 if wget --help >/dev/null 2>&1; then
-    wget -qO- "$1" && return 0; fi
-curl -s "$1" && return 0; return 1
+    wget -qO- "$1"|grep -E "[[:alnum:]]" && return 0; fi
+curl -sL "$1" && return 0; return 1
 }
 dl_outfile(){
 #$1=url $2=output dir
 if [[ ! -d "$2" ]]; then mkdir "$2" || return 1; fi
+pushd "$2">/dev/null 2>&1 || return 1
 if wget --help >/dev/null 2>&1; then
-    wget -q "$1" -O "$2/$(basename "$1")" && return 0; fi
-curl -sZL "$1" -o "$(basename "$1")" --output-dir "$2" && return  0; return 1
+# shellcheck disable=SC2164
+    if wget -q "$1" -O "$(basename "$1")"; then popd>/dev/null 2>&1; return 0; fi; fi
+# shellcheck disable=SC2164
+if curl -sZL "$1" -o "$(basename "$1")"; then popd>/dev/null 2>&1; return  0; fi
+# shellcheck disable=SC2164
+popd>/dev/null 2>&1; return 1
 }
 dl_clean(){ [[ -d "/tmp/xs-autmp-$1" ]] && rm -rf "/tmp/xs-autmp-$1"; }
 dl_verify(){
@@ -81,13 +86,6 @@ chk_remoterepo(){ pacman -Slq 2>/dev/null|grep -E "^$1$" >/dev/null && return 0;
 chk_remoteaur(){ dl_outstd "${url_aur}?v=5&type=info&arg[]=$1" |grep -F '"resultcount":0' >/dev/null || return 0; return 1; }
 chk_remoteany(){ chk_remoterepo "$1" && return 0; chk_remoteaur "$1" && return 0; return 1; }
 
-get_pkgfilename(){
-#$1=pkg name
-gpfn_f="$(compgen -G "$(get_pacmancfg CacheDir)/$1-*.pkg.*" \
-  |grep -E "^$(get_pacmancfg CacheDir)/$1-[0-9\.+:a-z]+-[0-9\.]+-[0-9a-z_]+.pkg.[0-9a-z]+.[0-9a-z]+$"|sort -rV|head -n1)"
-[[ -f "$gpfn_f" ]] && echo "$gpfn_f"; unset gpfn_f
-}
-
 get_pkgbuilddate(){
 gpbd_date="$(get_pkgqi "$1" "Build Date")"
 [[ "$gpbd_date" = "" ]] && return 1
@@ -97,12 +95,21 @@ unset gpbd_date; return 0
 
 get_pacmancfg(){
 #$1=prop
-if pacman-conf --help >/dev/null 2>&1; then pacman-conf "$1" 2>/dev/null && return 0; fi
+if pacman-conf --help >/dev/null 2>&1; then
+    pacman-conf "$1" 2>/dev/null|sed 's:/*$::'
+    [[ "${PIPESTATUS[0]}" = "0" ]] && return 0
+fi
 if [[ -f /etc/pacman.conf ]]; then
     gpcc="$(grep -E "^[^#]?$1" /etc/pacman.conf |sed -r 's/ += +/=/g'|cut -d'=' -f2)"
     if [[ ! "$gpcc" = "" ]]; then echo "$gpcc"|sed -r 's_/+_/_g'|sed 's:/*$::'; unset gpcc; return; fi; unset gpcc; fi
 if [[ "$1" = "DBPath" ]]; then echo "/var/lib/pacman"; fi
 if [[ "$1" = "CacheDir" ]]; then echo "/var/cache/pacman/pkg"; fi
+}
+
+get_pkgfiles(){
+#$1=pkg name
+(for f in "$(get_pacmancfg CacheDir)" "/var/cache/pikaur/pkg" "/var/cache/apacman/pkg"; do compgen -G "$f/$1-*.pkg.*"; done)|\
+    grep -E "/$1-[0-9\.+:a-z]+-[0-9\.]+-[0-9a-z_]+.pkg.[0-9a-z]+.[0-9a-z]+$"|sort -rV
 }
 
 inst_misspkg(){
@@ -202,6 +209,69 @@ fi
 $pcmbin -Quq|grep -E "^$1$" >/dev/null 2>&1 && return 1
 return 0
 }
+
+pkgdl_vsn(){
+#$1=pkg,$2=version
+#check if already in cache
+get_pkgfiles "$1"|grep "$1-$2"|head -n1 2>/dev/null
+[[ "${PIPESTATUS[1]}" = "0" ]] && return 0
+#download from arch archive
+local md_pkg; md_pkg="$(dl_outstd "${url_ala}/${1:0:1}/${1}"|grep -F "$1-$2-"|grep -Eo "[^<>\"]+-[0-9a-z_]+\.pkg.[0-9a-z]+\.[0-9a-z]+"|sort -u|head -n1)"
+[[ "$md_pkg" = "" ]] || dl_outfile "${url_ala}/${1:0:1}/${1}/$md_pkg" "$(get_pacmancfg CacheDir)"
+if [[ -f "$(get_pacmancfg CacheDir)/$md_pkg" ]]; then echo "$(get_pacmancfg CacheDir)/$md_pkg"; return 0; fi
+return 1
+}
+
+manualReinst(){
+#$1=pkg|path
+local mdl_s mdl_d; mdl_s="S"
+if echo "$1"|grep ".pkg.">/dev/null 2>&1; then mdl_s="U"; mdl_d="dd"; fi
+while : ; do
+    if [[ "$mdl_s" = "S" ]]; then test_online || return 1; fi
+    # shellcheck disable=SC2086
+    $pcmbin -${mdl_s}${mdl_d} --noconfirm --overwrite=* $1 $pacignore 2>&1|trbl_t|tee /dev/tty|grep "could not satisfy dependencies" >/dev/null
+    if [[ ! "${PIPESTATUS[0]}" -eq 0 ]] && [[ "${PIPESTATUS[3]}" -eq 0 ]]; then
+        if [[ ! "$mdl_d" = "dd" ]]; then mdl_d="${mdl_d}d"; trbl "$co_y skipping dependency detection ($mdl_d)"; continue
+        else return 1; fi
+fi; return 0; done
+}
+
+checkRepairDb(){
+#$1=(cache|repo)
+trbl "Checking for database errors [$1]..."
+local rpdb_path rpdb_pkgn rpdb_pkgv rpdb_pkgf
+
+if [[ "${conf_a[repair_1enable_bool]}" = "$cfalse" ]] || [[ "${conf_a[repair_db01_bool]}" = "$cfalse" ]]; then
+    [[ "$1" = "repo" ]] && return 0
+    if [[ "$($pcmbin -Dk 2>&1|grep -Eic "error:.+(description file|file list) is missing$")" -gt "0" ]]; then
+        trbl "$co_y system has missing files in package database. Automatic fix is disabled in config; reporting only."
+        $pcmbin -Dk 2>&1|trbl_t; return 1
+fi; return 0; fi
+
+for p in $(pacman -Dk 2>&1 | grep -Ei "error: '[[:alnum:]\.@_\/-]*': (description file|file list) is missing"|cut -d':' -f2|grep -Eo "[[:alnum:]\.@_\/-]*"|sort -u); do
+    rpdb_path="$(get_pacmancfg DBPath)/local/$p"
+    rpdb_pkgn="$(echo "$p"|grep -oP '.+?(?=-[0-9A-z\.\+:]+-[0-9]+$)')"
+    rpdb_pkgv="$(echo "$p"|grep -oP '[0-9A-z\.\+:]+-[0-9]+$')"
+    trbl "$co_y Database files for $rpdb_pkgn are corrupt or missing"
+    trblm "Getting installer for $rpdb_pkgn [$rpdb_pkgv]"
+    rpdb_pkgf="$(pkgdl_vsn "$rpdb_pkgn" "$rpdb_pkgv")" #use cache copy, or dl from archive
+    if [[ "$rpdb_pkgf" = "" ]] || [[ ! -f "$rpdb_pkgf" ]]; then
+        if [[ "$1" = "cache" ]]; then trbl "$co_y installer not found for $rpdb_pkgn , will attempt to download later"; continue; fi; fi
+    #create missing files
+    mkdir -p "$rpdb_path"
+    for c in files desc; do
+        [[ -f "${rpdb_path}/$c" ]] && continue; trblm "Creating missing file: ${rpdb_path}/$c"
+        touch "${rpdb_path}/$c" || trbl "$co_y could not create $c"
+    done
+    #reinstall pkg
+    if [[ "$rpdb_pkgf" = "" ]] || [[ ! -f "$rpdb_pkgf" ]]; then
+        trblm "Reinstalling $rpdb_pkgn"; manualReinst "$rpdb_pkgn" "y"
+    else trblm "Reinstalling $(basename "$rpdb_pkgf")"; manualReinst "$rpdb_pkgf" "y"; fi
+    #undo desc/files changes if above fails
+    for c in files desc; do [[ "$(stat -c%s "${rpdb_path}/$c" 2>/dev/null)" = "0" ]] && rm "${rpdb_path}/$c"; done
+done
+}
+
 
 #Persistant Data Functions
 
@@ -534,6 +604,7 @@ true=0; false=1; ctrue=1; cfalse=0
 co_n='\033[0m';co_g='\033[1;32m';co_g2='\033[0;32m';co_r='\033[1;31m[Error]';co_y='\033[1;33m[Warning]'
 url_repo="https://raw.githubusercontent.com/lectrode/xs-update-manjaro"
 url_aur="https://aur.archlinux.org/rpc/"
+url_ala="https://archive.archlinux.org/packages"
 typeset -A err; typeset -A logqueue; logqueue_i=-1
 [[ "$xs_autoupdate_conf" = "" ]] && xs_autoupdate_conf='/etc/xs/auto-update.conf'
 device="device"; [[ "$(uname -m)" = "x86_64" ]] && device="computer"
@@ -827,6 +898,9 @@ chown -R "${s_usr[$i]}" "${s_home[$i]}/.cache/xs"; fi; ((i++)); done
 if [[ "${conf_a[main_inhibit_bool]}" = "$cfalse" ]]; then "$0" "backnotify"&
 else systemd-inhibit --what="shutdown:sleep:idle:handle-power-key:handle-suspend-key:handle-hibernate-key:handle-lid-switch" "$0" "backnotify"& fi
 
+#check/fix database errors (before any other changes if possible)
+checkRepairDb "cache"
+
 #Check for, download, and install main updates
 pacclean
 
@@ -877,7 +951,7 @@ if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_manu
     if [[ "$(chk_pkgvsndiff "pacman" "5.2.0-1")" -lt 0 ]]; then
         trbl "Old pacman detected, attempting to use pacman-static..."
         pacman -Sw --noconfirm pacman-static 2>&1|trbl_t
-        pacman -U --noconfirm "$(get_pkgfilename "pacman-static")" 2>&1|trbl_t && pcmbin="pacman-static"
+        pacman -U --noconfirm "$(get_pkgfiles "pacman-static"|head -n1)" 2>&1|trbl_t && pcmbin="pacman-static"
         if ! chk_pkginst "pacman-static"; then
             if dl_verify "pacmanstatic" "$url_repo/master/external/hash_pacman-static" "$url_repo/master/external/pacman-static"; then
                 chmod +x /tmp/xs-autmp-pacmanstatic/pacman-static && pcmbin="/tmp/xs-autmp-pacmanstatic/pacman-static"; fi; fi
@@ -903,6 +977,9 @@ for p in $(pacman -Sl|grep "\[installed"|grep "keyring "|grep -Eo "[^ ]*\-keyrin
     fi
 done
 if [[ ${err[sys]} -ne 0 ]]; then trbl "$co_r failed to update system keyrings"; err_crit="sys"; break; fi
+
+#check/fix database errors
+checkRepairDb "repo"
 
 trbl "Downloading packages from main repos..."
 while : ; do test_online || break
@@ -941,7 +1018,7 @@ if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_manu
     manualRemoval "colord" "1.4.4-1" #Conflicts with libcolord mid-2019
     manualRemoval "gtk3-classic" "3.24.24-1" "gtk3"; manualRemoval "lib32-gtk3-classic" "3.24.24-1" "lib32-gtk3" #Replaced around 18.0.4
     manualRemoval "engrampa-thunar-plugin" "1.0-2" #Xfce 17.1.10 and earlier
-    
+
     #transition packages from 'electron' to 'electronXX' when required
     if chk_pkginstx "electron" && $pcmbin -Sl|grep -E "[^ ]+ electron "|grep "installed:" >/dev/null; then
         electron_need=0; electron_prov="$(get_pkgqix "electron" "Provides"|grep -E "electron[0-9]+")"
@@ -951,7 +1028,7 @@ if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_manu
             if [[ "$electron_need" = "1" ]]; then
                 trbl "Attempting to install new required electron package: $electron_prov"
                 # shellcheck disable=SC2086
-                $pcmbin -S --noconfirm --asdeps electron $electron_prov 2>&1|trbl_t
+                $pcmbin -S --noconfirm --needed --asdeps electron $electron_prov 2>&1|trbl_t
             fi
         fi; unset electron_need electron_prov
     fi
@@ -962,34 +1039,6 @@ for p in $(pacman -Sl | grep "\[installed"|grep "system "|grep -Eo "[^ ]*\-syste
     chk_pkginstx "$p" && $pcmbin -S --needed --noconfirm "$p" 2>&1|trbl_t
     ((err[sys]+=PIPESTATUS[0])); done
 if [[ ${err[sys]} -ne 0 ]]; then trbl "$co_y system packages failed to update - err:${err[sys]}"; fi
-
-#check for missing database files
-if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_db01_bool]}" = "$ctrue" ]]; then
-    trbl "Checking for database errors..."
-    i=-1; while IFS= read -r rp_errmsg; do
-        if [[ ! "$rp_errmsg" = "" ]]; then
-            ((i++))
-            rp_pathf[$i]="$(echo "$rp_errmsg" | grep -o "/[[:alnum:]\.@_\/-]*")"
-            trblm "Missing file: ${rp_pathf[$i]}"
-            rp_pathd[$i]="$(dirname "${rp_pathf[$i]}")"
-            trblm "detected dir: ${rp_pathd[$i]}"
-            rp_pkgn[$i]="$(basename "${rp_pathd[$i]}"|grep -oP '.+?(?=-[0-9A-z\.\+:]+-[0-9]+$)')"
-            trblm "detected pkg: ${rp_pkgn[$i]}"; mkdir -p "${rp_pathd[$i]}"
-            if [[ ! -d "${rp_pathd[$i]}" ]]; then trbl "$co_y mkdir failed: ${rp_pathd[$i]}"; break; fi
-            touch "${rp_pathd[$i]}/files"; touch "${rp_pathd[$i]}/desc"
-            if [[ ! -f "${rp_pathd[$i]}/files" ]] || [[ ! -f "${rp_pathd[$i]}/desc" ]]; then trbl "$co_y could not touch files and/or desc"; continue; fi
-        fi
-    done< <($pcmbin -Dk 2>&1 | grep -Ei "error: could not open file [[:alnum:]\.@_\/-]*\/(files|desc): No such file or directory")
-    unset rp_errmsg IFS
-    m=$i; i=-1; while [[ $i -lt $m ]]; do
-        ((i++))
-        trblm "reinstalling ${rp_pkgn[$i]}"
-        $pcmbin -S --noconfirm --overwrite=* "${rp_pkgn[$i]}" 2>&1|trbl_t
-    done; unset i m rp_pathf rp_pathd rp_pkgn
-else
-    if [[ "$($pcmbin -Dk 2>&1|grep -Eic "error:.+(description file|file list) is missing$")" -gt "0" ]]; then
-    trbl "$co_y system has missing files in package database. Automatic fix disabled; reporting only."; fi
-fi
 
 sync; trbl "Updating packages from main repos..."
 # shellcheck disable=SC2086
