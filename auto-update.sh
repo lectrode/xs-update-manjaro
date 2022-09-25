@@ -1,6 +1,6 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.9.8-rc1"; vsndsp="$vsn 2022-09-20"
+vsn="v3.9.8-rc2"; vsndsp="$vsn 2022-09-25"
 #-Downloads and Installs new updates
 #-Depends: coreutils, grep, pacman, pacman-mirrors, iputils
 #-Optional Depends: flatpak, notify-desktop, pikaur, rebuild-detector, wget
@@ -28,7 +28,7 @@ debgn=+x; # -x =debugging | +x =no debugging
 #----Define Functions---
 #-----------------------
 
-slp(){ sleep "$1" || read -rt "$1" < /dev/tty; }
+slp(){ sleep "$1" || read -rt "$1" < /dev/tty; } 2>/dev/null
 to_int(){ [[ "$1" =~ ^[\-]?[0-9]+$ ]] && echo "$1" || echo 0; }
 trbl_s(){ cat < /dev/stdin|sed 's/\x1B\[[0-9;]\+[A-Za-z]//g' |tr -cd '\11\12\15\40-\176'; }
 trbl_t(){ cat < /dev/stdin|trbl_s|tee -a "$log_f"; }
@@ -51,7 +51,7 @@ get_pkgqi() { $pcmbin -Qi "$1" 2>/dev/null|grep -E "$2[ ]+:"|grep -oP "(?<=\s:\s
 get_pkgqix() { get_pkgqi "$1" "$2"|tr ' ' '\n'|grep -E "[[:alnum:]]"; }
 chk_pkgexplicit(){ get_pkgqi "$1" "Install Reason"|grep "Explicitly" >/dev/null && return 0; return 1; }
 get_pkgvsn(){ $pcmbin -Q "$1"|grep "$1 " -m1|cut -d' ' -f2; }
-chk_pkgvsndiff(){ cpvd_t1="$(get_pkgvsn "$1")"; vercmp "${cpvd_t1:-0}" "$2"; unset cpvd_t1; }
+chk_pkgvsndiff(){ local cpvd_t1; cpvd_t1="$(get_pkgvsn "$1")"; vercmp "${cpvd_t1:-0}" "$2"; }
 chk_sha256(){ [[ "$(sha256sum "$1"|cut -d ' ' -f 1 |tr -cd '[:alnum:]')" = "$2" ]] && return 0; return 1; }
 
 dl_outstd(){
@@ -60,22 +60,18 @@ if wget --help >/dev/null 2>&1; then
     wget -qO- "$1"|grep -E "[[:alnum:]]" && return 0; fi
 curl -sL "$1" && return 0; return 1
 }
-dl_outfile(){
+dl_outfile()(
 #$1=url $2=output dir
 if [[ ! -d "$2" ]]; then mkdir "$2" || return 1; fi
 pushd "$2">/dev/null 2>&1 || return 1
 if wget --help >/dev/null 2>&1; then
-# shellcheck disable=SC2164
-    if wget -q "$1" -O "$(basename "$1")"; then popd>/dev/null 2>&1; return 0; fi; fi
-# shellcheck disable=SC2164
-if curl -sZL "$1" -o "$(basename "$1")"; then popd>/dev/null 2>&1; return  0; fi
-# shellcheck disable=SC2164
-popd>/dev/null 2>&1; return 1
-}
+    wget -q "$1" -O "$(basename "$1")" && return 0; fi
+curl -sZL "$1" -o "$(basename "$1")" && return  0; return 1
+)
 dl_clean(){ [[ -d "/tmp/xs-autmp-$1" ]] && rm -rf "/tmp/xs-autmp-$1"; }
 dl_verify(){
 #$1=id; $2=remote hash; $3=remote file
-dl_hash="$(dl_outstd "$2" |tr -cd '[:alnum:]')"
+local dl_hash; dl_hash="$(dl_outstd "$2" |tr -cd '[:alnum:]')"
 if [ "${#dl_hash}" = "64" ]; then
     (dl_outfile "$3" "/tmp/xs-autmp-$1/") 2>&1|trbl_t
     chk_sha256 "/tmp/xs-autmp-$1/$(basename "$3")" "$dl_hash" && return 0
@@ -87,28 +83,28 @@ chk_remoteaur(){ dl_outstd "${url_aur}?v=5&type=info&arg[]=$1" |grep -F '"result
 chk_remoteany(){ chk_remoterepo "$1" && return 0; chk_remoteaur "$1" && return 0; return 1; }
 
 get_pkgbuilddate(){
-gpbd_date="$(get_pkgqi "$1" "Build Date")"
+local gpbd_date; gpbd_date="$(get_pkgqi "$1" "Build Date")"
 [[ "$gpbd_date" = "" ]] && return 1
 date -d "$gpbd_date" +'%Y%m%d' 2>/dev/null || return 1
-unset gpbd_date; return 0
+return 0
 }
 
 get_pacmancfg(){
 #$1=prop
 if pacman-conf --help >/dev/null 2>&1; then
     pacman-conf "$1" 2>/dev/null|sed 's:/*$::'
-    [[ "${PIPESTATUS[0]}" = "0" ]] && return 0
+    [[ "${PIPESTATUS[0]}" = "0" ]] && return
 fi
 if [[ -f /etc/pacman.conf ]]; then
-    gpcc="$(grep -E "^[^#]?$1" /etc/pacman.conf |sed -r 's/ += +/=/g'|cut -d'=' -f2)"
-    if [[ ! "$gpcc" = "" ]]; then echo "$gpcc"|sed -r 's_/+_/_g'|sed 's:/*$::'; unset gpcc; return; fi; unset gpcc; fi
+    local gpcc; gpcc="$(grep -E "^[^#]?$1" /etc/pacman.conf |sed -r 's/ += +/=/g'|cut -d'=' -f2)"
+    if [[ ! "$gpcc" = "" ]]; then echo "$gpcc"|sed -r 's_/+_/_g'|sed 's:/*$::'; return; fi; fi
 if [[ "$1" = "DBPath" ]]; then echo "/var/lib/pacman"; fi
 if [[ "$1" = "CacheDir" ]]; then echo "/var/cache/pacman/pkg"; fi
 }
 
 get_pkgfiles(){
 #$1=pkg name
-(for f in "$(get_pacmancfg CacheDir)" "/var/cache/pikaur/pkg" "/var/cache/apacman/pkg"; do compgen -G "$f/$1-*.pkg.*"; done)|\
+{ for f in "$(get_pacmancfg CacheDir)" "/var/cache/pikaur/pkg" "/var/cache/apacman/pkg"; do compgen -G "$f/$1-*.pkg.*"; done; }|\
     grep -E "/$1-[0-9\.+:a-z]+-[0-9\.]+-[0-9a-z_]+.pkg.[0-9a-z]+.[0-9a-z]+$"|sort -rV
 }
 
@@ -183,7 +179,7 @@ chk_pkgexplicit "$1" && return 1 || return 0
 
 manualRemoval(){
 #$1=(pkgs)|$2=vsn (or older) to remove|[$3=new pkgs]
-IFS=" " read -ra mr_pkgo <<< "$1"
+local mr_pkgo; IFS=" " read -ra mr_pkgo <<< "$1"
 if chk_pkginstx "${mr_pkgo[0]}" && [[ "$(chk_pkgvsndiff "${mr_pkgo[0]}" "$2")" -le 0 ]]; then
     trbl "attempting manual package removal/replacement of $1..."
     if [[ ! "$3" = "" ]]; then
@@ -277,60 +273,57 @@ done
 
 perst_isneeded(){
 #$1 = xxx_xxx_freq,$2 = perst_a[var]
-
-    if [[ "$1" -eq "-1" ]]; then return 1; fi
-    curdate=$(date +'%Y%m%d')
-    scheddate=$(date -d "$2 + $1 days" +'%Y%m%d')
-
-    if [[ "$scheddate" -le "$curdate" ]]; then return 0
-    elif [[ "$2" -gt "$curdate" ]]; then return 0
-    else return 1; fi
+if [[ "$1" -eq "-1" ]]; then return 1; fi
+local curdate; curdate=$(date +'%Y%m%d')
+scheddate=$(date -d "$2 + $1 days" +'%Y%m%d')
+if [[ "$scheddate" -le "$curdate" ]]; then return 0
+elif [[ "$2" -gt "$curdate" ]]; then return 0
+else return 1; fi
 }
 
 perst_update(){
 #$1=var
-    perst_a[$1]=$(date +'%Y%m%d'); echo "$1=${perst_a[$1]}" >> "$perst_f"
-    echo "$1" | grep -F "zrbld:" >/dev/null && \
-        rbld_a["$(echo "$1" | cut -d ':' -f 2)"]=$(date +'%Y%m%d')
+perst_a[$1]=$(date +'%Y%m%d'); echo "$1=${perst_a[$1]}" >> "$perst_f"
+echo "$1" | grep -F "zrbld:" >/dev/null && \
+    rbld_a["$(echo "$1" | cut -d ':' -f 2)"]=$(date +'%Y%m%d')
 }
 
 perst_export(){
-    touch "$perst_f"
-    echo "#persistent cache data for xs-update-manjaro" > "$perst_f"
-    for i in $(printf "%s\n" "${!perst_a[@]}"|sort); do
-        echo "$i=${perst_a[$i]}" >> "$perst_f"
-    done
+touch "$perst_f"
+echo "#persistent cache data for xs-update-manjaro" > "$perst_f"
+for i in $(printf "%s\n" "${!perst_a[@]}"|sort); do
+    echo "$i=${perst_a[$i]}" >> "$perst_f"
+done
 }
 
 perst_reset(){
-    if echo "$1" | grep -F "zrbld:" >/dev/null; then
-        unset "rbld_a[$(echo "$1" | cut -d ':' -f 2)]" "perst_a[$1]"
-        perst_export #cannot use sed, as [] is treated as regex
-    else perst_a[$1]="20010101"; echo "$1=20010101" >> "$perst_f"; fi
+if echo "$1" | grep -F "zrbld:" >/dev/null; then
+    unset "rbld_a[$(echo "$1" | cut -d ':' -f 2)]" "perst_a[$1]"
+    perst_export #cannot use sed, as [] is treated as regex
+else perst_a[$1]="20010101"; echo "$1=20010101" >> "$perst_f"; fi
 }
 
 aurrebuildlist(){
-    readarray -t arlist < <(checkrebuild 2>/dev/null|grep -oP '^foreign[[:space:]]+\K(?!.*-bin$)([[:alnum:]\.@_\+\-]*)$')
+local arlist arignore arlist_grep
+readarray -t arlist < <(checkrebuild 2>/dev/null|grep -oP '^foreign[[:space:]]+\K(?!.*-bin$)([[:alnum:]\.@_\+\-]*)$')
 
-    #remove stale rebuild cache entries
-    arlist_grep="$(echo -n "${arlist[@]}"|tr ' ' '|')"
-    for pkg in "${!rbld_a[@]}"; do
-        if [[ "${#arlist[@]}" = "0" ]] || ! echo "$pkg"|grep -E "^($arlist_grep)$" >/dev/null; then
-            perst_reset "zrbld:$pkg"; fi
-    done
+#remove stale rebuild cache entries
+arlist_grep="$(echo -n "${arlist[@]}"|tr ' ' '|')"
+for pkg in "${!rbld_a[@]}"; do
+    if [[ "${#arlist[@]}" = "0" ]] || ! echo "$pkg"|grep -E "^($arlist_grep)$" >/dev/null; then
+        perst_reset "zrbld:$pkg"; fi
+done
 
-    #remove ignored entries
-    arignore="$(echo -n "$(echo "${conf_a[main_ignorepkgs_str]}"; get_pacmancfg IgnorePkg; echo "${!rbld_a[@]}")"|tr '\n' ' '|sed 's/ /|/g')"
-    [[ "$arignore" = "" ]] || readarray -t arlist < <(echo "${arlist[@]}"|tr ' ' '\n'|grep -Evi "^($arignore)$")
-    
-    #exclude orphan packages from list
-    for pkg in "${arlist[@]}"; do
-        if ! chk_remoteaur "$pkg"; then
-            [[ "${perst_a[$pkg]}" = "" ]] || perst_reset "zrbld:$pkg"
-        else echo "$pkg"; fi
-    done
+#remove ignored entries
+arignore="$(echo -n "$(echo "${conf_a[main_ignorepkgs_str]}"; get_pacmancfg IgnorePkg; echo "${!rbld_a[@]}")"|tr '\n' ' '|sed 's/ /|/g')"
+[[ "$arignore" = "" ]] || readarray -t arlist < <(echo "${arlist[@]}"|tr ' ' '\n'|grep -Evi "^($arignore)$")
 
-    unset arlist arignore arlist_grep
+#exclude orphan packages from list
+for pkg in "${arlist[@]}"; do
+    if ! chk_remoteaur "$pkg"; then
+        [[ "${perst_a[$pkg]}" = "" ]] || perst_reset "zrbld:$pkg"
+    else echo "$pkg"; fi
+done
 }
 
 
@@ -343,61 +336,60 @@ iconerror(){ icon=dialog-error; }
 
 sendmsg(){
 #$1=user; $2=msg; [$3=timeout]
-    if [[ "${conf_a[notify_1enable_bool]}" = "$ctrue" ]] && [[ "$((noti_desk+noti_send+noti_gdbus))" -le 2 ]]; then
-        noti_id["$1"]="$(to_int "${noti_id["$1"]}")"
-        tmp_t0="$(to_int "$3")"
-        if [ "$tmp_t0" = "0" ]; then
-            tmp_t1="-u critical"
-        else ((tmp_t0*=1000)); tmp_t1="-t $tmp_t0"; fi
-        if [ "$noti_desk" = "$true" ]; then
-            if [[ "$2" = "dismiss" ]]; then
-                noti_id["$1"]="$(su "$1" -c "notify-desktop -u normal -r ${noti_id["$1"]} \" \" -t 1")"
-            else
-                tmp_m1="${2//\\n/$'\n'}"
-                noti_id["$1"]="$(su "$1" -c "notify-desktop -i $icon $tmp_t1 -r ${noti_id["$1"]} xs-auto-update \"$notifyvsn$tmp_m1\" 2>/dev/null || echo error")"
-            fi
+if [[ "${conf_a[notify_1enable_bool]}" = "$ctrue" ]] && [[ "$((noti_desk+noti_send+noti_gdbus))" -le 2 ]]; then
+    noti_id["$1"]="$(to_int "${noti_id["$1"]}")"
+    local tmp_t0 tmp_t1; tmp_t0="$(to_int "$3")"
+    if [ "$tmp_t0" = "0" ]; then
+        tmp_t1="-u critical"
+    else ((tmp_t0*=1000)); tmp_t1="-t $tmp_t0"; fi
+    if [ "$noti_desk" = "$true" ]; then
+        if [[ "$2" = "dismiss" ]]; then
+            noti_id["$1"]="$(su "$1" -c "notify-desktop -u normal -r ${noti_id["$1"]} \" \" -t 1")"
+        else
+            tmp_m1="${2//\\n/$'\n'}"
+            noti_id["$1"]="$(su "$1" -c "notify-desktop -i $icon $tmp_t1 -r ${noti_id["$1"]} xs-auto-update \"$notifyvsn$tmp_m1\" 2>/dev/null || echo error")"
         fi
-        if [ "$noti_send" = "$true" ]; then
-            if [[ ! "$2" = "dismiss" ]]; then
-                noti_id["$1"]="$(su "$1" -c "notify-send -i $icon $tmp_t1 xs-auto-update \"$notifyvsn$2\" 2>/dev/null || echo error")"
-            fi
+    fi
+    if [ "$noti_send" = "$true" ]; then
+        if [[ ! "$2" = "dismiss" ]]; then
+            noti_id["$1"]="$(su "$1" -c "notify-send -i $icon $tmp_t1 xs-auto-update \"$notifyvsn$2\" 2>/dev/null || echo error")"
         fi
-        if [ "$noti_gdbus" = "$true" ]; then
-            if [[ "$2" = "dismiss" ]]; then
-                noti_id["$1"]="$(su "$1" -c "gdbus call --session --dest org.freedesktop.Notifications \
-                    --object-path /org/freedesktop/Notifications --method org.freedesktop.Notifications.CloseNotification ${noti_id["$1"]}")"
-            else
-                noti_id["$1"]="$(su "$1" -c "gdbus call --session --dest org.freedesktop.Notifications \
-                    --object-path /org/freedesktop/Notifications --method org.freedesktop.Notifications.Notify \
-                    xs-auto-update ${noti_id["$1"]} $icon xs-auto-update \"$notifyvsn$2\" [] {} $tmp_t0 2>/dev/null || echo error"|cut -d' ' -f2|cut -d',' -f1)"
-            fi
+    fi
+    if [ "$noti_gdbus" = "$true" ]; then
+        if [[ "$2" = "dismiss" ]]; then
+            noti_id["$1"]="$(su "$1" -c "gdbus call --session --dest org.freedesktop.Notifications \
+                --object-path /org/freedesktop/Notifications --method org.freedesktop.Notifications.CloseNotification ${noti_id["$1"]}")"
+        else
+            noti_id["$1"]="$(su "$1" -c "gdbus call --session --dest org.freedesktop.Notifications \
+                --object-path /org/freedesktop/Notifications --method org.freedesktop.Notifications.Notify \
+                xs-auto-update ${noti_id["$1"]} $icon xs-auto-update \"$notifyvsn$2\" [] {} $tmp_t0 2>/dev/null || echo error"|cut -d' ' -f2|cut -d',' -f1)"
         fi
-        unset tmp_t0 tmp_t1; if [[ "${noti_id["$1"]}" = "error" ]]; then noti_id["$1"]=0; return 1; fi
-    else systemctl is-system-running 2>/dev/null |grep 'unknown' >/dev/null && return 1
-    fi; return 0
+    fi
+    if [[ "${noti_id["$1"]}" = "error" ]]; then noti_id["$1"]=0; return 1; fi
+else systemctl is-system-running 2>/dev/null |grep 'unknown' >/dev/null && return 1
+fi; return 0
 }
 
 getsessions(){
-    unset s_usr s_disp s_home; i=0; while read -ra sssn; do
-        loginctl show-session -p Active "${sssn[0]}"|grep -F "yes" >/dev/null || continue
-        usr="$(loginctl show-session -p Name "${sssn[0]}"|cut -d'=' -f2)"
-        disp="$(loginctl show-session -p Display "${sssn[0]}"|cut -d'=' -f2)"
-        [[ "$disp" = "" ]] && disp=":0" #workaround for gnome, which returns nothing
-        usrhome="$(getent passwd "$usr"|cut -d: -f6)"
-        [[  ${usr-x} && ${disp-x} && ${usrhome-x} ]] || continue
-        s_usr[$i]=$usr; s_disp[$i]=$disp; s_home[$i]=$usrhome; ((i++))
-    done <<< "$(loginctl list-sessions --no-legend)"; slp 1; unset i usr disp usrhome sssn
+local i usr disp usrhome sssn; i=0
+unset s_usr s_disp s_home; while read -ra sssn; do
+    loginctl show-session -p Active "${sssn[0]}"|grep -F "yes" >/dev/null || continue
+    usr="$(loginctl show-session -p Name "${sssn[0]}"|cut -d'=' -f2)"
+    disp="$(loginctl show-session -p Display "${sssn[0]}"|cut -d'=' -f2)"
+    [[ "$disp" = "" ]] && disp=":0" #workaround for gnome, which returns nothing
+    usrhome="$(getent passwd "$usr"|cut -d: -f6)"
+    [[  ${usr-x} && ${disp-x} && ${usrhome-x} ]] || continue
+    s_usr[$i]=$usr; s_disp[$i]=$disp; s_home[$i]=$usrhome; ((i++))
+done <<< "$(loginctl list-sessions --no-legend)"; slp 1
 }
 
 sendall(){
-    if [ "${conf_a[notify_1enable_bool]}" = "$ctrue" ]; then
-        sa_err=0; getsessions; i=0; while [ $i -lt ${#s_usr[@]} ]; do
-            DISPLAY=${s_disp[$i]} XAUTHORITY="${s_home[$i]}/.Xauthority" \
-                DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u "${s_usr[$i]}")/bus" \
-                sendmsg "${s_usr[$i]}" "$1" "$2" || sa_err=1
-            ((i++))
-        done; unset i; return $sa_err
-    fi
+[[ "${conf_a[notify_1enable_bool]}" = "$ctrue" ]] || return 0
+getsessions; local sa_err i; sa_err=0; i=0; while [ $i -lt ${#s_usr[@]} ]; do
+    DISPLAY=${s_disp[$i]} XAUTHORITY="${s_home[$i]}/.Xauthority" \
+        DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u "${s_usr[$i]}")/bus" \
+        sendmsg "${s_usr[$i]}" "$1" "$2" || sa_err=1
+((i++)); done; return $sa_err
 }
 
 backgroundnotify(){
@@ -422,7 +414,7 @@ userlogon_chkkrnl(){
 for k in $(file /boot/vmlinuz*|grep -oE "version [^ ]+"|sed 's/version //g'); do
     [[ "$k" = "$(uname -r)" ]] && return 0; done
 pacman --help >/dev/null 2>&1 || return 1
-kerns="$( (pacman -Qq;pacman -Slq)|grep -oE "^linux[^ ]+-headers$"|sed 's/-headers//g'|tr '\n' '|'|sed 's:|*$::' )"
+local kerns; kerns="$( (pacman -Qq;pacman -Slq)|grep -oE "^linux[^ ]+-headers$"|sed 's/-headers//g'|tr '\n' '|'|sed 's:|*$::' )"
 for k in $(pacman -Qq|grep "^linux"|grep -E "^($kerns)$"); do
     [[ "$(get_pkgvsn "$k"|grep -oE "[0-9]+.[0-9]+.[0-9]+")" = "$(uname -r|grep -oE "[0-9]+.[0-9]+.[0-9]+")" ]] && return 0
 done; return 1
@@ -438,36 +430,36 @@ fi
 }
 
 exit_passive(){
-    trbl "XS-done"; sync; n=0
-    while jobs|grep Running >/dev/null && [[ $n -le 15 ]] ; do ((n++)); slp 2; done
-    systemctl stop xs-autoupdate.service >/dev/null 2>&1; exit 0
+trbl "XS-done"; sync; n=0
+while jobs|grep Running >/dev/null && [[ $n -le 15 ]] ; do ((n++)); slp 2; done
+systemctl stop xs-autoupdate.service >/dev/null 2>&1; exit 0
 }
 
 exit_active(){
 #$1 = reason
-    secremain=${conf_a[reboot_delay_num]}
-    systemd-inhibit --what="sleep:idle:handle-suspend-key:handle-hibernate-key:handle-lid-switch" sleep $((secremain+60)) &
-    actn_cmd="${conf_a[reboot_action_str]}"
-    ignoreusers="${conf_a[reboot_ignoreusers_str]// /\\|}"
-    iconcritical; trbl "Active Exit: $actn_cmd";trbl "XS-done"; sync &
-    while [ "$secremain" -gt 0 ]; do
-        usersexist=$false; loginctl list-sessions --no-legend |grep -v "$ignoreusers" |grep "seat\|pts" >/dev/null && usersexist=$true
+secremain=${conf_a[reboot_delay_num]}
+systemd-inhibit --what="sleep:idle:handle-suspend-key:handle-hibernate-key:handle-lid-switch" sleep $((secremain+60)) &
+actn_cmd="${conf_a[reboot_action_str]}"
+ignoreusers="${conf_a[reboot_ignoreusers_str]// /\\|}"
+iconcritical; trbl "Active Exit: $actn_cmd";trbl "XS-done"; sync &
+while [ "$secremain" -gt 0 ]; do
+    usersexist=$false; loginctl list-sessions --no-legend |grep -v "$ignoreusers" |grep "seat\|pts" >/dev/null && usersexist=$true
 
-        if [ "${conf_a[reboot_delayiflogin_bool]}" = "$ctrue" ]; then
-            if [ "$usersexist" = "$false" ]; then trblm "No logged-in users detected; System will $actn_cmd now"; secremain=0; slp 1; continue; fi; fi
+    if [ "${conf_a[reboot_delayiflogin_bool]}" = "$ctrue" ]; then
+        if [ "$usersexist" = "$false" ]; then trblm "No logged-in users detected; System will $actn_cmd now"; secremain=0; slp 1; continue; fi; fi
 
-        if [[ "$usersexist" = "$true" ]]; then sendall "$1\nYour $device will $actn_cmd in \n$secremain seconds..."; fi
-        slp "${conf_a[reboot_notifyrep_num]}"
-        ((secremain-=conf_a[reboot_notifyrep_num]))
-    done
-    sync; $actn_cmd || systemctl --force "$actn_cmd" || systemctl --force --force "$actn_cmd"
+    if [[ "$usersexist" = "$true" ]]; then sendall "$1\nYour $device will $actn_cmd in \n$secremain seconds..."; fi
+    slp "${conf_a[reboot_notifyrep_num]}"
+    ((secremain-=conf_a[reboot_notifyrep_num]))
+done
+sync; $actn_cmd || systemctl --force "$actn_cmd" || systemctl --force --force "$actn_cmd"
 }
 
 conf_validstr(){ echo "$val" |grep -E "^($1)\$" >/dev/null || return 1; return 0; }
 
 conf_valid(){
 #parse and validate lines from config and persistant data files
-parse="$(echo "$line" | cut -d ';' -f 1 | cut -d '#' -f 1)"
+local parse; parse="$(echo "$line" | cut -d ';' -f 1 | cut -d '#' -f 1)"
 echo "$parse" | grep -F '=' &>/dev/null || return 1
 
 varname="$(echo "$parse" | cut -d '=' -f 1)"
@@ -507,10 +499,10 @@ if echo "$conf_intn1" | grep "$varname" >/dev/null || echo "$varname" | grep -E 
 #validate string settings
 
 case "$varname" in
-        reboot_action_str) conf_validstr "reboot|halt|poweroff|shutdown" || return 1 ;;
-        aur_1helper_str) conf_validstr "auto|none|all|pikaur|apacman" || return 1 ;;
-        notify_function_str) conf_validstr "auto|gdbus|desk|send" || return 1 ;;
-        self_branch_str) conf_validstr "stable|beta" || return 1 ;;
+    reboot_action_str) conf_validstr "reboot|halt|poweroff|shutdown" || return 1 ;;
+    aur_1helper_str) conf_validstr "auto|none|all|pikaur|apacman" || return 1 ;;
+    notify_function_str) conf_validstr "auto|gdbus|desk|send" || return 1 ;;
+    self_branch_str) conf_validstr "stable|beta" || return 1 ;;
 esac
 
 return 0
@@ -846,13 +838,11 @@ trblm "Config file: $xs_autoupdate_conf"; trblqout
 
 #Wait up to 5 minutes for network
 trbl "Waiting up to 5 minutes for network..."
-waiting=1;waited=0; while [ $waiting = 1 ]; do
-    test_online && waiting=0
-    if [ $waiting = 1 ]; then
-        if [ $waited -ge 60 ]; then trbl "No network, quitting..."; exit; fi
-        slp 5; ((waited++))
-    fi
-done; unset waiting waited
+i=0; while : ; do
+    test_online && break
+    if [ $i -ge 60 ]; then trbl "No network, quitting..."; exit; fi
+    slp 5; ((i++))
+done; unset i
 
 slp 8 # In case connection just established
 
@@ -874,15 +864,12 @@ fi
 
 #wait up to 5 minutes for running instances of pacman/apacman/pikaur
 trbl "Waiting for pacman/apacman/pikaur..."
-waiting=1;waited=0; while [ $waiting = 1 ]; do
-    isRunning=0; pgrep pacman >/dev/null && isRunning=1
-    pgrep apacman >/dev/null && isRunning=1; pgrep pikaur >/dev/null && isRunning=1
-    [[ $isRunning = 1 ]] || waiting=0
-    if [ $waiting = 1 ]; then
-        if [ $waited -ge 60 ]; then exit; fi
-        slp 5; ((waited++))
-    fi
-done;  unset waiting waited isRunning
+i=0; while : ; do
+    if pgrep pacman >/dev/null || pgrep apacman >/dev/null || pgrep pikaur >/dev/null; then
+        if [ $i -ge 60 ]; then exit; fi
+        slp 5; ((i++))
+    else break; fi
+done;  unset i
 
 #remove .lck file (updaters not running at this point)
 if [[ -f "$(get_pacmancfg DBPath)/db.lck" ]]; then rm -f "$(get_pacmancfg DBPath)/db.lck"; fi
@@ -894,7 +881,7 @@ rm -f "${perst_d}/auto-update_termnotify.dat" >/dev/null 2>&1
 getsessions; i=0; while [ $i -lt ${#s_usr[@]} ]; do
 if [ -d "${s_home[$i]}/.cache" ]; then
     mkdir -p "${s_home[$i]}/.cache/xs"; echo "tmp" > "${s_home[$i]}/.cache/xs/logonnotify"
-chown -R "${s_usr[$i]}" "${s_home[$i]}/.cache/xs"; fi; ((i++)); done
+chown -R "${s_usr[$i]}" "${s_home[$i]}/.cache/xs"; fi; ((i++)); done; unset i
 if [[ "${conf_a[main_inhibit_bool]}" = "$cfalse" ]]; then "$0" "backnotify"&
 else systemd-inhibit --what="shutdown:sleep:idle:handle-power-key:handle-suspend-key:handle-hibernate-key:handle-lid-switch" "$0" "backnotify"& fi
 
