@@ -1,6 +1,6 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.9.8-rc2"; vsndsp="$vsn 2022-09-25"
+vsn="v3.9.8-rc3"; vsndsp="$vsn 2022-10-09"
 #-Downloads and Installs new updates
 #-Depends: coreutils, grep, pacman, pacman-mirrors, iputils
 #-Optional Depends: flatpak, notify-desktop, pikaur, rebuild-detector, wget
@@ -48,7 +48,7 @@ test_online(){ ping -c 1 "${conf_a[main_testsite_str]}" >/dev/null 2>&1 && retur
 chk_pkginst(){ $pcmbin -Q "$1" >/dev/null 2>&1 || return 1; }
 chk_pkginstx(){ [[ "$($pcmbin -Qq "$1" 2>/dev/null | grep -m1 -x "$1")" == "$1" ]] || return 1; }
 get_pkgqi() { $pcmbin -Qi "$1" 2>/dev/null|grep -E "$2[ ]+:"|grep -oP "(?<=\s:\s).*$"; }
-get_pkgqix() { get_pkgqi "$1" "$2"|tr ' ' '\n'|grep -E "[[:alnum:]]"; }
+get_pkgqix() { get_pkgqi "$1" "$2"|tr ' ' '\n'|grep -P "[0-9A-z]"; }
 chk_pkgexplicit(){ get_pkgqi "$1" "Install Reason"|grep "Explicitly" >/dev/null && return 0; return 1; }
 get_pkgvsn(){ $pcmbin -Q "$1"|grep "$1 " -m1|cut -d' ' -f2; }
 chk_pkgvsndiff(){ local cpvd_t1; cpvd_t1="$(get_pkgvsn "$1")"; vercmp "${cpvd_t1:-0}" "$2"; }
@@ -57,7 +57,7 @@ chk_sha256(){ [[ "$(sha256sum "$1"|cut -d ' ' -f 1 |tr -cd '[:alnum:]')" = "$2" 
 dl_outstd(){
 #$1=url
 if wget --help >/dev/null 2>&1; then
-    wget -qO- "$1"|grep -E "[[:alnum:]]" && return 0; fi
+    wget -qO- "$1"|grep -P "[0-9A-z]" && return 0; fi
 curl -sL "$1" && return 0; return 1
 }
 dl_outfile()(
@@ -105,7 +105,7 @@ if [[ "$1" = "CacheDir" ]]; then echo "/var/cache/pacman/pkg"; fi
 get_pkgfiles(){
 #$1=pkg name
 { for f in "$(get_pacmancfg CacheDir)" "/var/cache/pikaur/pkg" "/var/cache/apacman/pkg"; do compgen -G "$f/$1-*.pkg.*"; done; }|\
-    grep -E "/$1-[0-9\.+:a-z]+-[0-9\.]+-[0-9a-z_]+.pkg.[0-9a-z]+.[0-9a-z]+$"|sort -rV
+    grep -P "/$1-[0-9.+:A-z]+-[0-9.]+-[0-9A-z_]+\.pkg\.[0-9A-z]+\.[0-9A-z]+$"|sort -rV
 }
 
 inst_misspkg(){
@@ -212,7 +212,7 @@ pkgdl_vsn(){
 get_pkgfiles "$1"|grep "$1-$2"|head -n1 2>/dev/null
 [[ "${PIPESTATUS[1]}" = "0" ]] && return 0
 #download from arch archive
-local md_pkg; md_pkg="$(dl_outstd "${url_ala}/${1:0:1}/${1}"|grep -F "$1-$2-"|grep -Eo "[^<>\"]+-[0-9a-z_]+\.pkg.[0-9a-z]+\.[0-9a-z]+"|sort -u|head -n1)"
+local md_pkg; md_pkg="$(dl_outstd "${url_ala}/${1:0:1}/${1}"|grep -F "$1-$2-"|grep -oP "[^<>\"]+-[0-9A-z_]+\.pkg\.[0-9A-z]+\.[0-9A-z]+"|sort -u|head -n1)"
 [[ "$md_pkg" = "" ]] || dl_outfile "${url_ala}/${1:0:1}/${1}/$md_pkg" "$(get_pacmancfg CacheDir)"
 if [[ -f "$(get_pacmancfg CacheDir)/$md_pkg" ]]; then echo "$(get_pacmancfg CacheDir)/$md_pkg"; return 0; fi
 return 1
@@ -244,10 +244,10 @@ if [[ "${conf_a[repair_1enable_bool]}" = "$cfalse" ]] || [[ "${conf_a[repair_db0
         $pcmbin -Dk 2>&1|trbl_t; return 1
 fi; return 0; fi
 
-for p in $(pacman -Dk 2>&1 | grep -Ei "error: '[[:alnum:]\.@_\/-]*': (description file|file list) is missing"|cut -d':' -f2|grep -Eo "[[:alnum:]\.@_\/-]*"|sort -u); do
+for p in $(pacman -Dk 2>&1 | grep -Ei "error: '.+': (description file|file list) is missing"|sed 's/: /#/g'|cut -d'#' -f2|grep -oP "[0-9A-z:@._+-]+"|sort -u); do
     rpdb_path="$(get_pacmancfg DBPath)/local/$p"
-    rpdb_pkgn="$(echo "$p"|grep -oP '.+?(?=-[0-9A-z\.\+:]+-[0-9]+$)')"
-    rpdb_pkgv="$(echo "$p"|grep -oP '[0-9A-z\.\+:]+-[0-9]+$')"
+    rpdb_pkgn="$(echo "$p"|grep -oP '.+?(?=-[0-9A-z:._+]+-[0-9.]+$)')"
+    rpdb_pkgv="$(echo "$p"|grep -oP '[0-9A-z:._+]+-[0-9.]+$')"
     trbl "$co_y Database files for $rpdb_pkgn are corrupt or missing"
     trblm "Getting installer for $rpdb_pkgn [$rpdb_pkgv]"
     rpdb_pkgf="$(pkgdl_vsn "$rpdb_pkgn" "$rpdb_pkgv")" #use cache copy, or dl from archive
@@ -305,7 +305,7 @@ else perst_a[$1]="20010101"; echo "$1=20010101" >> "$perst_f"; fi
 
 aurrebuildlist(){
 local arlist arignore arlist_grep
-readarray -t arlist < <(checkrebuild 2>/dev/null|grep -oP '^foreign[[:space:]]+\K(?!.*-bin$)([[:alnum:]\.@_\+\-]*)$')
+readarray -t arlist < <(checkrebuild 2>/dev/null|grep -oP '^foreign[[:space:]]+\K(?!.*-bin$)([0-9A-z\.@_\+\-]*)$')
 
 #remove stale rebuild cache entries
 arlist_grep="$(echo -n "${arlist[@]}"|tr ' ' '|')"
@@ -950,7 +950,7 @@ fi
 
 #Update keyring packages
 trbl "Updating system keyrings..."
-for p in $(pacman -Sl|grep "\[installed"|grep "keyring "|grep -Eo "[^ ]*\-keyring"|grep -Ev "^([lib]*gnome|python)-keyring$"); do
+for p in $(pacman -Sl|grep "\[installed"|grep "keyring "|grep -Eo "[^ ]*-keyring"|grep -Ev "^([lib]*gnome|python)-keyring$"); do
     # shellcheck disable=SC2086
     $pcmbin -S --needed --noconfirm $p $sf_ignore 2>&1|trbl_t
     if [[ "${PIPESTATUS[0]}" -gt 0 ]]; then
@@ -982,6 +982,8 @@ if ! chk_freespace_all; then err[repo]=1; err_crit="repo"; break; fi
 
 if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_manualpkg_bool]}" = "$ctrue" ]]; then
     trbl "Checking for required manual package changes..."
+    manualRemoval "glib2-static" "2.72.3-1" #Merged into glib2 2022-09-07
+    #manualRemoval "pcre-static" "8.45-1" #Merged into pcre 2022-09-07
     manualRemoval "wxgtk2" "3.0.5.1-3" #Removed from arch repos 2022-07-14
     manualRemoval "pipewire-media-session" "1:0.4.1-1" "wireplumber" #Replaced 2022-05-10 (bump version when demoted)
     manualRemoval "qpdfview" "0.4.18-1" "evince" #Moved to AUR 2022-04-01 (bump version when updated)
@@ -1022,7 +1024,7 @@ if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_manu
 fi
 
 trbl "Updating system packages..."
-for p in $(pacman -Sl | grep "\[installed"|grep "system "|grep -Eo "[^ ]*\-system") ${conf_a[main_systempkgs_str]}; do
+for p in $(pacman -Sl | grep "\[installed"|grep "system "|grep -Eo "[^ ]*-system") ${conf_a[main_systempkgs_str]}; do
     chk_pkginstx "$p" && $pcmbin -S --needed --noconfirm "$p" 2>&1|trbl_t
     ((err[sys]+=PIPESTATUS[0])); done
 if [[ ${err[sys]} -ne 0 ]]; then trbl "$co_y system packages failed to update - err:${err[sys]}"; fi
