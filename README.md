@@ -209,8 +209,11 @@ Overview of what the script does from start to finish. Some steps may be slightl
 
 * Check for package database errors (*config: [enable](#repair_db01_bool "")*)
   * For every package with errors:
+    * search local caches and arch linux archive for package of installed version
+      * if installed version not found, fall back to installing the latest version
     * create missing `files`/`desc`
-    * reinstall with `pacman -S --noconfirm --overwrite=* packagename`
+    * reinstall with `pacman -[S|Udd] --noconfirm --overwrite=* packagename`
+      * package dependencies are ignored if re-installing same version
 
 * Update packages from Official Repos
   * `pacman -Syyu[`[`u`](#update_downgrades_bool "")`] --needed --noconfirm [--ignore `[`$main_ignorepkgs_str`](#main_ignorepkgs_str "")`]`
@@ -311,6 +314,7 @@ Every once in a while, updating Manjaro requires manual package changes to allow
 * Transition packages that depend on `electron` to `electronXX` where required
 * Package removal and/or replacement:
 <table>
+  <tr><td><code>glib2-static</code></td><td><=2.72.3-1</td><td>2022/09/07: merged into glib2</td></tr>
   <tr><td><code>wxgtk2</code></td><td><=3.0.5.1-3</td><td>2022/07/14: removed from arch repos</td></tr>
   <tr><td><code>pipewire-media-session</code></td><td><=1:0.4.1-1</td><td>2022/05/10: replaced with <code>wireplumber</code></td></tr>
   <tr><td><code>qpdfview</code></td><td><=0.4.18-1</td><td>2022/04/01: former default pkg moved to AUR, replaced with <code>evince</code></td></tr>
@@ -801,6 +805,7 @@ zflag:dropbox,tor-browser=--skippgpcheck
  * Default: `1` (True)
  * If true, the script will detect and attempt to repair missing "desc"/"files" files in package database
  * NOTE: It repairs this by creating the missing files and re-installing the package(s) with `overwrite=*` specified
+ * NOTE: in 3.9.8-rc1 and later, this will attempt to reinstall the local version before installing the latest
 
 </details>
 

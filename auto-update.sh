@@ -1,6 +1,6 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.9.8-hf3"; vsndsp="$vsn 2022-08-13"
+vsn="v3.9.9"; vsndsp="$vsn 2022-10-15"
 #-Downloads and Installs new updates
 #-Depends: coreutils, grep, pacman, pacman-mirrors, iputils
 #-Optional Depends: flatpak, notify-desktop, pikaur, rebuild-detector, wget
@@ -28,7 +28,7 @@ debgn=+x; # -x =debugging | +x =no debugging
 #----Define Functions---
 #-----------------------
 
-slp(){ sleep "$1" || read -rt "$1" < /dev/tty; }
+slp(){ sleep "$1" || read -rt "$1" < /dev/tty; } 2>/dev/null
 to_int(){ [[ "$1" =~ ^[\-]?[0-9]+$ ]] && echo "$1" || echo 0; }
 trbl_s(){ cat < /dev/stdin|sed 's/\x1B\[[0-9;]\+[A-Za-z]//g' |tr -cd '\11\12\15\40-\176'; }
 trbl_t(){ cat < /dev/stdin|trbl_s|tee -a "$log_f"; }
@@ -48,29 +48,30 @@ test_online(){ ping -c 1 "${conf_a[main_testsite_str]}" >/dev/null 2>&1 && retur
 chk_pkginst(){ $pcmbin -Q "$1" >/dev/null 2>&1 || return 1; }
 chk_pkginstx(){ [[ "$($pcmbin -Qq "$1" 2>/dev/null | grep -m1 -x "$1")" == "$1" ]] || return 1; }
 get_pkgqi() { $pcmbin -Qi "$1" 2>/dev/null|grep -E "$2[ ]+:"|grep -oP "(?<=\s:\s).*$"; }
-get_pkgqix() { get_pkgqi "$1" "$2"|tr ' ' '\n'|grep -E "[[:alnum:]]"; }
+get_pkgqix() { get_pkgqi "$1" "$2"|tr ' ' '\n'|grep -P "[0-9A-z]"; }
 chk_pkgexplicit(){ get_pkgqi "$1" "Install Reason"|grep "Explicitly" >/dev/null && return 0; return 1; }
 get_pkgvsn(){ $pcmbin -Q "$1"|grep "$1 " -m1|cut -d' ' -f2; }
-chk_pkgvsndiff(){ cpvd_t1="$(get_pkgvsn "$1")"; vercmp "${cpvd_t1:-0}" "$2"; unset cpvd_t1; }
+chk_pkgvsndiff(){ local cpvd_t1; cpvd_t1="$(get_pkgvsn "$1")"; vercmp "${cpvd_t1:-0}" "$2"; }
 chk_sha256(){ [[ "$(sha256sum "$1"|cut -d ' ' -f 1 |tr -cd '[:alnum:]')" = "$2" ]] && return 0; return 1; }
 
 dl_outstd(){
 #$1=url
 if wget --help >/dev/null 2>&1; then
-    wget -qO- "$1" && return 0; fi
-curl -s "$1" && return 0; return 1
+    wget -qO- "$1"|grep -P "[0-9A-z]" && return 0; fi
+curl -sL "$1" && return 0; return 1
 }
-dl_outfile(){
+dl_outfile()(
 #$1=url $2=output dir
 if [[ ! -d "$2" ]]; then mkdir "$2" || return 1; fi
+pushd "$2">/dev/null 2>&1 || return 1
 if wget --help >/dev/null 2>&1; then
-    wget -q "$1" -O "$2/$(basename "$1")" && return 0; fi
-curl -sZL "$1" -o "$(basename "$1")" --output-dir "$2" && return  0; return 1
-}
+    wget -q "$1" -O "$(basename "$1")" && return 0; fi
+curl -sZL "$1" -o "$(basename "$1")" && return  0; return 1
+)
 dl_clean(){ [[ -d "/tmp/xs-autmp-$1" ]] && rm -rf "/tmp/xs-autmp-$1"; }
 dl_verify(){
 #$1=id; $2=remote hash; $3=remote file
-dl_hash="$(dl_outstd "$2" |tr -cd '[:alnum:]')"
+local dl_hash; dl_hash="$(dl_outstd "$2" |tr -cd '[:alnum:]')"
 if [ "${#dl_hash}" = "64" ]; then
     (dl_outfile "$3" "/tmp/xs-autmp-$1/") 2>&1|trbl_t
     chk_sha256 "/tmp/xs-autmp-$1/$(basename "$3")" "$dl_hash" && return 0
@@ -81,28 +82,30 @@ chk_remoterepo(){ pacman -Slq 2>/dev/null|grep -E "^$1$" >/dev/null && return 0;
 chk_remoteaur(){ dl_outstd "${url_aur}?v=5&type=info&arg[]=$1" |grep -F '"resultcount":0' >/dev/null || return 0; return 1; }
 chk_remoteany(){ chk_remoterepo "$1" && return 0; chk_remoteaur "$1" && return 0; return 1; }
 
-get_pkgfilename(){
-#$1=pkg name
-gpfn_f="$(compgen -G "$(get_pacmancfg CacheDir)/$1-*.pkg.*" \
-  |grep -E "^$(get_pacmancfg CacheDir)/$1-[0-9\.+:a-z]+-[0-9\.]+-[0-9a-z_]+.pkg.[0-9a-z]+.[0-9a-z]+$"|sort -rV|head -n1)"
-[[ -f "$gpfn_f" ]] && echo "$gpfn_f"; unset gpfn_f
-}
-
 get_pkgbuilddate(){
-gpbd_date="$(get_pkgqi "$1" "Build Date")"
+local gpbd_date; gpbd_date="$(get_pkgqi "$1" "Build Date")"
 [[ "$gpbd_date" = "" ]] && return 1
 date -d "$gpbd_date" +'%Y%m%d' 2>/dev/null || return 1
-unset gpbd_date; return 0
+return 0
 }
 
 get_pacmancfg(){
 #$1=prop
-if pacman-conf --help >/dev/null 2>&1; then pacman-conf "$1" 2>/dev/null && return 0; fi
+if pacman-conf --help >/dev/null 2>&1; then
+    pacman-conf "$1" 2>/dev/null|sed 's:/*$::'
+    [[ "${PIPESTATUS[0]}" = "0" ]] && return
+fi
 if [[ -f /etc/pacman.conf ]]; then
-    gpcc="$(grep -E "^[^#]?$1" /etc/pacman.conf |sed -r 's/ += +/=/g'|cut -d'=' -f2)"
-    if [[ ! "$gpcc" = "" ]]; then echo "$gpcc"|sed -r 's_/+_/_g'|sed 's:/*$::'; unset gpcc; return; fi; unset gpcc; fi
+    local gpcc; gpcc="$(grep -E "^[^#]?$1" /etc/pacman.conf |sed -r 's/ += +/=/g'|cut -d'=' -f2)"
+    if [[ ! "$gpcc" = "" ]]; then echo "$gpcc"|sed -r 's_/+_/_g'|sed 's:/*$::'; return; fi; fi
 if [[ "$1" = "DBPath" ]]; then echo "/var/lib/pacman"; fi
 if [[ "$1" = "CacheDir" ]]; then echo "/var/cache/pacman/pkg"; fi
+}
+
+get_pkgfiles(){
+#$1=pkg name
+{ for f in "$(get_pacmancfg CacheDir)" "/var/cache/pikaur/pkg" "/var/cache/apacman/pkg"; do compgen -G "$f/$1-*.pkg.*"; done; }|\
+    grep -P "/$1-[0-9.+:A-z]+-[0-9.]+-[0-9A-z_]+\.pkg\.[0-9A-z]+\.[0-9A-z]+$"|sort -rV
 }
 
 inst_misspkg(){
@@ -176,7 +179,7 @@ chk_pkgexplicit "$1" && return 1 || return 0
 
 manualRemoval(){
 #$1=(pkgs)|$2=vsn (or older) to remove|[$3=new pkgs]
-IFS=" " read -ra mr_pkgo <<< "$1"
+local mr_pkgo; IFS=" " read -ra mr_pkgo <<< "$1"
 if chk_pkginstx "${mr_pkgo[0]}" && [[ "$(chk_pkgvsndiff "${mr_pkgo[0]}" "$2")" -le 0 ]]; then
     trbl "attempting manual package removal/replacement of $1..."
     if [[ ! "$3" = "" ]]; then
@@ -203,64 +206,124 @@ $pcmbin -Quq|grep -E "^$1$" >/dev/null 2>&1 && return 1
 return 0
 }
 
+pkgdl_vsn(){
+#$1=pkg,$2=version
+#check if already in cache
+get_pkgfiles "$1"|grep "$1-$2"|head -n1 2>/dev/null
+[[ "${PIPESTATUS[1]}" = "0" ]] && return 0
+#download from arch archive
+local md_pkg; md_pkg="$(dl_outstd "${url_ala}/${1:0:1}/${1}"|grep -F "$1-$2-"|grep -oP "[^<>\"]+-[0-9A-z_]+\.pkg\.[0-9A-z]+\.[0-9A-z]+"|sort -u|head -n1)"
+[[ "$md_pkg" = "" ]] || dl_outfile "${url_ala}/${1:0:1}/${1}/$md_pkg" "$(get_pacmancfg CacheDir)"
+if [[ -f "$(get_pacmancfg CacheDir)/$md_pkg" ]]; then echo "$(get_pacmancfg CacheDir)/$md_pkg"; return 0; fi
+return 1
+}
+
+manualReinst(){
+#$1=pkg|path
+local mdl_s mdl_d; mdl_s="S"
+if echo "$1"|grep ".pkg.">/dev/null 2>&1; then mdl_s="U"; mdl_d="dd"; fi
+while : ; do
+    if [[ "$mdl_s" = "S" ]]; then test_online || return 1; fi
+    # shellcheck disable=SC2086
+    $pcmbin -${mdl_s}${mdl_d} --noconfirm --overwrite=* $1 $pacignore 2>&1|trbl_t|tee /dev/tty|grep "could not satisfy dependencies" >/dev/null
+    if [[ ! "${PIPESTATUS[0]}" -eq 0 ]] && [[ "${PIPESTATUS[3]}" -eq 0 ]]; then
+        if [[ ! "$mdl_d" = "dd" ]]; then mdl_d="${mdl_d}d"; trbl "$co_y skipping dependency detection ($mdl_d)"; continue
+        else return 1; fi
+fi; return 0; done
+}
+
+checkRepairDb(){
+#$1=(cache|repo)
+trbl "Checking for database errors [$1]..."
+local rpdb_path rpdb_pkgn rpdb_pkgv rpdb_pkgf
+
+if [[ "${conf_a[repair_1enable_bool]}" = "$cfalse" ]] || [[ "${conf_a[repair_db01_bool]}" = "$cfalse" ]]; then
+    [[ "$1" = "repo" ]] && return 0
+    if [[ "$($pcmbin -Dk 2>&1|grep -Eic "error:.+(description file|file list) is missing$")" -gt "0" ]]; then
+        trbl "$co_y system has missing files in package database. Automatic fix is disabled in config; reporting only."
+        $pcmbin -Dk 2>&1|trbl_t; return 1
+fi; return 0; fi
+
+for p in $(pacman -Dk 2>&1 | grep -Ei "error: '.+': (description file|file list) is missing"|sed 's/: /#/g'|cut -d'#' -f2|grep -oP "[0-9A-z:@._+-]+"|sort -u); do
+    rpdb_path="$(get_pacmancfg DBPath)/local/$p"
+    rpdb_pkgn="$(echo "$p"|grep -oP '.+?(?=-[0-9A-z:._+]+-[0-9.]+$)')"
+    rpdb_pkgv="$(echo "$p"|grep -oP '[0-9A-z:._+]+-[0-9.]+$')"
+    trbl "$co_y Database files for $rpdb_pkgn are corrupt or missing"
+    trblm "Getting installer for $rpdb_pkgn [$rpdb_pkgv]"
+    rpdb_pkgf="$(pkgdl_vsn "$rpdb_pkgn" "$rpdb_pkgv")" #use cache copy, or dl from archive
+    if [[ "$rpdb_pkgf" = "" ]] || [[ ! -f "$rpdb_pkgf" ]]; then
+        if [[ "$1" = "cache" ]]; then trbl "$co_y installer not found for $rpdb_pkgn , will attempt to download later"; continue; fi; fi
+    #create missing files
+    mkdir -p "$rpdb_path"
+    for c in files desc; do
+        [[ -f "${rpdb_path}/$c" ]] && continue; trblm "Creating missing file: ${rpdb_path}/$c"
+        touch "${rpdb_path}/$c" || trbl "$co_y could not create $c"
+    done
+    #reinstall pkg
+    if [[ "$rpdb_pkgf" = "" ]] || [[ ! -f "$rpdb_pkgf" ]]; then
+        trblm "Reinstalling $rpdb_pkgn"; manualReinst "$rpdb_pkgn" "y"
+    else trblm "Reinstalling $(basename "$rpdb_pkgf")"; manualReinst "$rpdb_pkgf" "y"; fi
+    #undo desc/files changes if above fails
+    for c in files desc; do [[ "$(stat -c%s "${rpdb_path}/$c" 2>/dev/null)" = "0" ]] && rm "${rpdb_path}/$c"; done
+done
+}
+
+
 #Persistant Data Functions
 
 perst_isneeded(){
 #$1 = xxx_xxx_freq,$2 = perst_a[var]
-
-    if [[ "$1" -eq "-1" ]]; then return 1; fi
-    curdate=$(date +'%Y%m%d')
-    scheddate=$(date -d "$2 + $1 days" +'%Y%m%d')
-
-    if [[ "$scheddate" -le "$curdate" ]]; then return 0
-    elif [[ "$2" -gt "$curdate" ]]; then return 0
-    else return 1; fi
+if [[ "$1" -eq "-1" ]]; then return 1; fi
+local curdate; curdate=$(date +'%Y%m%d')
+scheddate=$(date -d "$2 + $1 days" +'%Y%m%d')
+if [[ "$scheddate" -le "$curdate" ]]; then return 0
+elif [[ "$2" -gt "$curdate" ]]; then return 0
+else return 1; fi
 }
 
 perst_update(){
 #$1=var
-    perst_a[$1]=$(date +'%Y%m%d'); echo "$1=${perst_a[$1]}" >> "$perst_f"
-    echo "$1" | grep -F "zrbld:" >/dev/null && \
-        rbld_a["$(echo "$1" | cut -d ':' -f 2)"]=$(date +'%Y%m%d')
+perst_a[$1]=$(date +'%Y%m%d'); echo "$1=${perst_a[$1]}" >> "$perst_f"
+echo "$1" | grep -F "zrbld:" >/dev/null && \
+    rbld_a["$(echo "$1" | cut -d ':' -f 2)"]=$(date +'%Y%m%d')
 }
 
 perst_export(){
-    touch "$perst_f"
-    echo "#persistent cache data for xs-update-manjaro" > "$perst_f"
-    for i in $(printf "%s\n" "${!perst_a[@]}"|sort); do
-        echo "$i=${perst_a[$i]}" >> "$perst_f"
-    done
+touch "$perst_f"
+echo "#persistent cache data for xs-update-manjaro" > "$perst_f"
+for i in $(printf "%s\n" "${!perst_a[@]}"|sort); do
+    echo "$i=${perst_a[$i]}" >> "$perst_f"
+done
 }
 
 perst_reset(){
-    if echo "$1" | grep -F "zrbld:" >/dev/null; then
-        unset "rbld_a[$(echo "$1" | cut -d ':' -f 2)]" "perst_a[$1]"
-        perst_export #cannot use sed, as [] is treated as regex
-    else perst_a[$1]="20010101"; echo "$1=20010101" >> "$perst_f"; fi
+if echo "$1" | grep -F "zrbld:" >/dev/null; then
+    unset "rbld_a[$(echo "$1" | cut -d ':' -f 2)]" "perst_a[$1]"
+    perst_export #cannot use sed, as [] is treated as regex
+else perst_a[$1]="20010101"; echo "$1=20010101" >> "$perst_f"; fi
 }
 
 aurrebuildlist(){
-    readarray -t arlist < <(checkrebuild 2>/dev/null|grep -oP '^foreign[[:space:]]+\K(?!.*-bin$)([[:alnum:]\.@_\+\-]*)$')
+local arlist arignore arlist_grep
+readarray -t arlist < <(checkrebuild 2>/dev/null|grep -oP '^foreign[[:space:]]+\K(?!.*-bin$)([0-9A-z\.@_\+\-]*)$')
 
-    #remove stale rebuild cache entries
-    arlist_grep="$(echo -n "${arlist[@]}"|tr ' ' '|')"
-    for pkg in "${!rbld_a[@]}"; do
-        if [[ "${#arlist[@]}" = "0" ]] || ! echo "$pkg"|grep -E "^($arlist_grep)$" >/dev/null; then
-            perst_reset "zrbld:$pkg"; fi
-    done
+#remove stale rebuild cache entries
+arlist_grep="$(echo -n "${arlist[@]}"|tr ' ' '|')"
+for pkg in "${!rbld_a[@]}"; do
+    if [[ "${#arlist[@]}" = "0" ]] || ! echo "$pkg"|grep -E "^($arlist_grep)$" >/dev/null; then
+        perst_reset "zrbld:$pkg"; fi
+done
 
-    #remove ignored entries
-    arignore="$(echo -n "$(echo "${conf_a[main_ignorepkgs_str]}"; get_pacmancfg IgnorePkg; echo "${!rbld_a[@]}")"|tr '\n' ' '|sed 's/ /|/g')"
-    [[ "$arignore" = "" ]] || readarray -t arlist < <(echo "${arlist[@]}"|tr ' ' '\n'|grep -Evi "^($arignore)$")
-    
-    #exclude orphan packages from list
-    for pkg in "${arlist[@]}"; do
-        if ! chk_remoteaur "$pkg"; then
-            [[ "${perst_a[$pkg]}" = "" ]] || perst_reset "zrbld:$pkg"
-        else echo "$pkg"; fi
-    done
+#remove ignored entries
+arignore="$(echo -n "$(echo "${conf_a[main_ignorepkgs_str]}"; get_pacmancfg IgnorePkg; echo "${!rbld_a[@]}")"|tr '\n' ' '|sed 's/ /|/g')"
+[[ "$arignore" = "" ]] || readarray -t arlist < <(echo "${arlist[@]}"|tr ' ' '\n'|grep -Evi "^($arignore)$")
 
-    unset arlist arignore arlist_grep
+#exclude orphan packages from list
+for pkg in "${arlist[@]}"; do
+    if ! chk_remoteaur "$pkg"; then
+        [[ "${perst_a[$pkg]}" = "" ]] || perst_reset "zrbld:$pkg"
+    else echo "$pkg"; fi
+done
 }
 
 
@@ -273,61 +336,60 @@ iconerror(){ icon=dialog-error; }
 
 sendmsg(){
 #$1=user; $2=msg; [$3=timeout]
-    if [[ "${conf_a[notify_1enable_bool]}" = "$ctrue" ]] && [[ "$((noti_desk+noti_send+noti_gdbus))" -le 2 ]]; then
-        noti_id["$1"]="$(to_int "${noti_id["$1"]}")"
-        tmp_t0="$(to_int "$3")"
-        if [ "$tmp_t0" = "0" ]; then
-            tmp_t1="-u critical"
-        else ((tmp_t0*=1000)); tmp_t1="-t $tmp_t0"; fi
-        if [ "$noti_desk" = "$true" ]; then
-            if [[ "$2" = "dismiss" ]]; then
-                noti_id["$1"]="$(su "$1" -c "notify-desktop -u normal -r ${noti_id["$1"]} \" \" -t 1")"
-            else
-                tmp_m1="${2//\\n/$'\n'}"
-                noti_id["$1"]="$(su "$1" -c "notify-desktop -i $icon $tmp_t1 -r ${noti_id["$1"]} xs-auto-update \"$notifyvsn$tmp_m1\" 2>/dev/null || echo error")"
-            fi
+if [[ "${conf_a[notify_1enable_bool]}" = "$ctrue" ]] && [[ "$((noti_desk+noti_send+noti_gdbus))" -le 2 ]]; then
+    noti_id["$1"]="$(to_int "${noti_id["$1"]}")"
+    local tmp_t0 tmp_t1; tmp_t0="$(to_int "$3")"
+    if [ "$tmp_t0" = "0" ]; then
+        tmp_t1="-u critical"
+    else ((tmp_t0*=1000)); tmp_t1="-t $tmp_t0"; fi
+    if [ "$noti_desk" = "$true" ]; then
+        if [[ "$2" = "dismiss" ]]; then
+            noti_id["$1"]="$(su "$1" -c "notify-desktop -u normal -r ${noti_id["$1"]} \" \" -t 1")"
+        else
+            tmp_m1="${2//\\n/$'\n'}"
+            noti_id["$1"]="$(su "$1" -c "notify-desktop -i $icon $tmp_t1 -r ${noti_id["$1"]} xs-auto-update \"$notifyvsn$tmp_m1\" 2>/dev/null || echo error")"
         fi
-        if [ "$noti_send" = "$true" ]; then
-            if [[ ! "$2" = "dismiss" ]]; then
-                noti_id["$1"]="$(su "$1" -c "notify-send -i $icon $tmp_t1 xs-auto-update \"$notifyvsn$2\" 2>/dev/null || echo error")"
-            fi
+    fi
+    if [ "$noti_send" = "$true" ]; then
+        if [[ ! "$2" = "dismiss" ]]; then
+            noti_id["$1"]="$(su "$1" -c "notify-send -i $icon $tmp_t1 xs-auto-update \"$notifyvsn$2\" 2>/dev/null || echo error")"
         fi
-        if [ "$noti_gdbus" = "$true" ]; then
-            if [[ "$2" = "dismiss" ]]; then
-                noti_id["$1"]="$(su "$1" -c "gdbus call --session --dest org.freedesktop.Notifications \
-                    --object-path /org/freedesktop/Notifications --method org.freedesktop.Notifications.CloseNotification ${noti_id["$1"]}")"
-            else
-                noti_id["$1"]="$(su "$1" -c "gdbus call --session --dest org.freedesktop.Notifications \
-                    --object-path /org/freedesktop/Notifications --method org.freedesktop.Notifications.Notify \
-                    xs-auto-update ${noti_id["$1"]} $icon xs-auto-update \"$notifyvsn$2\" [] {} $tmp_t0 2>/dev/null || echo error"|cut -d' ' -f2|cut -d',' -f1)"
-            fi
+    fi
+    if [ "$noti_gdbus" = "$true" ]; then
+        if [[ "$2" = "dismiss" ]]; then
+            noti_id["$1"]="$(su "$1" -c "gdbus call --session --dest org.freedesktop.Notifications \
+                --object-path /org/freedesktop/Notifications --method org.freedesktop.Notifications.CloseNotification ${noti_id["$1"]}")"
+        else
+            noti_id["$1"]="$(su "$1" -c "gdbus call --session --dest org.freedesktop.Notifications \
+                --object-path /org/freedesktop/Notifications --method org.freedesktop.Notifications.Notify \
+                xs-auto-update ${noti_id["$1"]} $icon xs-auto-update \"$notifyvsn$2\" [] {} $tmp_t0 2>/dev/null || echo error"|cut -d' ' -f2|cut -d',' -f1)"
         fi
-        unset tmp_t0 tmp_t1; if [[ "${noti_id["$1"]}" = "error" ]]; then noti_id["$1"]=0; return 1; fi
-    else systemctl is-system-running 2>/dev/null |grep 'unknown' >/dev/null && return 1
-    fi; return 0
+    fi
+    if [[ "${noti_id["$1"]}" = "error" ]]; then noti_id["$1"]=0; return 1; fi
+else systemctl is-system-running 2>/dev/null |grep 'unknown' >/dev/null && return 1
+fi; return 0
 }
 
 getsessions(){
-    unset s_usr s_disp s_home; i=0; while read -ra sssn; do
-        loginctl show-session -p Active "${sssn[0]}"|grep -F "yes" >/dev/null || continue
-        usr="$(loginctl show-session -p Name "${sssn[0]}"|cut -d'=' -f2)"
-        disp="$(loginctl show-session -p Display "${sssn[0]}"|cut -d'=' -f2)"
-        [[ "$disp" = "" ]] && disp=":0" #workaround for gnome, which returns nothing
-        usrhome="$(getent passwd "$usr"|cut -d: -f6)"
-        [[  ${usr-x} && ${disp-x} && ${usrhome-x} ]] || continue
-        s_usr[$i]=$usr; s_disp[$i]=$disp; s_home[$i]=$usrhome; ((i++))
-    done <<< "$(loginctl list-sessions --no-legend)"; slp 1; unset i usr disp usrhome sssn
+local i usr disp usrhome sssn; i=0
+unset s_usr s_disp s_home; while read -ra sssn; do
+    loginctl show-session -p Active "${sssn[0]}"|grep -F "yes" >/dev/null || continue
+    usr="$(loginctl show-session -p Name "${sssn[0]}"|cut -d'=' -f2)"
+    disp="$(loginctl show-session -p Display "${sssn[0]}"|cut -d'=' -f2)"
+    [[ "$disp" = "" ]] && disp=":0" #workaround for gnome, which returns nothing
+    usrhome="$(getent passwd "$usr"|cut -d: -f6)"
+    [[  ${usr-x} && ${disp-x} && ${usrhome-x} ]] || continue
+    s_usr[$i]=$usr; s_disp[$i]=$disp; s_home[$i]=$usrhome; ((i++))
+done <<< "$(loginctl list-sessions --no-legend)"; slp 1
 }
 
 sendall(){
-    if [ "${conf_a[notify_1enable_bool]}" = "$ctrue" ]; then
-        sa_err=0; getsessions; i=0; while [ $i -lt ${#s_usr[@]} ]; do
-            DISPLAY=${s_disp[$i]} XAUTHORITY="${s_home[$i]}/.Xauthority" \
-                DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u "${s_usr[$i]}")/bus" \
-                sendmsg "${s_usr[$i]}" "$1" "$2" || sa_err=1
-            ((i++))
-        done; unset i; return $sa_err
-    fi
+[[ "${conf_a[notify_1enable_bool]}" = "$ctrue" ]] || return 0
+getsessions; local sa_err i; sa_err=0; i=0; while [ $i -lt ${#s_usr[@]} ]; do
+    DISPLAY=${s_disp[$i]} XAUTHORITY="${s_home[$i]}/.Xauthority" \
+        DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u "${s_usr[$i]}")/bus" \
+        sendmsg "${s_usr[$i]}" "$1" "$2" || sa_err=1
+((i++)); done; return $sa_err
 }
 
 backgroundnotify(){
@@ -352,7 +414,7 @@ userlogon_chkkrnl(){
 for k in $(file /boot/vmlinuz*|grep -oE "version [^ ]+"|sed 's/version //g'); do
     [[ "$k" = "$(uname -r)" ]] && return 0; done
 pacman --help >/dev/null 2>&1 || return 1
-kerns="$( (pacman -Qq;pacman -Slq)|grep -oE "^linux[^ ]+-headers$"|sed 's/-headers//g'|tr '\n' '|'|sed 's:|*$::' )"
+local kerns; kerns="$( (pacman -Qq;pacman -Slq)|grep -oE "^linux[^ ]+-headers$"|sed 's/-headers//g'|tr '\n' '|'|sed 's:|*$::' )"
 for k in $(pacman -Qq|grep "^linux"|grep -E "^($kerns)$"); do
     [[ "$(get_pkgvsn "$k"|grep -oE "[0-9]+.[0-9]+.[0-9]+")" = "$(uname -r|grep -oE "[0-9]+.[0-9]+.[0-9]+")" ]] && return 0
 done; return 1
@@ -368,36 +430,36 @@ fi
 }
 
 exit_passive(){
-    trbl "XS-done"; sync; n=0
-    while jobs|grep Running >/dev/null && [[ $n -le 15 ]] ; do ((n++)); slp 2; done
-    systemctl stop xs-autoupdate.service >/dev/null 2>&1; exit 0
+trbl "XS-done"; sync; n=0
+while jobs|grep Running >/dev/null && [[ $n -le 15 ]] ; do ((n++)); slp 2; done
+systemctl stop xs-autoupdate.service >/dev/null 2>&1; exit 0
 }
 
 exit_active(){
 #$1 = reason
-    secremain=${conf_a[reboot_delay_num]}
-    systemd-inhibit --what="sleep:idle:handle-suspend-key:handle-hibernate-key:handle-lid-switch" sleep $((secremain+60)) &
-    actn_cmd="${conf_a[reboot_action_str]}"
-    ignoreusers="${conf_a[reboot_ignoreusers_str]// /\\|}"
-    iconcritical; trbl "Active Exit: $actn_cmd";trbl "XS-done"; sync &
-    while [ "$secremain" -gt 0 ]; do
-        usersexist=$false; loginctl list-sessions --no-legend |grep -v "$ignoreusers" |grep "seat\|pts" >/dev/null && usersexist=$true
+secremain=${conf_a[reboot_delay_num]}
+systemd-inhibit --what="sleep:idle:handle-suspend-key:handle-hibernate-key:handle-lid-switch" sleep $((secremain+60)) &
+actn_cmd="${conf_a[reboot_action_str]}"
+ignoreusers="${conf_a[reboot_ignoreusers_str]// /\\|}"
+iconcritical; trbl "Active Exit: $actn_cmd";trbl "XS-done"; sync &
+while [ "$secremain" -gt 0 ]; do
+    usersexist=$false; loginctl list-sessions --no-legend |grep -v "$ignoreusers" |grep "seat\|pts" >/dev/null && usersexist=$true
 
-        if [ "${conf_a[reboot_delayiflogin_bool]}" = "$ctrue" ]; then
-            if [ "$usersexist" = "$false" ]; then trblm "No logged-in users detected; System will $actn_cmd now"; secremain=0; slp 1; continue; fi; fi
+    if [ "${conf_a[reboot_delayiflogin_bool]}" = "$ctrue" ]; then
+        if [ "$usersexist" = "$false" ]; then trblm "No logged-in users detected; System will $actn_cmd now"; secremain=0; slp 1; continue; fi; fi
 
-        if [[ "$usersexist" = "$true" ]]; then sendall "$1\nYour $device will $actn_cmd in \n$secremain seconds..."; fi
-        slp "${conf_a[reboot_notifyrep_num]}"
-        ((secremain-=conf_a[reboot_notifyrep_num]))
-    done
-    sync; $actn_cmd || systemctl --force "$actn_cmd" || systemctl --force --force "$actn_cmd"
+    if [[ "$usersexist" = "$true" ]]; then sendall "$1\nYour $device will $actn_cmd in \n$secremain seconds..."; fi
+    slp "${conf_a[reboot_notifyrep_num]}"
+    ((secremain-=conf_a[reboot_notifyrep_num]))
+done
+sync; $actn_cmd || systemctl --force "$actn_cmd" || systemctl --force --force "$actn_cmd"
 }
 
 conf_validstr(){ echo "$val" |grep -E "^($1)\$" >/dev/null || return 1; return 0; }
 
 conf_valid(){
 #parse and validate lines from config and persistant data files
-parse="$(echo "$line" | cut -d ';' -f 1 | cut -d '#' -f 1)"
+local parse; parse="$(echo "$line" | cut -d ';' -f 1 | cut -d '#' -f 1)"
 echo "$parse" | grep -F '=' &>/dev/null || return 1
 
 varname="$(echo "$parse" | cut -d '=' -f 1)"
@@ -437,10 +499,10 @@ if echo "$conf_intn1" | grep "$varname" >/dev/null || echo "$varname" | grep -E 
 #validate string settings
 
 case "$varname" in
-        reboot_action_str) conf_validstr "reboot|halt|poweroff|shutdown" || return 1 ;;
-        aur_1helper_str) conf_validstr "auto|none|all|pikaur|apacman" || return 1 ;;
-        notify_function_str) conf_validstr "auto|gdbus|desk|send" || return 1 ;;
-        self_branch_str) conf_validstr "stable|beta" || return 1 ;;
+    reboot_action_str) conf_validstr "reboot|halt|poweroff|shutdown" || return 1 ;;
+    aur_1helper_str) conf_validstr "auto|none|all|pikaur|apacman" || return 1 ;;
+    notify_function_str) conf_validstr "auto|gdbus|desk|send" || return 1 ;;
+    self_branch_str) conf_validstr "stable|beta" || return 1 ;;
 esac
 
 return 0
@@ -534,6 +596,7 @@ true=0; false=1; ctrue=1; cfalse=0
 co_n='\033[0m';co_g='\033[1;32m';co_g2='\033[0;32m';co_r='\033[1;31m[Error]';co_y='\033[1;33m[Warning]'
 url_repo="https://raw.githubusercontent.com/lectrode/xs-update-manjaro"
 url_aur="https://aur.archlinux.org/rpc/"
+url_ala="https://archive.archlinux.org/packages"
 typeset -A err; typeset -A logqueue; logqueue_i=-1
 [[ "$xs_autoupdate_conf" = "" ]] && xs_autoupdate_conf='/etc/xs/auto-update.conf'
 device="device"; [[ "$(uname -m)" = "x86_64" ]] && device="computer"
@@ -775,13 +838,11 @@ trblm "Config file: $xs_autoupdate_conf"; trblqout
 
 #Wait up to 5 minutes for network
 trbl "Waiting up to 5 minutes for network..."
-waiting=1;waited=0; while [ $waiting = 1 ]; do
-    test_online && waiting=0
-    if [ $waiting = 1 ]; then
-        if [ $waited -ge 60 ]; then trbl "No network, quitting..."; exit; fi
-        slp 5; ((waited++))
-    fi
-done; unset waiting waited
+i=0; while : ; do
+    test_online && break
+    if [ $i -ge 60 ]; then trbl "No network, quitting..."; exit; fi
+    slp 5; ((i++))
+done; unset i
 
 slp 8 # In case connection just established
 
@@ -803,15 +864,12 @@ fi
 
 #wait up to 5 minutes for running instances of pacman/apacman/pikaur
 trbl "Waiting for pacman/apacman/pikaur..."
-waiting=1;waited=0; while [ $waiting = 1 ]; do
-    isRunning=0; pgrep pacman >/dev/null && isRunning=1
-    pgrep apacman >/dev/null && isRunning=1; pgrep pikaur >/dev/null && isRunning=1
-    [[ $isRunning = 1 ]] || waiting=0
-    if [ $waiting = 1 ]; then
-        if [ $waited -ge 60 ]; then exit; fi
-        slp 5; ((waited++))
-    fi
-done;  unset waiting waited isRunning
+i=0; while : ; do
+    if pgrep pacman >/dev/null || pgrep apacman >/dev/null || pgrep pikaur >/dev/null; then
+        if [ $i -ge 60 ]; then exit; fi
+        slp 5; ((i++))
+    else break; fi
+done;  unset i
 
 #remove .lck file (updaters not running at this point)
 if [[ -f "$(get_pacmancfg DBPath)/db.lck" ]]; then rm -f "$(get_pacmancfg DBPath)/db.lck"; fi
@@ -823,9 +881,12 @@ rm -f "${perst_d}/auto-update_termnotify.dat" >/dev/null 2>&1
 getsessions; i=0; while [ $i -lt ${#s_usr[@]} ]; do
 if [ -d "${s_home[$i]}/.cache" ]; then
     mkdir -p "${s_home[$i]}/.cache/xs"; echo "tmp" > "${s_home[$i]}/.cache/xs/logonnotify"
-chown -R "${s_usr[$i]}" "${s_home[$i]}/.cache/xs"; fi; ((i++)); done
+chown -R "${s_usr[$i]}" "${s_home[$i]}/.cache/xs"; fi; ((i++)); done; unset i
 if [[ "${conf_a[main_inhibit_bool]}" = "$cfalse" ]]; then "$0" "backnotify"&
 else systemd-inhibit --what="shutdown:sleep:idle:handle-power-key:handle-suspend-key:handle-hibernate-key:handle-lid-switch" "$0" "backnotify"& fi
+
+#check/fix database errors (before any other changes if possible)
+checkRepairDb "cache"
 
 #Check for, download, and install main updates
 pacclean
@@ -877,7 +938,7 @@ if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_manu
     if [[ "$(chk_pkgvsndiff "pacman" "5.2.0-1")" -lt 0 ]]; then
         trbl "Old pacman detected, attempting to use pacman-static..."
         pacman -Sw --noconfirm pacman-static 2>&1|trbl_t
-        pacman -U --noconfirm "$(get_pkgfilename "pacman-static")" 2>&1|trbl_t && pcmbin="pacman-static"
+        pacman -U --noconfirm "$(get_pkgfiles "pacman-static"|head -n1)" 2>&1|trbl_t && pcmbin="pacman-static"
         if ! chk_pkginst "pacman-static"; then
             if dl_verify "pacmanstatic" "$url_repo/master/external/hash_pacman-static" "$url_repo/master/external/pacman-static"; then
                 chmod +x /tmp/xs-autmp-pacmanstatic/pacman-static && pcmbin="/tmp/xs-autmp-pacmanstatic/pacman-static"; fi; fi
@@ -889,7 +950,7 @@ fi
 
 #Update keyring packages
 trbl "Updating system keyrings..."
-for p in $(pacman -Sl|grep "\[installed"|grep "keyring "|grep -Eo "[^ ]*\-keyring"|grep -Ev "^([lib]*gnome|python)-keyring$"); do
+for p in $(pacman -Sl|grep "\[installed"|grep "keyring "|grep -Eo "[^ ]*-keyring"|grep -Ev "^([lib]*gnome|python)-keyring$"); do
     # shellcheck disable=SC2086
     $pcmbin -S --needed --noconfirm $p $sf_ignore 2>&1|trbl_t
     if [[ "${PIPESTATUS[0]}" -gt 0 ]]; then
@@ -903,6 +964,9 @@ for p in $(pacman -Sl|grep "\[installed"|grep "keyring "|grep -Eo "[^ ]*\-keyrin
     fi
 done
 if [[ ${err[sys]} -ne 0 ]]; then trbl "$co_r failed to update system keyrings"; err_crit="sys"; break; fi
+
+#check/fix database errors
+checkRepairDb "repo"
 
 trbl "Downloading packages from main repos..."
 while : ; do test_online || break
@@ -918,6 +982,8 @@ if ! chk_freespace_all; then err[repo]=1; err_crit="repo"; break; fi
 
 if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_manualpkg_bool]}" = "$ctrue" ]]; then
     trbl "Checking for required manual package changes..."
+    manualRemoval "glib2-static" "2.72.3-1" #Merged into glib2 2022-09-07
+    #manualRemoval "pcre-static" "8.45-1" #Merged into pcre 2022-09-07
     manualRemoval "wxgtk2" "3.0.5.1-3" #Removed from arch repos 2022-07-14
     manualRemoval "pipewire-media-session" "1:0.4.1-1" "wireplumber" #Replaced 2022-05-10 (bump version when demoted)
     manualRemoval "qpdfview" "0.4.18-1" "evince" #Moved to AUR 2022-04-01 (bump version when updated)
@@ -941,7 +1007,7 @@ if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_manu
     manualRemoval "colord" "1.4.4-1" #Conflicts with libcolord mid-2019
     manualRemoval "gtk3-classic" "3.24.24-1" "gtk3"; manualRemoval "lib32-gtk3-classic" "3.24.24-1" "lib32-gtk3" #Replaced around 18.0.4
     manualRemoval "engrampa-thunar-plugin" "1.0-2" #Xfce 17.1.10 and earlier
-    
+
     #transition packages from 'electron' to 'electronXX' when required
     if chk_pkginstx "electron" && $pcmbin -Sl|grep -E "[^ ]+ electron "|grep "installed:" >/dev/null; then
         electron_need=0; electron_prov="$(get_pkgqix "electron" "Provides"|grep -E "electron[0-9]+")"
@@ -951,45 +1017,17 @@ if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_manu
             if [[ "$electron_need" = "1" ]]; then
                 trbl "Attempting to install new required electron package: $electron_prov"
                 # shellcheck disable=SC2086
-                $pcmbin -S --noconfirm --asdeps electron $electron_prov 2>&1|trbl_t
+                $pcmbin -S --noconfirm --needed --asdeps electron $electron_prov 2>&1|trbl_t
             fi
         fi; unset electron_need electron_prov
     fi
 fi
 
 trbl "Updating system packages..."
-for p in $(pacman -Sl | grep "\[installed"|grep "system "|grep -Eo "[^ ]*\-system") ${conf_a[main_systempkgs_str]}; do
+for p in $(pacman -Sl | grep "\[installed"|grep "system "|grep -Eo "[^ ]*-system") ${conf_a[main_systempkgs_str]}; do
     chk_pkginstx "$p" && $pcmbin -S --needed --noconfirm "$p" 2>&1|trbl_t
     ((err[sys]+=PIPESTATUS[0])); done
 if [[ ${err[sys]} -ne 0 ]]; then trbl "$co_y system packages failed to update - err:${err[sys]}"; fi
-
-#check for missing database files
-if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_db01_bool]}" = "$ctrue" ]]; then
-    trbl "Checking for database errors..."
-    i=-1; while IFS= read -r rp_errmsg; do
-        if [[ ! "$rp_errmsg" = "" ]]; then
-            ((i++))
-            rp_pathf[$i]="$(echo "$rp_errmsg" | grep -o "/[[:alnum:]\.@_\/-]*")"
-            trblm "Missing file: ${rp_pathf[$i]}"
-            rp_pathd[$i]="$(dirname "${rp_pathf[$i]}")"
-            trblm "detected dir: ${rp_pathd[$i]}"
-            rp_pkgn[$i]="$(basename "${rp_pathd[$i]}"|grep -oP '.+?(?=-[0-9A-z\.\+:]+-[0-9]+$)')"
-            trblm "detected pkg: ${rp_pkgn[$i]}"; mkdir -p "${rp_pathd[$i]}"
-            if [[ ! -d "${rp_pathd[$i]}" ]]; then trbl "$co_y mkdir failed: ${rp_pathd[$i]}"; break; fi
-            touch "${rp_pathd[$i]}/files"; touch "${rp_pathd[$i]}/desc"
-            if [[ ! -f "${rp_pathd[$i]}/files" ]] || [[ ! -f "${rp_pathd[$i]}/desc" ]]; then trbl "$co_y could not touch files and/or desc"; continue; fi
-        fi
-    done< <($pcmbin -Dk 2>&1 | grep -Ei "error: could not open file [[:alnum:]\.@_\/-]*\/(files|desc): No such file or directory")
-    unset rp_errmsg IFS
-    m=$i; i=-1; while [[ $i -lt $m ]]; do
-        ((i++))
-        trblm "reinstalling ${rp_pkgn[$i]}"
-        $pcmbin -S --noconfirm --overwrite=* "${rp_pkgn[$i]}" 2>&1|trbl_t
-    done; unset i m rp_pathf rp_pathd rp_pkgn
-else
-    if [[ "$($pcmbin -Dk 2>&1|grep -Eic "error:.+(description file|file list) is missing$")" -gt "0" ]]; then
-    trbl "$co_y system has missing files in package database. Automatic fix disabled; reporting only."; fi
-fi
 
 sync; trbl "Updating packages from main repos..."
 # shellcheck disable=SC2086
