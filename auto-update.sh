@@ -1,6 +1,6 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.9.9"; vsndsp="$vsn 2022-10-15"
+vsn="v3.9.10-hf1"; vsndsp="$vsn 2022-12-20"
 #-Downloads and Installs new updates
 #-Depends: coreutils, grep, pacman, pacman-mirrors, iputils
 #-Optional Depends: flatpak, notify-desktop, pikaur, rebuild-detector, wget
@@ -87,6 +87,12 @@ local gpbd_date; gpbd_date="$(get_pkgqi "$1" "Build Date")"
 [[ "$gpbd_date" = "" ]] && return 1
 date -d "$gpbd_date" +'%Y%m%d' 2>/dev/null || return 1
 return 0
+}
+
+chk_builtbefore(){
+chk_pkginstx "$1" || return 1
+local cbdo; cbdo="$(get_pkgbuilddate "$1")"
+[[ ! "$cbdo" = "0" ]] && [[ "$cbdo" -le "$2" ]] && return 0; return 1
 }
 
 get_pacmancfg(){
@@ -840,7 +846,7 @@ trblm "Config file: $xs_autoupdate_conf"; trblqout
 trbl "Waiting up to 5 minutes for network..."
 i=0; while : ; do
     test_online && break
-    if [ $i -ge 60 ]; then trbl "No network, quitting..."; exit; fi
+    if [[ $i -ge 60 ]]; then trbl "No network; quitting..."; exit; fi
     slp 5; ((i++))
 done; unset i
 
@@ -866,7 +872,7 @@ fi
 trbl "Waiting for pacman/apacman/pikaur..."
 i=0; while : ; do
     if pgrep pacman >/dev/null || pgrep apacman >/dev/null || pgrep pikaur >/dev/null; then
-        if [ $i -ge 60 ]; then exit; fi
+        if [[ $i -ge 60 ]]; then trbl "Other software is updating; quitting..."; exit; fi
         slp 5; ((i++))
     else break; fi
 done;  unset i
@@ -982,11 +988,12 @@ if ! chk_freespace_all; then err[repo]=1; err_crit="repo"; break; fi
 
 if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_manualpkg_bool]}" = "$ctrue" ]]; then
     trbl "Checking for required manual package changes..."
+    manualRemoval "dbus-x11" "1.14.4-1" "dbus" #Removed from repos 2022-12-16
     manualRemoval "glib2-static" "2.72.3-1" #Merged into glib2 2022-09-07
     #manualRemoval "pcre-static" "8.45-1" #Merged into pcre 2022-09-07
     manualRemoval "wxgtk2" "3.0.5.1-3" #Removed from arch repos 2022-07-14
     manualRemoval "pipewire-media-session" "1:0.4.1-1" "wireplumber" #Replaced 2022-05-10 (bump version when demoted)
-    manualRemoval "qpdfview" "0.4.18-1" "evince" #Moved to AUR 2022-04-01 (bump version when updated)
+    chk_builtbefore "qpdfview" "20200914" && manualRemoval "qpdfview" "0.4.18-2" "evince" #Moved to AUR 2022-04-01
     if chk_pkginstx "kvantum-manjaro" && [[ "$(chk_pkgvsndiff "kvantum-manjaro" "0.13.5-1")" -le 0 ]]; then
         for t in adapta-black-breath-theme adapta-black-maia-theme adapta-breath-theme adapta-gtk-theme adapta-maia-theme arc-themes-maia \
             arc-themes-breath matcha-gtk-theme; do manualExplicit "$t"; done; fi #removed from depends of kvmantum-manjaro 2022/02/23
@@ -1001,7 +1008,9 @@ if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_manu
     manualRemoval "breeze-kde4" "5.13.4-1"; manualRemoval "oxygen-kde4" "5.13.4-1"; manualRemoval "sni-qt" "0.2.6-5" #removed from repos 2019/05
     if chk_pkginstx "phonon-qt4" && [[ "$(chk_pkgvsndiff "phonon-qt4" "4.10.3-1")" -le 0 ]]; then
         for t in phonon-qt4-gstreamer phonon-qt4-vlc phonon-qt4-mplayer-git; do manualDepend "$t"; done; fi #these should be depends of phonon-qt4, moved to AUR 2019/05
-    manualRemoval "ms-office-online" "20.1.0-1" #moved to AUR 2020/06
+    manualRemoval "ms-office-online" "20.1.0-1" #Moved to AUR 2020/06
+    #manualRemoval "libdmx" "1.1.4-1" #Moved to aur 2019/12/20
+    chk_builtbefore "libxxf86dga" "20190317" && manualRemoval "libxxf86dga" "1.1.5-1" #Moved to aur 2019/12/20
     manualRemoval "pyqt5-common" "5.13.2-1" #Removed from repos early 2019/12
     manualRemoval "ilmbase" "2.3.0-1" #Merged into openexr 2019/10
     manualRemoval "colord" "1.4.4-1" #Conflicts with libcolord mid-2019

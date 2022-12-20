@@ -314,6 +314,7 @@ Every once in a while, updating Manjaro requires manual package changes to allow
 * Transition packages that depend on `electron` to `electronXX` where required
 * Package removal and/or replacement:
 <table>
+  <tr><td><code>dbus-x11</code></td><td><=1.14.4-1</td><td>2022/12/16: <a href="https://gitlab.manjaro.org/-/snippets/824/raw/">removed</a> from repos</td></tr>
   <tr><td><code>glib2-static</code></td><td><=2.72.3-1</td><td>2022/09/07: merged into glib2</td></tr>
   <tr><td><code>wxgtk2</code></td><td><=3.0.5.1-3</td><td>2022/07/14: removed from arch repos</td></tr>
   <tr><td><code>pipewire-media-session</code></td><td><=1:0.4.1-1</td><td>2022/05/10: replaced with <code>wireplumber</code></td></tr>
@@ -327,6 +328,7 @@ Every once in a while, updating Manjaro requires manual package changes to allow
   <tr><td><code>knetattach</code></td><td><=5.20.5-1</td><td>2021/01/09: merged into <code>plasma-desktop</code></td></tr>
   <tr><td><code>gksu-polkit</code></td><td><=0.0.3-2</td><td>2020/10: replaced with <code>zensu</code></td></tr>
   <tr><td><code>ms-office-online</code></td><td><=20.1.0-1</td><td>2020/06: former default pkg moved to AUR</td></tr>
+  <tr><td><code>libxxf86dga</code></td><td><=1.1.5-1</td><td>2019/12/20: <a href="https://archlinux.org/news/xorg-cleanup-requires-manual-intervention/">removed</a> from repos</td></tr>
   <tr><td><code>pyqt5-common</code></td><td><=5.13.2-1</td><td>2019/12: removed from repos</td></tr>
   <tr><td><code>ilmbase</code></td><td><=2.3.0-1</td><td>2019/10: merged into <code>openexr</code></td></tr>
   <tr><td><code>breeze-kde4</code></td><td><=5.13.4-1</td><td>2019/05: removed from repos</td></tr>
