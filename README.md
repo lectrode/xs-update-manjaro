@@ -207,7 +207,7 @@ Overview of what the script does from start to finish. Some steps may be slightl
   * Installed repo packages that end with "-system"
   * Packages specified in [`$main_systempkgs_str`](#main_systempkgs_str "")
 
-* Check for package database errors (*config: [enable](#repair_db01_bool "")*)
+* Check/fix package database errors (*config: [enable](#repair_db01_bool "")*)
   * For every package with errors:
     * search local caches and arch linux archive for package of installed version
       * if installed version not found, fall back to installing the latest version
@@ -311,33 +311,6 @@ This script supports detecting and repairing the following potential issues:
 ### Manual Package Changes
 Every once in a while, updating Manjaro requires manual package changes to allow updates to succeed. This script [supports](#repair_manualpkg_bool "") automatically performing the following:
 * Setup and use `pacman-static` if `pacman`<5.2
-* Transition packages that depend on `electron` to `electronXX` where required
-* Package removal and/or replacement:
-<table>
-  <tr><td><code>dbus-x11</code></td><td><=1.14.4-1</td><td>2022/12/16: <a href="https://gitlab.manjaro.org/-/snippets/824/raw/">removed</a> from repos</td></tr>
-  <tr><td><code>glib2-static</code></td><td><=2.72.3-1</td><td>2022/09/07: merged into glib2</td></tr>
-  <tr><td><code>wxgtk2</code></td><td><=3.0.5.1-3</td><td>2022/07/14: removed from arch repos</td></tr>
-  <tr><td><code>pipewire-media-session</code></td><td><=1:0.4.1-1</td><td>2022/05/10: replaced with <code>wireplumber</code></td></tr>
-  <tr><td><code>qpdfview</code></td><td><=0.4.18-1</td><td>2022/04/01: former default pkg moved to AUR, replaced with <code>evince</code></td></tr>
-  <tr><td><code>galculator-gtk2</code></td><td><=2.1.4-5</td><td>2021/11/13: replaced with <code>galculator</code></td></tr>
-  <tr><td><code>manjaro-gdm-theme</code></td><td><=20210528-1</td><td>2022/04/23: removed from repos</td></tr>
-  <tr><td><code>manjaro-kde-settings-19.0</code>,<code>breath2-icon-themes</code>,<code>plasma5-themes-breath2</code></td><td><=20200426-1</td><td>2021/11: replaced with <code>plasma5-themes-breath</code>,<code>manjaro-kde-settings</code></td></tr>
-  <tr><td><code>[lib32-]jack</code></td><td><=0.125.0-10</td><td>2021/07/26: replaced with <code>lib32-/jack2</code></td></tr>
-  <tr><td><code>[lib32-]libcanberra-gstreamer</code></td><td><=0.30+2+gc0620e4-3</td><td>2021/06: merged into <code>lib32-/libcanberra-pulse</code></td></tr>
-  <tr><td><code>python2-dbus</code></td><td><=1.2.16-3</td><td>2021/03: removed from <code>dbus-python</code></td></tr>
-  <tr><td><code>knetattach</code></td><td><=5.20.5-1</td><td>2021/01/09: merged into <code>plasma-desktop</code></td></tr>
-  <tr><td><code>gksu-polkit</code></td><td><=0.0.3-2</td><td>2020/10: replaced with <code>zensu</code></td></tr>
-  <tr><td><code>ms-office-online</code></td><td><=20.1.0-1</td><td>2020/06: former default pkg moved to AUR</td></tr>
-  <tr><td><code>libxxf86dga</code></td><td><=1.1.5-1</td><td>2019/12/20: <a href="https://archlinux.org/news/xorg-cleanup-requires-manual-intervention/">removed</a> from repos</td></tr>
-  <tr><td><code>pyqt5-common</code></td><td><=5.13.2-1</td><td>2019/12: removed from repos</td></tr>
-  <tr><td><code>ilmbase</code></td><td><=2.3.0-1</td><td>2019/10: merged into <code>openexr</code></td></tr>
-  <tr><td><code>breeze-kde4</code></td><td><=5.13.4-1</td><td>2019/05: removed from repos</td></tr>
-  <tr><td><code>oxygen-kde4</code></td><td><=5.13.4-1</td><td>2019/05: removed from repos</td></tr>
-  <tr><td><code>sni-qt</code></td><td><=0.2.6-5</td><td>2019/05: removed from repos</td></tr>
-  <tr><td><code>colord</code></td><td><=1.4.4-1</td><td>2019/??: conflicts with <code>libcolord</code></td></tr>
-  <tr><td><code>[lib32-]gtk3-classic</code></td><td><=3.24.24-1</td><td>Xfce 18.0.4: replaced with <code>gtk3</code></td></tr>
-  <tr><td><code>engrampa-thunar-plugin</code></td><td><=1.0-2</td><td>Xfce 17.1.10: removed from repos</td></tr>
-</table>
 
 * Mark packages as explicitely installed:
 
@@ -349,7 +322,9 @@ Every once in a while, updating Manjaro requires manual package changes to allow
           <code>adapta-maia-theme</code><br />
           <code>arc-themes-maia</code><br />
           <code>arc-themes-breath</code><br />
-          <code>matcha-gtk-theme</code></td><td>mistakenly marked as orphans after <code>kvantum-manjaro</code>>0.13.5-1</td></tr>
+          <code>matcha-gtk-theme</code></td><td>left as orphans with <code>kvantum-manjaro</code>>=<a href="https://gitlab.manjaro.org/packages/community/themes/kvantum-manjaro/-/commit/5ef8e667cb56dd7a5d817f431d673cfe8a6adae1">0.13.5+1+g333aa00-1</a></td></tr>
+  <tr><td><code>breath-wallpaper</code><br />
+          <code>vertex-maia-icon-theme</code></td><td>left as orphans with <code>manjaro-xfce-settings</code>>=<a href="https://gitlab.manjaro.org/packages/community/xfce/manjaro-xfce-settings/-/commit/eaeac264cc5854dbcb57f34cc376433cfae52fc6">20200109-1</a></td></tr>
 </table>
 
 * Mark packages as dependency:
@@ -357,8 +332,47 @@ Every once in a while, updating Manjaro requires manual package changes to allow
 <table>
   <tr><td><code>phonon-qt4-gstreamer</code><br />
           <code>phonon-qt4-vlc</code><br />
-          <code>phonon-qt4-mplayer-git</code></td><td>extras for phonon-qt4<=4.10.3-1 (moved to AUR 2019/05)</td></tr>
+          <code>phonon-qt4-mplayer-git</code></td><td>extras for <code>phonon-qt4</code><4.11.0<br />(qt4 support <a href="https://community.kde.org/Phonon/Releases/Core/4.11.0">dropped</a>, package removed from repos 2019/05)</td></tr>
 </table>
+
+
+* Package removal:
+<table>
+  <tr><td><code>libxfce4ui-nocsd</code></td><td><=4.17.0-1</td><td>2022-12-23: <a href="https://github.com/Xfce-Classic/libxfce4ui-nocsd/issues/15">removed</a> from repos</td></tr>
+  <tr><td><code>lib32-db</code></td><td><=5.3.28-5</td><td>2022-12-21: <a href="https://aur.archlinux.org/cgit/aur.git/commit/?h=lib32-db&id=a59ffdc29595db8ab0a683a374969ee79f76e231">moved</a> to aur</td></tr>
+  <tr><td><code>glib2-static</code></td><td><=2.72.3-1</td><td>2022/09/07: merged into glib2</td></tr>
+  <tr><td><code>wxgtk2</code></td><td><=3.0.5.1-3</td><td>2022/07/14: removed from arch repos</td></tr>
+  <tr><td><code>manjaro-gdm-theme</code></td><td><=20210528-1</td><td>2022/04/23: removed from repos</td></tr>
+  <tr><td><code>[lib32-]libcanberra-gstreamer</code></td><td><=0.30+2+gc0620e4-3</td><td>2021/06: merged into <code>lib32-/libcanberra-pulse</code></td></tr>
+  <tr><td><code>python2-dbus</code></td><td><=1.2.16-3</td><td>2021/03: removed from <code>dbus-python</code></td></tr>
+  <tr><td><code>knetattach</code></td><td><=5.20.5-1</td><td>2021/01/09: merged into <code>plasma-desktop</code></td></tr>
+  <tr><td><code>ms-office-online</code></td><td><=20.1.0-1</td><td>2020/06: former default pkg moved to AUR</td></tr>
+  <tr><td><code>libxxf86dga</code><br /><code>libdmx</code><br /><code>libxxf86misc</code></td>
+    <td><=1.1.5-1<br /><=1.1.4-1<br /><=1.0.4-1</td><td>2019/12/20: <a href="https://archlinux.org/news/xorg-cleanup-requires-manual-intervention/">moved</a> to aur</td></tr>
+  <tr><td><code>pyqt5-common</code></td><td><=5.13.2-1</td><td>2019/12: removed from repos</td></tr>
+  <tr><td><code>ilmbase</code></td><td><=2.3.0-1</td><td>2019/10: merged into <code>openexr</code></td></tr>
+  <tr><td><code>breeze-kde4</code><br /><code>oxygen-kde4</code><br /><code>sni-qt</code></td>
+    <td><=5.13.4-1<br /><=5.13.4-1<br /><=0.2.6-5</td><td>2019/05: removed from repos</td></tr>
+  <tr><td><code>libmagick</code></td><td><=7.0.8.41-1</td><td>2019/04/22: <a href="https://gitlab.archlinux.org/archlinux/packaging/packages/imagemagick/-/commit/fe4f50173223f581dff33492eed9d8c2b3a0c4bf">merged</a> into <code>imagemagick</code></td></tr>
+  <tr><td><code>colord</code></td><td><=1.4.4-1</td><td>2019/??: conflicts with <code>libcolord</code></td></tr>
+  <tr><td><code>[lib32-]gtk3-classic</code></td><td><=3.24.24-1</td><td>Xfce 18.0.4: replaced with <code>gtk3</code></td></tr>
+  <tr><td><code>engrampa-thunar-plugin</code></td><td><=1.0-2</td><td>Xfce 17.1.10: removed from repos</td></tr>
+</table>
+
+* Package replacement:
+<table>
+  <tr><td><code>dbus-x11</code></td><td><=1.14.4-1</td><td>2022/12/16: <a href="https://gitlab.manjaro.org/-/snippets/824/raw/">dropped</a> in favor of <code>dbus</code></td></tr>
+  <!--<tr><td><code>pipewire-media-session</code></td><td><=1:0.4.1-1</td><td>2022/05/10: replaced with <code>wireplumber</code></td></tr>-->
+  <tr><td><code>qpdfview</code></td><td><=0.4.18-1</td><td>2022/04/01: former default pkg moved to AUR, replaced with <code>evince</code></td></tr>
+  <tr><td><code>galculator-gtk2</code></td><td><=2.1.4-5</td><td>2021/11/13: replaced with <code>galculator</code></td></tr>
+  <tr><td><code>manjaro-kde-settings-19.0</code>,<code>breath2-icon-themes</code>,<code>plasma5-themes-breath2</code></td><td><=20200426-1</td><td>2021/11: replaced with <code>manjaro-kde-settings</code>,<code>plasma5-themes-breath</code></td></tr>
+  <tr><td><code>[lib32-]jack</code></td><td><=0.125.0-10</td><td>2021/07/26: replaced with <code>lib32-/jack2</code></td></tr>
+  <tr><td><code>gksu-polkit</code></td><td><=0.0.3-2</td><td>2020/10: replaced with <code>zensu</code></td></tr>
+</table>
+
+* Transition packages that depend on `electron` to `electronXX` where required
+
+* Install <a href="https://gitlab.archlinux.org/archlinux/packaging/packages/base-devel/-/commit/118335e68ec82861730cf576db6ddb3cb7efdd7f">new</a> <code>base-devel</code> metapackage if system had the (now defunct) group installed
 
 ----
 
@@ -848,7 +862,7 @@ zflag:dropbox,tor-browser=--skippgpcheck
 <summary><a name="repair_aurrbld_bool"></a>repair_aurrbld_bool</summary>
 
  * Default: `1` (True)
- * If true, the script will attempt to rebuild AUR python packages after python update
+ * If true, the script will attempt to rebuild AUR packages when needed (for example: if their dependencies were updated)
  * Depends on external tool: rebuild-detector (available in official repos)
 </details>
 

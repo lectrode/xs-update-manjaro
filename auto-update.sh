@@ -1,6 +1,6 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.9.10-hf1"; vsndsp="$vsn 2022-12-20"
+vsn="v3.9.10-rc1"; vsndsp="$vsn 2023-10-02"
 #-Downloads and Installs new updates
 #-Depends: coreutils, grep, pacman, pacman-mirrors, iputils
 #-Optional Depends: flatpak, notify-desktop, pikaur, rebuild-detector, wget
@@ -184,19 +184,25 @@ chk_pkgexplicit "$1" && return 1 || return 0
 }
 
 manualRemoval(){
-#$1=(pkgs)|$2=vsn (or older) to remove|[$3=new pkgs]
-local mr_pkgo; IFS=" " read -ra mr_pkgo <<< "$1"
+#$1=(pkgs)|$2=vsn (or older) to remove|[$3=new pkgs][$4="now"]
+local mr_pkgo mr_expl; IFS=" " read -ra mr_pkgo <<< "$1"
 if chk_pkginstx "${mr_pkgo[0]}" && [[ "$(chk_pkgvsndiff "${mr_pkgo[0]}" "$2")" -le 0 ]]; then
     trbl "attempting manual package removal/replacement of $1..."
     if [[ ! "$3" = "" ]]; then
+        mr_expl=$false; chk_pkgexplicit "${mr_pkgo[0]}" && mr_expl=$true
         # shellcheck disable=SC2086
         $pcmbin -Sw --noconfirm $3 $sf_ignore 2>&1|trbl_t
-        if [[ ! "${PIPESTATUS[0]}" = "0" ]]; then trbl "$co_r failed to download $3"; return 1; fi
+        if [[ ! "${PIPESTATUS[0]}" = "0" ]] && [[ "$4" = "now" ]]; then trbl "$co_y failed to download $3"; return 1; fi
     fi
     for p in "${mr_pkgo[@]}"; do chk_pkginstx "$p" && $pcmbin -Rdd --noconfirm "$p" 2>&1|trbl_t; done
-    # shellcheck disable=SC2086
-    [[ "$3" = "" ]] || $pcmbin -S --noconfirm $3 $sf_ignore 2>&1|trbl_t
-    if [[ ! "${PIPESTATUS[0]}" = "0" ]]; then trbl "$co_r failed to replace $1 with $3"; return 1; fi
+    if [[ "$4" = "now" ]]; then
+        # shellcheck disable=SC2086
+        [[ "$3" = "" ]] || $pcmbin -S --noconfirm $3 $sf_ignore 2>&1|trbl_t
+        if [[ ! "${PIPESTATUS[0]}" = "0" ]]; then trbl "$co_r failed to replace $1 with $3"; fi
+    else
+        if [[ "$mr_expl" = "$true" ]]; then installLater+=($3)
+        else installLaterDep+=($3); fi
+    fi
 fi
 }
 
@@ -311,7 +317,7 @@ else perst_a[$1]="20010101"; echo "$1=20010101" >> "$perst_f"; fi
 
 aurrebuildlist(){
 local arlist arignore arlist_grep
-readarray -t arlist < <(checkrebuild 2>/dev/null|grep -oP '^foreign[[:space:]]+\K(?!.*-bin$)([0-9A-z\.@_\+\-]*)$')
+readarray -t arlist < <(checkrebuild 2>/dev/null|grep -oP '^foreign\s+\K(?!.*-bin$)([\w\.@\+\-]*)$')
 
 #remove stale rebuild cache entries
 arlist_grep="$(echo -n "${arlist[@]}"|tr ' ' '|')"
@@ -372,21 +378,20 @@ if [[ "${conf_a[notify_1enable_bool]}" = "$ctrue" ]] && [[ "$((noti_desk+noti_se
         fi
     fi
     if [[ "${noti_id["$1"]}" = "error" ]]; then noti_id["$1"]=0; return 1; fi
-else systemctl is-system-running 2>/dev/null |grep 'unknown' >/dev/null && return 1
 fi; return 0
 }
 
 getsessions(){
 local i usr disp usrhome sssn; i=0
 unset s_usr s_disp s_home; while read -ra sssn; do
-    loginctl show-session -p Active "${sssn[0]}"|grep -F "yes" >/dev/null || continue
+    loginctl show-session -p Active "${sssn[0]}" 2>/dev/null |grep -F "yes" >/dev/null 2>&1 || continue
     usr="$(loginctl show-session -p Name "${sssn[0]}"|cut -d'=' -f2)"
     disp="$(loginctl show-session -p Display "${sssn[0]}"|cut -d'=' -f2)"
     [[ "$disp" = "" ]] && disp=":0" #workaround for gnome, which returns nothing
     usrhome="$(getent passwd "$usr"|cut -d: -f6)"
     [[  ${usr-x} && ${disp-x} && ${usrhome-x} ]] || continue
     s_usr[$i]=$usr; s_disp[$i]=$disp; s_home[$i]=$usrhome; ((i++))
-done <<< "$(loginctl list-sessions --no-legend)"; slp 1
+done <<< "$(loginctl list-sessions --no-legend 2>/dev/null)"; slp 1
 }
 
 sendall(){
@@ -868,10 +873,10 @@ if [[ "${conf_a[self_1enable_bool]}" = "$ctrue" ]]; then
     fi; unset vsn_new vsn_newc; dl_clean "selfupdate"
 fi
 
-#wait up to 5 minutes for running instances of pacman/apacman/pikaur
-trbl "Waiting for pacman/apacman/pikaur..."
+#wait up to 5 minutes for running instances of pacman/pikaur/apacman
+trbl "Waiting for pacman/pikaur/apacman..."
 i=0; while : ; do
-    if pgrep pacman >/dev/null || pgrep apacman >/dev/null || pgrep pikaur >/dev/null; then
+    if pgrep -x "(pacman(-static)*|pikaur|apacman)" >/dev/null; then
         if [[ $i -ge 60 ]]; then trbl "Other software is updating; quitting..."; exit; fi
         slp 5; ((i++))
     else break; fi
@@ -909,7 +914,8 @@ fi
 
 if perst_isneeded "${conf_a[update_keys_freq]}" "${perst_a[keys_up_date]}"; then
 while : ; do
-    if chk_pkginstx "archlinux-keyring" && [[ "$(chk_pkgvsndiff "archlinux-keyring" "20220727-1")" -lt 0 ]]; then break; fi
+    if chk_pkginstx "archlinux-keyring" && [[ "$(chk_builtbefore "archlinux-keyring" "$(date -d"180 days ago" +'%Y%m%d')")" -lt 0 ]]; then
+        trbl "$co_y installed keys are more than 6 months old; skipping manual key refresh due to likely failure"; break; fi
     trbl "Refreshing keys..."; pacman-key --refresh-keys  2>&1|trbl_t |tee /dev/tty |grep "Total number processed:" >/dev/null
     err_keys=("${PIPESTATUS[@]}"); if [[ "${err_keys[0]}" -eq 0 ]] || [[ "${err_keys[3]}" -eq 0 ]]; then
         perst_update "keys_up_date"; err[keys]=0; else err[keys]=${err_keys[0]}; trbl "$co_y pacman-key exited with code ${err[keys]}"; fi
@@ -984,38 +990,52 @@ if [[ ! "${err_repodl[0]}" -eq 0 ]] && [[ "${err_repodl[3]}" -eq 0 ]]; then
     else trbl "$co_y pacman failed to download packages - err code:${err_repodl[0]}"; fi
 fi; break; done; unset err_repodl pacdep
 
-if ! chk_freespace_all; then err[repo]=1; err_crit="repo"; break; fi
+if ! chk_freespace_all || ! test_online; then err[repo]=1; err_crit="repo"; break; fi
 
 if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_manualpkg_bool]}" = "$ctrue" ]]; then
     trbl "Checking for required manual package changes..."
-    manualRemoval "dbus-x11" "1.14.4-1" "dbus" #Removed from repos 2022-12-16
+
+    #removed from depends of kvmantum-manjaro 2022/02/23
+    if chk_pkginstx "kvantum-manjaro" && [[ "$(chk_pkgvsndiff "kvantum-manjaro" "0.13.5+1+g333aa00-1")" -lt 0 ]]; then
+        for t in adapta-black-breath-theme adapta-black-maia-theme adapta-breath-theme adapta-gtk-theme adapta-maia-theme arc-themes-maia \
+            arc-themes-breath matcha-gtk-theme; do manualExplicit "$t"; done; fi
+
+    #removed from depends of manjaro-xfce-settings 2020/01/09
+    if chk_pkginstx "manjaro-xfce-settings" && [[ "$(chk_pkgvsndiff "manjaro-xfce-settings" "20200109-1")" -lt 0 ]]; then
+        for t in vertex-maia-icon-theme breath-wallpaper; do manualExplicit "$t"; done; fi
+
+    #these should be depends of phonon-qt4, moved to AUR 2019/05
+    if chk_pkginstx "phonon-qt4" && [[ "$(chk_pkgvsndiff "phonon-qt4" "4.11.0")" -lt 0 ]]; then
+        for t in phonon-qt4-gstreamer phonon-qt4-vlc phonon-qt4-mplayer-git; do manualDepend "$t"; done; fi
+
+    manualRemoval "libxfce4ui-nocsd" "4.17.0-1" #Removed from repos 2022-12-23 #https://github.com/Xfce-Classic/libxfce4ui-nocsd/issues/15
+    manualRemoval "lib32-db" "5.3.28-5" #Removed from arch repos 2022-12-21
     manualRemoval "glib2-static" "2.72.3-1" #Merged into glib2 2022-09-07
     #manualRemoval "pcre-static" "8.45-1" #Merged into pcre 2022-09-07
     manualRemoval "wxgtk2" "3.0.5.1-3" #Removed from arch repos 2022-07-14
-    manualRemoval "pipewire-media-session" "1:0.4.1-1" "wireplumber" #Replaced 2022-05-10 (bump version when demoted)
-    chk_builtbefore "qpdfview" "20200914" && manualRemoval "qpdfview" "0.4.18-2" "evince" #Moved to AUR 2022-04-01
-    if chk_pkginstx "kvantum-manjaro" && [[ "$(chk_pkgvsndiff "kvantum-manjaro" "0.13.5-1")" -le 0 ]]; then
-        for t in adapta-black-breath-theme adapta-black-maia-theme adapta-breath-theme adapta-gtk-theme adapta-maia-theme arc-themes-maia \
-            arc-themes-breath matcha-gtk-theme; do manualExplicit "$t"; done; fi #removed from depends of kvmantum-manjaro 2022/02/23
-    manualRemoval "galculator-gtk2" "2.1.4-5" "galculator" #Removed from galculator 2021/11/13
     manualRemoval "manjaro-gdm-theme" "20210528-1"; #removed from repos 2022/04/23 (conflicts with gnome>=40)
-    manualRemoval "manjaro-kde-settings-19.0 breath2-icon-themes plasma5-themes-breath2" "20200426-1" "plasma5-themes-breath manjaro-kde-settings" #manjaro kde cleanup 2021/11
-    manualRemoval "jack" "0.125.0-10" "jack2"; manualRemoval "lib32-jack" "0.125.0-10" "lib32-jack2" #moved to AUR on 2021-07-26
     manualRemoval "libcanberra-gstreamer" "0.30+2+gc0620e4-3"; manualRemoval "lib32-libcanberra-gstreamer" "0.30+2+gc0620e4-3" #consolidated with lib32-/libcanberra-pulse 2021/06
     manualRemoval "python2-dbus" "1.2.16-3" #Removed from dbus-python 2021/03
     manualRemoval "knetattach" "5.20.5-1" #Merged into plasma-desktop 2021/01/09
-    manualRemoval "gksu-polkit" "0.0.3-2" "zensu" #Removed from manjaro repos 2020/10
-    manualRemoval "breeze-kde4" "5.13.4-1"; manualRemoval "oxygen-kde4" "5.13.4-1"; manualRemoval "sni-qt" "0.2.6-5" #removed from repos 2019/05
-    if chk_pkginstx "phonon-qt4" && [[ "$(chk_pkgvsndiff "phonon-qt4" "4.10.3-1")" -le 0 ]]; then
-        for t in phonon-qt4-gstreamer phonon-qt4-vlc phonon-qt4-mplayer-git; do manualDepend "$t"; done; fi #these should be depends of phonon-qt4, moved to AUR 2019/05
     manualRemoval "ms-office-online" "20.1.0-1" #Moved to AUR 2020/06
-    #manualRemoval "libdmx" "1.1.4-1" #Moved to aur 2019/12/20
+    manualRemoval "libxxf86misc"  "1.0.4-1"; manualRemoval "libdmx" "1.1.4-1" #Moved to aur 2019/12/20 https://archlinux.org/news/xorg-cleanup-requires-manual-intervention
     chk_builtbefore "libxxf86dga" "20190317" && manualRemoval "libxxf86dga" "1.1.5-1" #Moved to aur 2019/12/20
     manualRemoval "pyqt5-common" "5.13.2-1" #Removed from repos early 2019/12
     manualRemoval "ilmbase" "2.3.0-1" #Merged into openexr 2019/10
+    manualRemoval "breeze-kde4" "5.13.4-1"; manualRemoval "oxygen-kde4" "5.13.4-1"; manualRemoval "sni-qt" "0.2.6-5" #removed from repos 2019/05
+    manualRemoval "libmagick" "7.0.8.41-1" #Merged into imagemagick 2019/04 https://gitlab.archlinux.org/archlinux/packaging/packages/imagemagick/-/commit/fe4f50173223f581dff33492eed9d8c2b3a0c4bf
     manualRemoval "colord" "1.4.4-1" #Conflicts with libcolord mid-2019
-    manualRemoval "gtk3-classic" "3.24.24-1" "gtk3"; manualRemoval "lib32-gtk3-classic" "3.24.24-1" "lib32-gtk3" #Replaced around 18.0.4
+    #manualRemoval "libutil-linux"
+    #manualRemoval "libsystemd" "240.95-1" #Renamed to systemd-libs 2019/02/12 https://gitlab.archlinux.org/archlinux/packaging/packages/systemd/-/commit/8440896bd848b1bcb37d83575fbdb988e2a2f688
     manualRemoval "engrampa-thunar-plugin" "1.0-2" #Xfce 17.1.10 and earlier
+
+    if ! test_online; then err[repo]=1; err_crit="repo"; break; fi
+    manualRemoval "dbus-x11" "1.14.4-1" "dbus" #Removed from repos 2022-12
+    manualRemoval "jack" "0.125.0-10" "jack2"; manualRemoval "lib32-jack" "0.125.0-10" "lib32-jack2" #moved to AUR on 2021-07-26
+    manualRemoval "pamac" "7.9" "pamac" #Requires reinstall to update pacman
+    manualRemoval "gtk3-classic" "3.24.24-1" "gtk3"; manualRemoval "lib32-gtk3-classic" "3.24.24-1" "lib32-gtk3" #Replaced around 18.0.4
+    #manualRemoval "pipewire-media-session" "1:0.4.1-1" "wireplumber" #Replaced 2022-05-10 (replacement since rolled back)
+    manualRemoval "manjaro-kde-settings-19.0 breath2-icon-themes plasma5-themes-breath2" "20200426-1" "plasma5-themes-breath manjaro-kde-settings" #manjaro kde cleanup 2021/11
 
     #transition packages from 'electron' to 'electronXX' when required
     if chk_pkginstx "electron" && $pcmbin -Sl|grep -E "[^ ]+ electron "|grep "installed:" >/dev/null; then
@@ -1042,6 +1062,31 @@ sync; trbl "Updating packages from main repos..."
 # shellcheck disable=SC2086
 $pcmbin -Su$pacdown --needed --noconfirm $pacignore 2>&1|trbl_t
 err[repo]=${PIPESTATUS[0]}; if [[ ${err[repo]} -ne 0 ]]; then trbl "$co_r pacman exited with code ${err[repo]}"; err_crit="repo"; break; fi
+
+# Post-update manual changes
+if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_manualpkg_bool]}" = "$ctrue" ]]; then
+    trbl "Checking for required manual package changes..."
+
+     #replace base-devel group with new metapackage
+    if ! chk_pkginstx "base-devel"; then
+        $pcmbin -Qg|grep "base-devel" >/dev/null && $pcmbin -S --noconfirm "base-devel" 2>&1|trbl_t; fi
+
+    chk_builtbefore "qpdfview" "20200914" && manualRemoval "qpdfview" "0.4.18-2" "evince" "now" #Moved to AUR 2022-04-01
+    manualRemoval "galculator-gtk2" "2.1.4-5" "galculator" "now" #Replaced with galculator 2021/11/13
+    manualRemoval "gksu-polkit" "0.0.3-2" "zensu" "now" #Removed from manjaro repos 2020/10
+
+    #Finish partial manual changes
+    if [[ ! "${#installLaterDep[@]}" = "0" ]]; then while read -r p; do
+        trbl "Post-update install (dependencies): $p"
+        $pcmbin -S --needed --noconfirm --asdeps "$p" 2>&1|trbl_t
+    done <<< "$(printf "%s\n" "${installLaterDep[@]}")"; fi
+    if [[ ! "${#installLater[@]}" = "0" ]]; then while read -r p; do
+        trbl "Post-update install: $p"
+        $pcmbin -S --needed --noconfirm "$p" 2>&1|trbl_t
+    done <<< "$(printf "%s\n" "${installLater[@]}")"; fi
+fi
+
+#No AUR if updated critical packages
 if [[ "${conf_a[aur_aftercritical_bool]}" = "$cfalse" ]]; then
     [[ "$(chk_crit)" = "crit" ]] && break
 fi
@@ -1270,10 +1315,11 @@ else
     log_fnew="${log_f}_$(date -I)"
     mv -f "$log_f" "$log_fnew"; log_f="$log_fnew"; unset log_fnew
 
-    activeExit=1; msgFail=0; [[ "${conf_a[reboot_1enable_num]}" -le "0" ]] && activeExit=0
+    activeExit=1; [[ "${conf_a[reboot_1enable_num]}" -le "0" ]] && activeExit=0
     if [[ "$activeExit" = "0" ]]; then
-        iconcritical; sendall "Kernel and/or drivers were updated. Please restart your $device to finish" || msgFail=1; fi
-    if [[ "${conf_a[reboot_1enable_num]}" = "0" ]] && [[ "$msgFail" = "1" ]]; then activeExit=1; fi
+        degraded=0; systemctl is-system-running 2>/dev/null |grep 'running' >/dev/null || degraded=1
+        iconcritical; sendall "Kernel and/or drivers were updated. Please restart your $device to finish" || degraded=1; fi
+    if [[ "${conf_a[reboot_1enable_num]}" = "0" ]] && [[ "$degraded" = "1" ]]; then activeExit=1; fi
 
     if [ "$activeExit" = "1" ]; then
         exit_active "Kernel and/or drivers were updated.\n"
