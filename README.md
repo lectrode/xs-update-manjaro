@@ -336,13 +336,17 @@ Every once in a while, updating Manjaro requires manual package changes to allow
 </table>
 
 
+
 * Package removal:
 <table>
-  <tr><td><code>libxfce4ui-nocsd</code></td><td><=4.17.0-1</td><td>2022-12-23: <a href="https://github.com/Xfce-Classic/libxfce4ui-nocsd/issues/15">removed</a> from repos</td></tr>
-  <tr><td><code>lib32-db</code></td><td><=5.3.28-5</td><td>2022-12-21: <a href="https://aur.archlinux.org/cgit/aur.git/commit/?h=lib32-db&id=a59ffdc29595db8ab0a683a374969ee79f76e231">moved</a> to aur</td></tr>
+  <tr><td><code>amtk</code></td><td><=5.6.1-2</td><td>2023/09/28: <a href="https://gitlab.archlinux.org/archlinux/packaging/packages/libgedit-amtk/-/commit/a14c055b4aad2503da0b1b43b6d4353ef1ccaecf">replaced</a> with libgedit-amtk (<a href="https://bugs.archlinux.org/task/79851">revisit</a> later)</td></tr>
+  <tr><td><code>gnome-shell-extension-desktop-icons-ng</code></td><td><=47-1</td><td>2022/12/16: <a href="https://gitlab.manjaro.org/-/snippets/825">replaced</a> with gnome-shell-extension-gtk4-desktop-icons-ng</td></tr>
+  <tr><td><code>libxfce4ui-nocsd</code></td><td><=4.17.0-1</td><td>2022/12/23: <a href="https://github.com/Xfce-Classic/libxfce4ui-nocsd/issues/15">removed</a> from repos</td></tr>
+  <tr><td><code>lib32-db</code></td><td><=5.3.28-5</td><td>2022/12/21: <a href="https://aur.archlinux.org/cgit/aur.git/commit/?h=lib32-db&id=a59ffdc29595db8ab0a683a374969ee79f76e231">moved</a> to aur</td></tr>
   <tr><td><code>glib2-static</code></td><td><=2.72.3-1</td><td>2022/09/07: merged into glib2</td></tr>
   <tr><td><code>wxgtk2</code></td><td><=3.0.5.1-3</td><td>2022/07/14: removed from arch repos</td></tr>
   <tr><td><code>manjaro-gdm-theme</code></td><td><=20210528-1</td><td>2022/04/23: removed from repos</td></tr>
+  <tr><td><code>kvantum-theme-matchama</code></td><td><=20191118-1</td><td>2022/02/14: <a href="https://gitlab.manjaro.org/-/snippets/728">removed</a> from repos</td></tr>
   <tr><td><code>[lib32-]libcanberra-gstreamer</code></td><td><=0.30+2+gc0620e4-3</td><td>2021/06: merged into <code>lib32-/libcanberra-pulse</code></td></tr>
   <tr><td><code>python2-dbus</code></td><td><=1.2.16-3</td><td>2021/03: removed from <code>dbus-python</code></td></tr>
   <tr><td><code>knetattach</code></td><td><=5.20.5-1</td><td>2021/01/09: merged into <code>plasma-desktop</code></td></tr>

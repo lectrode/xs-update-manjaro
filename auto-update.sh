@@ -1,6 +1,6 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.9.10-rc1"; vsndsp="$vsn 2023-10-02"
+vsn="v3.9.10-rc2"; vsndsp="$vsn 2023-10-10"
 #-Downloads and Installs new updates
 #-Depends: coreutils, grep, pacman, pacman-mirrors, iputils
 #-Optional Depends: flatpak, notify-desktop, pikaur, rebuild-detector, wget
@@ -200,8 +200,8 @@ if chk_pkginstx "${mr_pkgo[0]}" && [[ "$(chk_pkgvsndiff "${mr_pkgo[0]}" "$2")" -
         [[ "$3" = "" ]] || $pcmbin -S --noconfirm $3 $sf_ignore 2>&1|trbl_t
         if [[ ! "${PIPESTATUS[0]}" = "0" ]]; then trbl "$co_r failed to replace $1 with $3"; fi
     else
-        if [[ "$mr_expl" = "$true" ]]; then installLater+=($3)
-        else installLaterDep+=($3); fi
+        if [[ "$mr_expl" = "$true" ]]; then installLater+=" $3"
+        else installLaterDep+=" $3"; fi
     fi
 fi
 }
@@ -390,7 +390,7 @@ unset s_usr s_disp s_home; while read -ra sssn; do
     [[ "$disp" = "" ]] && disp=":0" #workaround for gnome, which returns nothing
     usrhome="$(getent passwd "$usr"|cut -d: -f6)"
     [[  ${usr-x} && ${disp-x} && ${usrhome-x} ]] || continue
-    s_usr[$i]=$usr; s_disp[$i]=$disp; s_home[$i]=$usrhome; ((i++))
+    s_usr[i]=$usr; s_disp[i]=$disp; s_home[i]=$usrhome; ((i++))
 done <<< "$(loginctl list-sessions --no-legend 2>/dev/null)"; slp 1
 }
 
@@ -798,7 +798,7 @@ mkdir -p "${conf_a[main_logdir_str]}"; if [ ! -d "${conf_a[main_logdir_str]}" ];
 mkdir -p "${conf_a[main_logdir_str]}"; if [ ! -d "${conf_a[main_logdir_str]}" ]; then
     echo "Critical error: could not create log directory"; slp 10; exit; fi
 log_d="${conf_a[main_logdir_str]}"; log_f="${log_d}/auto-update.log"
-if [ ! -f "$log_f" ]; then echo "init">$log_f; fi
+if [[ ! -f "$log_f" ]]; then echo "init">"$log_f"; fi
 
 
 #perst
@@ -838,7 +838,7 @@ export perst_d log_f #needed for backgroundnotify
 [[ "${conf_a[main_country_str]}" = "" ]] || pacmirArgs="-c ${conf_a[main_country_str]}"
 [[ "${conf_a[main_ignorepkgs_str]}" = "" ]] || pacignore="--ignore ${conf_a[main_ignorepkgs_str]}"
 [[ "${conf_a[update_downgrades_bool]}" = "$ctrue" ]] && pacdown="u"
-(echo)>$log_f;trbl "${co_g}xs-auto-update $vsndsp initialized..."
+(echo)>"$log_f";trbl "${co_g}xs-auto-update $vsndsp initialized..."
 trblm "Config file: $xs_autoupdate_conf"; trblqout
 
 
@@ -914,7 +914,7 @@ fi
 
 if perst_isneeded "${conf_a[update_keys_freq]}" "${perst_a[keys_up_date]}"; then
 while : ; do
-    if chk_pkginstx "archlinux-keyring" && [[ "$(chk_builtbefore "archlinux-keyring" "$(date -d"180 days ago" +'%Y%m%d')")" -lt 0 ]]; then
+    if chk_pkginstx "archlinux-keyring" && chk_builtbefore "archlinux-keyring" "$(date -d"180 days ago" +'%Y%m%d')"; then
         trbl "$co_y installed keys are more than 6 months old; skipping manual key refresh due to likely failure"; break; fi
     trbl "Refreshing keys..."; pacman-key --refresh-keys  2>&1|trbl_t |tee /dev/tty |grep "Total number processed:" >/dev/null
     err_keys=("${PIPESTATUS[@]}"); if [[ "${err_keys[0]}" -eq 0 ]] || [[ "${err_keys[3]}" -eq 0 ]]; then
@@ -961,7 +961,7 @@ if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_manu
 fi
 
 #Update keyring packages
-trbl "Updating system keyrings..."
+trbl "Updating system keyring packages..."
 for p in $(pacman -Sl|grep "\[installed"|grep "keyring "|grep -Eo "[^ ]*-keyring"|grep -Ev "^([lib]*gnome|python)-keyring$"); do
     # shellcheck disable=SC2086
     $pcmbin -S --needed --noconfirm $p $sf_ignore 2>&1|trbl_t
@@ -995,6 +995,9 @@ if ! chk_freespace_all || ! test_online; then err[repo]=1; err_crit="repo"; brea
 if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_manualpkg_bool]}" = "$ctrue" ]]; then
     trbl "Checking for required manual package changes..."
 
+    #Details on required changes:
+    #https://github.com/lectrode/xs-update-manjaro#supported-automatic-repair-and-manual-changes
+
     #removed from depends of kvmantum-manjaro 2022/02/23
     if chk_pkginstx "kvantum-manjaro" && [[ "$(chk_pkgvsndiff "kvantum-manjaro" "0.13.5+1+g333aa00-1")" -lt 0 ]]; then
         for t in adapta-black-breath-theme adapta-black-maia-theme adapta-breath-theme adapta-gtk-theme adapta-maia-theme arc-themes-maia \
@@ -1008,34 +1011,37 @@ if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_manu
     if chk_pkginstx "phonon-qt4" && [[ "$(chk_pkgvsndiff "phonon-qt4" "4.11.0")" -lt 0 ]]; then
         for t in phonon-qt4-gstreamer phonon-qt4-vlc phonon-qt4-mplayer-git; do manualDepend "$t"; done; fi
 
-    manualRemoval "libxfce4ui-nocsd" "4.17.0-1" #Removed from repos 2022-12-23 #https://github.com/Xfce-Classic/libxfce4ui-nocsd/issues/15
-    manualRemoval "lib32-db" "5.3.28-5" #Removed from arch repos 2022-12-21
-    manualRemoval "glib2-static" "2.72.3-1" #Merged into glib2 2022-09-07
-    #manualRemoval "pcre-static" "8.45-1" #Merged into pcre 2022-09-07
-    manualRemoval "wxgtk2" "3.0.5.1-3" #Removed from arch repos 2022-07-14
-    manualRemoval "manjaro-gdm-theme" "20210528-1"; #removed from repos 2022/04/23 (conflicts with gnome>=40)
-    manualRemoval "libcanberra-gstreamer" "0.30+2+gc0620e4-3"; manualRemoval "lib32-libcanberra-gstreamer" "0.30+2+gc0620e4-3" #consolidated with lib32-/libcanberra-pulse 2021/06
-    manualRemoval "python2-dbus" "1.2.16-3" #Removed from dbus-python 2021/03
-    manualRemoval "knetattach" "5.20.5-1" #Merged into plasma-desktop 2021/01/09
-    manualRemoval "ms-office-online" "20.1.0-1" #Moved to AUR 2020/06
-    manualRemoval "libxxf86misc"  "1.0.4-1"; manualRemoval "libdmx" "1.1.4-1" #Moved to aur 2019/12/20 https://archlinux.org/news/xorg-cleanup-requires-manual-intervention
-    chk_builtbefore "libxxf86dga" "20190317" && manualRemoval "libxxf86dga" "1.1.5-1" #Moved to aur 2019/12/20
-    manualRemoval "pyqt5-common" "5.13.2-1" #Removed from repos early 2019/12
-    manualRemoval "ilmbase" "2.3.0-1" #Merged into openexr 2019/10
-    manualRemoval "breeze-kde4" "5.13.4-1"; manualRemoval "oxygen-kde4" "5.13.4-1"; manualRemoval "sni-qt" "0.2.6-5" #removed from repos 2019/05
-    manualRemoval "libmagick" "7.0.8.41-1" #Merged into imagemagick 2019/04 https://gitlab.archlinux.org/archlinux/packaging/packages/imagemagick/-/commit/fe4f50173223f581dff33492eed9d8c2b3a0c4bf
-    manualRemoval "colord" "1.4.4-1" #Conflicts with libcolord mid-2019
+    chk_remoterepo "libgedit-amtk" && manualRemoval "amtk" "5.6.1-2" #2023/09/28: Replaced with libgedit-amtk #revisit per https://bugs.archlinux.org/task/79851
+    manualRemoval "gnome-shell-extension-desktop-icons-ng" "47-1" #2022/12/16: Replaced with gnome-shell-extension-gtk4-desktop-icons-ng
+    manualRemoval "libxfce4ui-nocsd" "4.17.0-1" #2022-12-23: Removed from repos
+    manualRemoval "lib32-db" "5.3.28-5" #2022-12-21: Removed from arch repos
+    manualRemoval "glib2-static" "2.72.3-1" #2022-09-07: Merged into glib2
+    #manualRemoval "pcre-static" "8.45-1" #2022-09-07: Merged into pcre
+    manualRemoval "wxgtk2" "3.0.5.1-3" #2022-07-14: Removed from arch repos
+    manualRemoval "manjaro-gdm-theme" "20210528-1"; #2022/04/23: Removed from repos (conflicts with gnome>=40)
+    manualRemoval "kvantum-theme-matchama" "20191118-1"; #2022/02/14: Removed from repos
+    manualRemoval "libcanberra-gstreamer" "0.30+2+gc0620e4-3"; manualRemoval "lib32-libcanberra-gstreamer" "0.30+2+gc0620e4-3" #2021/06: consolidated with lib32-/libcanberra-pulse
+    manualRemoval "python2-dbus" "1.2.16-3" #2021/03: Removed from dbus-python
+    manualRemoval "knetattach" "5.20.5-1" #2021/01/09: Merged into plasma-desktop
+    manualRemoval "ms-office-online" "20.1.0-1" #2020/06: Moved to AUR
+    manualRemoval "libxxf86misc"  "1.0.4-1"; manualRemoval "libdmx" "1.1.4-1" #2019/12/20: Moved to aur
+    chk_builtbefore "libxxf86dga" "20190317" && manualRemoval "libxxf86dga" "1.1.5-1" #2019/12/20: Moved to aur
+    manualRemoval "pyqt5-common" "5.13.2-1" #2019/12: Removed from repos
+    manualRemoval "ilmbase" "2.3.0-1" #2019/10: Merged into openexr
+    manualRemoval "breeze-kde4" "5.13.4-1"; manualRemoval "oxygen-kde4" "5.13.4-1"; manualRemoval "sni-qt" "0.2.6-5" #2019/05: removed from repos
+    manualRemoval "libmagick" "7.0.8.41-1" #2019/04: Merged into imagemagick
+    manualRemoval "colord" "1.4.4-1" #2019/??: Conflicts with libcolord
     #manualRemoval "libutil-linux"
-    #manualRemoval "libsystemd" "240.95-1" #Renamed to systemd-libs 2019/02/12 https://gitlab.archlinux.org/archlinux/packaging/packages/systemd/-/commit/8440896bd848b1bcb37d83575fbdb988e2a2f688
+    #manualRemoval "libsystemd" "240.95-1" #2019/02/12: Renamed to systemd-libs https://gitlab.archlinux.org/archlinux/packaging/packages/systemd/-/commit/8440896bd848b1bcb37d83575fbdb988e2a2f688
     manualRemoval "engrampa-thunar-plugin" "1.0-2" #Xfce 17.1.10 and earlier
 
     if ! test_online; then err[repo]=1; err_crit="repo"; break; fi
-    manualRemoval "dbus-x11" "1.14.4-1" "dbus" #Removed from repos 2022-12
-    manualRemoval "jack" "0.125.0-10" "jack2"; manualRemoval "lib32-jack" "0.125.0-10" "lib32-jack2" #moved to AUR on 2021-07-26
+    manualRemoval "dbus-x11" "1.14.4-1" "dbus" #2022/12: Removed from repos
+    manualRemoval "jack" "0.125.0-10" "jack2"; manualRemoval "lib32-jack" "0.125.0-10" "lib32-jack2" #2021/07/26: moved to AUR
     manualRemoval "pamac" "7.9" "pamac" #Requires reinstall to update pacman
     manualRemoval "gtk3-classic" "3.24.24-1" "gtk3"; manualRemoval "lib32-gtk3-classic" "3.24.24-1" "lib32-gtk3" #Replaced around 18.0.4
-    #manualRemoval "pipewire-media-session" "1:0.4.1-1" "wireplumber" #Replaced 2022-05-10 (replacement since rolled back)
-    manualRemoval "manjaro-kde-settings-19.0 breath2-icon-themes plasma5-themes-breath2" "20200426-1" "plasma5-themes-breath manjaro-kde-settings" #manjaro kde cleanup 2021/11
+    #manualRemoval "pipewire-media-session" "1:0.4.1-1" "wireplumber" #2022-05-10: Replaced with wireplumber (rolled back)
+    manualRemoval "manjaro-kde-settings-19.0 breath2-icon-themes plasma5-themes-breath2" "20200426-1" "plasma5-themes-breath manjaro-kde-settings" #2021/11: manjaro kde cleanup
 
     #transition packages from 'electron' to 'electronXX' when required
     if chk_pkginstx "electron" && $pcmbin -Sl|grep -E "[^ ]+ electron "|grep "installed:" >/dev/null; then
@@ -1071,19 +1077,19 @@ if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_manu
     if ! chk_pkginstx "base-devel"; then
         $pcmbin -Qg|grep "base-devel" >/dev/null && $pcmbin -S --noconfirm "base-devel" 2>&1|trbl_t; fi
 
-    chk_builtbefore "qpdfview" "20200914" && manualRemoval "qpdfview" "0.4.18-2" "evince" "now" #Moved to AUR 2022-04-01
-    manualRemoval "galculator-gtk2" "2.1.4-5" "galculator" "now" #Replaced with galculator 2021/11/13
-    manualRemoval "gksu-polkit" "0.0.3-2" "zensu" "now" #Removed from manjaro repos 2020/10
+    chk_builtbefore "qpdfview" "20200914" && manualRemoval "qpdfview" "0.4.18-2" "evince" "now" #2022-04-01: Moved to AUR
+    manualRemoval "galculator-gtk2" "2.1.4-5" "galculator" "now" #2021/11/13: Replaced with galculator
+    manualRemoval "gksu-polkit" "0.0.3-2" "zensu" "now" #2020/10: Removed from manjaro repos
 
     #Finish partial manual changes
     if [[ ! "${#installLaterDep[@]}" = "0" ]]; then while read -r p; do
         trbl "Post-update install (dependencies): $p"
         $pcmbin -S --needed --noconfirm --asdeps "$p" 2>&1|trbl_t
-    done <<< "$(printf "%s\n" "${installLaterDep[@]}")"; fi
+    done <<< "$(echo "$installLaterDep"|sed -r 's/\s+/\n/g'|grep -E "\w")"; fi
     if [[ ! "${#installLater[@]}" = "0" ]]; then while read -r p; do
         trbl "Post-update install: $p"
         $pcmbin -S --needed --noconfirm "$p" 2>&1|trbl_t
-    done <<< "$(printf "%s\n" "${installLater[@]}")"; fi
+    done <<< "$(echo "$installLater"|sed -r 's/\s+/\n/g'|grep -E "\w")"; fi
 fi
 
 #No AUR if updated critical packages
@@ -1275,11 +1281,11 @@ touch "${perst_d}/auto-update_termnotify.dat"
 [[ "$(IFS=+; echo "$((${err[*]}))")" = "0" ]] || codes="$co_y"
 iconnormal; if [[ ! "$err_crit" = "" ]]; then codes="$co_r"; iconerror; fi
 trbl "$(
-	echo -n "$codes${co_n} error codes: "
-	for i in repodb sys repo mirrors keys aur fpak orphan fpakorphan; do
-        if [[ "$err_crit" = "$i" ]]; then echo -n "\033[1;31m[$i:${err[$i]}]"
-        elif [[ ! "$((err[$i]+0))" = "0" ]]; then echo -n "\033[1;33m[$i:${err[$i]}]"
-        else echo -n "${co_n}[$i:${err[$i]}]"; fi
+    echo -en "$codes${co_n} error codes: "
+    for i in repodb sys repo mirrors keys aur fpak orphan fpakorphan; do
+        if [[ "$err_crit" = "$i" ]]; then echo -en "\033[1;31m[$i:${err[$i]}]"
+        elif [[ ! "$((err[$i]+0))" = "0" ]]; then echo -en "\033[1;33m[$i:${err[$i]}]"
+        else echo -en "${co_n}[$i:${err[$i]}]"; fi
     done
 )"
 
