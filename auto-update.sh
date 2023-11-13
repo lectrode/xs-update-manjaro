@@ -1,6 +1,6 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.9.10-rc2"; vsndsp="$vsn 2023-10-10"
+vsn="v3.9.10-rc3"; vsndsp="$vsn 2023-11-13"
 #-Downloads and Installs new updates
 #-Depends: coreutils, grep, pacman, pacman-mirrors, iputils
 #-Optional Depends: flatpak, notify-desktop, pikaur, rebuild-detector, wget
@@ -1011,6 +1011,8 @@ if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_manu
     if chk_pkginstx "phonon-qt4" && [[ "$(chk_pkgvsndiff "phonon-qt4" "4.11.0")" -lt 0 ]]; then
         for t in phonon-qt4-gstreamer phonon-qt4-vlc phonon-qt4-mplayer-git; do manualDepend "$t"; done; fi
 
+    if chk_pkginstx "jdk-openjdk"; then manualRemoval "jre-openjdk" "21.u35-3"; manualRemoval "jre-openjdk-headless" "21.u35-3"; fi
+    chk_pkginstx "jre-openjdk" && manualRemoval "jre-openjdk-headless" "21.u35-3" #2023/11/02: java 21 packages now conflict; keep most functional
     chk_remoterepo "libgedit-amtk" && manualRemoval "amtk" "5.6.1-2" #2023/09/28: Replaced with libgedit-amtk #revisit per https://bugs.archlinux.org/task/79851
     manualRemoval "gnome-shell-extension-desktop-icons-ng" "47-1" #2022/12/16: Replaced with gnome-shell-extension-gtk4-desktop-icons-ng
     manualRemoval "libxfce4ui-nocsd" "4.17.0-1" #2022-12-23: Removed from repos
@@ -1019,7 +1021,9 @@ if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_manu
     #manualRemoval "pcre-static" "8.45-1" #2022-09-07: Merged into pcre
     manualRemoval "wxgtk2" "3.0.5.1-3" #2022-07-14: Removed from arch repos
     manualRemoval "manjaro-gdm-theme" "20210528-1"; #2022/04/23: Removed from repos (conflicts with gnome>=40)
-    manualRemoval "kvantum-theme-matchama" "20191118-1"; #2022/02/14: Removed from repos
+    manualRemoval "libkipi" "22.04.0-1"; #2022/04/22: Moved to AUR
+    manualRemoval "user-manager" "5.19.5-1"; #2020/11/04: Removed from repos
+    manualRemoval "kvantum-theme-matchama" "20191118-1"; #2022/02/14: Removed from repos, 2023/10/11: re-added/renamed
     manualRemoval "libcanberra-gstreamer" "0.30+2+gc0620e4-3"; manualRemoval "lib32-libcanberra-gstreamer" "0.30+2+gc0620e4-3" #2021/06: consolidated with lib32-/libcanberra-pulse
     manualRemoval "python2-dbus" "1.2.16-3" #2021/03: Removed from dbus-python
     manualRemoval "knetattach" "5.20.5-1" #2021/01/09: Merged into plasma-desktop
@@ -1031,13 +1035,13 @@ if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_manu
     manualRemoval "breeze-kde4" "5.13.4-1"; manualRemoval "oxygen-kde4" "5.13.4-1"; manualRemoval "sni-qt" "0.2.6-5" #2019/05: removed from repos
     manualRemoval "libmagick" "7.0.8.41-1" #2019/04: Merged into imagemagick
     manualRemoval "colord" "1.4.4-1" #2019/??: Conflicts with libcolord
-    #manualRemoval "libutil-linux"
     #manualRemoval "libsystemd" "240.95-1" #2019/02/12: Renamed to systemd-libs https://gitlab.archlinux.org/archlinux/packaging/packages/systemd/-/commit/8440896bd848b1bcb37d83575fbdb988e2a2f688
     manualRemoval "engrampa-thunar-plugin" "1.0-2" #Xfce 17.1.10 and earlier
 
     if ! test_online; then err[repo]=1; err_crit="repo"; break; fi
     manualRemoval "dbus-x11" "1.14.4-1" "dbus" #2022/12: Removed from repos
     manualRemoval "jack" "0.125.0-10" "jack2"; manualRemoval "lib32-jack" "0.125.0-10" "lib32-jack2" #2021/07/26: moved to AUR
+    manualRemoval "kpeoplevcard" "0.1-1" "kpeoplevcard" #Requires reinstall to avoid conflicts
     manualRemoval "pamac" "7.9" "pamac" #Requires reinstall to update pacman
     manualRemoval "gtk3-classic" "3.24.24-1" "gtk3"; manualRemoval "lib32-gtk3-classic" "3.24.24-1" "lib32-gtk3" #Replaced around 18.0.4
     #manualRemoval "pipewire-media-session" "1:0.4.1-1" "wireplumber" #2022-05-10: Replaced with wireplumber (rolled back)

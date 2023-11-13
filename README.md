@@ -335,10 +335,9 @@ Every once in a while, updating Manjaro requires manual package changes to allow
           <code>phonon-qt4-mplayer-git</code></td><td>extras for <code>phonon-qt4</code><4.11.0<br />(qt4 support <a href="https://community.kde.org/Phonon/Releases/Core/4.11.0">dropped</a>, package removed from repos 2019/05)</td></tr>
 </table>
 
-
-
 * Package removal:
 <table>
+  <tr><td><code>jre-openjdk</code><br /><code>jre-openjdk-headless</code></td><td><=21.u35-3</td><td>2023/11/02: java 21 packages now <a href="https://archlinux.org/news/incoming-changes-in-jdk-jre-21-packages-may-require-manual-intervention">conflict</a>. of the ones installed, the most functional package is kept</td></tr>
   <tr><td><code>amtk</code></td><td><=5.6.1-2</td><td>2023/09/28: <a href="https://gitlab.archlinux.org/archlinux/packaging/packages/libgedit-amtk/-/commit/a14c055b4aad2503da0b1b43b6d4353ef1ccaecf">replaced</a> with libgedit-amtk (<a href="https://bugs.archlinux.org/task/79851">revisit</a> later)</td></tr>
   <tr><td><code>gnome-shell-extension-desktop-icons-ng</code></td><td><=47-1</td><td>2022/12/16: <a href="https://gitlab.manjaro.org/-/snippets/825">replaced</a> with gnome-shell-extension-gtk4-desktop-icons-ng</td></tr>
   <tr><td><code>libxfce4ui-nocsd</code></td><td><=4.17.0-1</td><td>2022/12/23: <a href="https://github.com/Xfce-Classic/libxfce4ui-nocsd/issues/15">removed</a> from repos</td></tr>
@@ -346,7 +345,9 @@ Every once in a while, updating Manjaro requires manual package changes to allow
   <tr><td><code>glib2-static</code></td><td><=2.72.3-1</td><td>2022/09/07: merged into glib2</td></tr>
   <tr><td><code>wxgtk2</code></td><td><=3.0.5.1-3</td><td>2022/07/14: removed from arch repos</td></tr>
   <tr><td><code>manjaro-gdm-theme</code></td><td><=20210528-1</td><td>2022/04/23: removed from repos</td></tr>
-  <tr><td><code>kvantum-theme-matchama</code></td><td><=20191118-1</td><td>2022/02/14: <a href="https://gitlab.manjaro.org/-/snippets/728">removed</a> from repos</td></tr>
+  <tr><td><code>libkipi</code></td><td><=22.04.0-1</td><td>2022/04/22: <a href="https://aur.archlinux.org/cgit/aur.git/commit/?h=libkipi&id=64b23b22f3225642a3d8821ca8cdf1db3293edfe">moved</a> to AUR</td></tr>
+  <tr><td><code>user-manager</code></td><td><=5.19.5-1</td><td>2020/11/04: <a href="https://gitlab.manjaro.org/-/snippets/550">removed</a> from repos</td></tr>
+  <tr><td><code>kvantum-theme-matchama</code></td><td><=20191118-1</td><td>2022/02/14: <a href="https://gitlab.manjaro.org/-/snippets/728">removed</a> from repos, 2023/10/11: <a href="https://gitlab.manjaro.org/packages/community/xfce/manjaro-xfce-settings/-/commit/982a16bfa85abdf9deb03c30c48f2ccb6f6a5370">re-added</a> (renamed)</td></tr>
   <tr><td><code>[lib32-]libcanberra-gstreamer</code></td><td><=0.30+2+gc0620e4-3</td><td>2021/06: merged into <code>lib32-/libcanberra-pulse</code></td></tr>
   <tr><td><code>python2-dbus</code></td><td><=1.2.16-3</td><td>2021/03: removed from <code>dbus-python</code></td></tr>
   <tr><td><code>knetattach</code></td><td><=5.20.5-1</td><td>2021/01/09: merged into <code>plasma-desktop</code></td></tr>
@@ -370,7 +371,7 @@ Every once in a while, updating Manjaro requires manual package changes to allow
   <tr><td><code>qpdfview</code></td><td><=0.4.18-1</td><td>2022/04/01: former default pkg moved to AUR, replaced with <code>evince</code></td></tr>
   <tr><td><code>galculator-gtk2</code></td><td><=2.1.4-5</td><td>2021/11/13: replaced with <code>galculator</code></td></tr>
   <tr><td><code>manjaro-kde-settings-19.0</code>,<code>breath2-icon-themes</code>,<code>plasma5-themes-breath2</code></td><td><=20200426-1</td><td>2021/11: replaced with <code>manjaro-kde-settings</code>,<code>plasma5-themes-breath</code></td></tr>
-  <tr><td><code>[lib32-]jack</code></td><td><=0.125.0-10</td><td>2021/07/26: replaced with <code>lib32-/jack2</code></td></tr>
+  <tr><td><code>[lib32-]jack</code></td><td><=0.125.0-10</td><td>2021/07/26: replaced with <code>[lib32-]jack2</code></td></tr>
   <tr><td><code>gksu-polkit</code></td><td><=0.0.3-2</td><td>2020/10: replaced with <code>zensu</code></td></tr>
 </table>
 
