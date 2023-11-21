@@ -1,6 +1,6 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.9.10-rc4"; vsndsp="$vsn 2023-11-20"
+vsn="v3.9.10-rc5"; vsndsp="$vsn 2023-11-20"
 #-Downloads and Installs new updates
 #-Depends: coreutils, grep, pacman, pacman-mirrors, iputils
 #-Optional Depends: flatpak, notify-desktop, pikaur, rebuild-detector, wget
@@ -1042,7 +1042,7 @@ if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_manu
     manualRemoval "engrampa-thunar-plugin" "1.0-2" #Xfce 17.1.10 and earlier
 
     if chk_pkginstx "glibc-locales" && [[ "$(chk_pkgvsndiff "glibc-locales" "2.38-5")" -le 0 ]]; then
-        if ! $pcmbin -Sdd --overwrite='*' glibc-locales; then err[repo]=1; err_crit="repo"; break; fi; fi #2023/10/01: split package (glibc) conflicts with old
+        if ! $pcmbin -Sdd --noconfirm --overwrite='*' glibc-locales $sf_ignore; then err[repo]=1; err_crit="repo"; break; fi; fi #2023/10/01: split package (glibc) conflicts with old
 
     if ! test_online; then err[repo]=1; err_crit="repo"; break; fi
     manualRemoval "dbus-x11" "1.14.4-1" "dbus" #2022/12: Removed from repos
