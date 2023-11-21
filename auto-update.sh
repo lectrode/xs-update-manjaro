@@ -1,6 +1,6 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.9.10-rc3"; vsndsp="$vsn 2023-11-13"
+vsn="v3.9.10-rc4"; vsndsp="$vsn 2023-11-20"
 #-Downloads and Installs new updates
 #-Depends: coreutils, grep, pacman, pacman-mirrors, iputils
 #-Optional Depends: flatpak, notify-desktop, pikaur, rebuild-detector, wget
@@ -1015,19 +1015,21 @@ if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_manu
     chk_pkginstx "jre-openjdk" && manualRemoval "jre-openjdk-headless" "21.u35-3" #2023/11/02: java 21 packages now conflict; keep most functional
     chk_remoterepo "libgedit-amtk" && manualRemoval "amtk" "5.6.1-2" #2023/09/28: Replaced with libgedit-amtk #revisit per https://bugs.archlinux.org/task/79851
     manualRemoval "gnome-shell-extension-desktop-icons-ng" "47-1" #2022/12/16: Replaced with gnome-shell-extension-gtk4-desktop-icons-ng
-    manualRemoval "libxfce4ui-nocsd" "4.17.0-1" #2022-12-23: Removed from repos
-    manualRemoval "lib32-db" "5.3.28-5" #2022-12-21: Removed from arch repos
+    manualRemoval "libxfce4ui-nocsd" "4.17.0-1" #2022/12/23: Removed from repos
+    manualRemoval "lib32-db" "5.3.28-5" #2022/12/21: Removed from arch repos
+    manualRemoval "kjsembed" "5.100.0-1" #2022/12/20: removed from repos
     manualRemoval "glib2-static" "2.72.3-1" #2022-09-07: Merged into glib2
     #manualRemoval "pcre-static" "8.45-1" #2022-09-07: Merged into pcre
     manualRemoval "wxgtk2" "3.0.5.1-3" #2022-07-14: Removed from arch repos
     manualRemoval "manjaro-gdm-theme" "20210528-1"; #2022/04/23: Removed from repos (conflicts with gnome>=40)
-    manualRemoval "libkipi" "22.04.0-1"; #2022/04/22: Moved to AUR
+    manualRemoval "libkipi" "22.04.0-1"; #2022/04/22: Moved to aur
+    manualRemoval "kvantum-qt5" "0.20.2-2" #2022/01/02: Removed from repos
     manualRemoval "user-manager" "5.19.5-1"; #2020/11/04: Removed from repos
     manualRemoval "kvantum-theme-matchama" "20191118-1"; #2022/02/14: Removed from repos, 2023/10/11: re-added/renamed
     manualRemoval "libcanberra-gstreamer" "0.30+2+gc0620e4-3"; manualRemoval "lib32-libcanberra-gstreamer" "0.30+2+gc0620e4-3" #2021/06: consolidated with lib32-/libcanberra-pulse
     manualRemoval "python2-dbus" "1.2.16-3" #2021/03: Removed from dbus-python
     manualRemoval "knetattach" "5.20.5-1" #2021/01/09: Merged into plasma-desktop
-    manualRemoval "ms-office-online" "20.1.0-1" #2020/06: Moved to AUR
+    manualRemoval "ms-office-online" "20.1.0-1" #2020/06: Moved to aur
     manualRemoval "libxxf86misc"  "1.0.4-1"; manualRemoval "libdmx" "1.1.4-1" #2019/12/20: Moved to aur
     chk_builtbefore "libxxf86dga" "20190317" && manualRemoval "libxxf86dga" "1.1.5-1" #2019/12/20: Moved to aur
     manualRemoval "pyqt5-common" "5.13.2-1" #2019/12: Removed from repos
@@ -1036,11 +1038,15 @@ if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_manu
     manualRemoval "libmagick" "7.0.8.41-1" #2019/04: Merged into imagemagick
     manualRemoval "colord" "1.4.4-1" #2019/??: Conflicts with libcolord
     #manualRemoval "libsystemd" "240.95-1" #2019/02/12: Renamed to systemd-libs https://gitlab.archlinux.org/archlinux/packaging/packages/systemd/-/commit/8440896bd848b1bcb37d83575fbdb988e2a2f688
+    manualRemoval "kuiserver" "5.12.5-3" #2018/06/12: removed from repos
     manualRemoval "engrampa-thunar-plugin" "1.0-2" #Xfce 17.1.10 and earlier
+
+    if chk_pkginstx "glibc-locales" && [[ "$(chk_pkgvsndiff "glibc-locales" "2.38-5")" -le 0 ]]; then
+        if ! $pcmbin -Sdd --overwrite='*' glibc-locales; then err[repo]=1; err_crit="repo"; break; fi; fi #2023/10/01: split package (glibc) conflicts with old
 
     if ! test_online; then err[repo]=1; err_crit="repo"; break; fi
     manualRemoval "dbus-x11" "1.14.4-1" "dbus" #2022/12: Removed from repos
-    manualRemoval "jack" "0.125.0-10" "jack2"; manualRemoval "lib32-jack" "0.125.0-10" "lib32-jack2" #2021/07/26: moved to AUR
+    manualRemoval "jack" "0.125.0-10" "jack2"; manualRemoval "lib32-jack" "0.125.0-10" "lib32-jack2" #2021/07/26: moved to aur
     manualRemoval "kpeoplevcard" "0.1-1" "kpeoplevcard" #Requires reinstall to avoid conflicts
     manualRemoval "pamac" "7.9" "pamac" #Requires reinstall to update pacman
     manualRemoval "gtk3-classic" "3.24.24-1" "gtk3"; manualRemoval "lib32-gtk3-classic" "3.24.24-1" "lib32-gtk3" #Replaced around 18.0.4
