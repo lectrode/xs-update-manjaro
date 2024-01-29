@@ -310,7 +310,12 @@ This script supports detecting and repairing the following potential issues:
 
 ### Manual Package Changes
 Every once in a while, updating Manjaro requires manual package changes to allow updates to succeed. This script [supports](#repair_manualpkg_bool "") automatically performing the following:
-* Setup and use `pacman-static` if `pacman`<5.2
+
+* Package installation:
+<table>
+  <tr><td><code>pacman-static</code></td><td>required if <code>pacman</code><5.2</td></tr>
+  <tr><td><code>pacman-contrib</code> (dependency)</td><td><a href="https://gitlab.manjaro.org/packages/core/pacman/-/commit/69072048bcdc4c32e0200558476e7a1385ca587a">split out</a> from <code>pacman</code> package but still needed</td></tr>
+</table>
 
 * Mark packages as explicitely installed:
 
@@ -337,8 +342,8 @@ Every once in a while, updating Manjaro requires manual package changes to allow
 
 * Package removal:
 <table>
+  <tr><td>aur:<code>vlc-plugin-fluidsynth-bin</code></td><td><=1:3.0.20.1-1</td><td>2024/01/20: <a href="https://gitlab.archlinux.org/archlinux/packaging/packages/vlc/-/commit/98512bacda8d4b0ecd800701e57cfcde5f0f207b">incorporated</a> into main vlc package</td></tr>
   <tr><td><code>jre-openjdk</code><br /><code>jre-openjdk-headless</code></td><td><=21.u35-3</td><td>2023/11/02: java 21 packages now <a href="https://archlinux.org/news/incoming-changes-in-jdk-jre-21-packages-may-require-manual-intervention">conflict</a>. of the ones installed, the most functional package is kept</td></tr>
-  <tr><td><code>amtk</code></td><td><=5.6.1-2</td><td>2023/09/28: <a href="https://gitlab.archlinux.org/archlinux/packaging/packages/libgedit-amtk/-/commit/a14c055b4aad2503da0b1b43b6d4353ef1ccaecf">replaced</a> with libgedit-amtk (<a href="https://bugs.archlinux.org/task/79851">revisit</a> later)</td></tr>
   <tr><td><code>gnome-shell-extension-desktop-icons-ng</code></td><td><=47-1</td><td>2022/12/16: <a href="https://gitlab.manjaro.org/-/snippets/825">replaced</a> with gnome-shell-extension-gtk4-desktop-icons-ng</td></tr>
   <tr><td><code>libxfce4ui-nocsd</code></td><td><=4.17.0-1</td><td>2022/12/23: <a href="https://github.com/Xfce-Classic/libxfce4ui-nocsd/issues/15">removed</a> from repos</td></tr>
   <tr><td><code>lib32-db</code></td><td><=5.3.28-5</td><td>2022/12/21: <a href="https://aur.archlinux.org/cgit/aur.git/commit/?h=lib32-db&id=a59ffdc29595db8ab0a683a374969ee79f76e231">moved</a> to aur</td></tr>
@@ -369,6 +374,7 @@ Every once in a while, updating Manjaro requires manual package changes to allow
 
 * Package replacement:
 <table>
+  <tr><td>aur:<code>systray-x-git</code></td><td><=0.9.2-0</td><td>2023/04/17: <a href="https://gitlab.archlinux.org/archlinux/packaging/packages/systray-x/-/commit/46310cac31517ae0b8be921d7c606196ba9020cf">packaged</a> in official repos. Replaced with <code>systray-x-kde</code> if using KDE desktop, or <code>systray-x-common</code> otherwise</td></tr>
   <tr><td><code>dbus-x11</code></td><td><=1.14.4-1</td><td>2022/12/16: <a href="https://gitlab.manjaro.org/-/snippets/824/raw/">dropped</a> in favor of <code>dbus</code></td></tr>
   <!--<tr><td><code>pipewire-media-session</code></td><td><=1:0.4.1-1</td><td>2022/05/10: replaced with <code>wireplumber</code></td></tr>-->
   <tr><td><code>qpdfview</code></td><td><=0.4.18-1</td><td>2022/04/01: former default pkg moved to AUR, replaced with <code>evince</code></td></tr>
@@ -380,7 +386,7 @@ Every once in a while, updating Manjaro requires manual package changes to allow
 
 * Package overwrite:
 <table>
-  <tr><td><code>glibc-locales</code></td><td><=2.38-5</td><td>2023/10/01: <a href="https://gitlab.archlinux.org/archlinux/packaging/packages/glibc/-/commit/2091ad15ca402c624f40d3e2a0be486128dc53da">split</a> package (<code>glibc</code>) conflicts with files <a href="https://forum.manjaro.org/t/testing-update-2023-10-05-mesa-kde-frameworks-grub-glibc-thunderbird/149089/6?u=lectrode">generated</a> by old</td></tr>
+  <tr><td><code>glibc</code><br /><code>glibc-locales</code></td><td><=2.38-5</td><td>2023/10/01: <a href="https://gitlab.archlinux.org/archlinux/packaging/packages/glibc/-/commit/2091ad15ca402c624f40d3e2a0be486128dc53da">split</a> package (<code>glibc</code>) conflicts with files <a href="https://forum.manjaro.org/t/testing-update-2023-10-05-mesa-kde-frameworks-grub-glibc-thunderbird/149089/6?u=lectrode">generated</a> by old</td></tr>
 </table>
 
 * Transition packages that depend on `electron` to `electronXX` where required

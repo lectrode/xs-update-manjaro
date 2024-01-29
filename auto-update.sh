@@ -1,11 +1,11 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.9.10-rc5"; vsndsp="$vsn 2023-11-20"
+vsn="v3.9.10-rc6"; vsndsp="$vsn 2024-01-28"
 #-Downloads and Installs new updates
 #-Depends: coreutils, grep, pacman, pacman-mirrors, iputils
 #-Optional Depends: flatpak, notify-desktop, pikaur, rebuild-detector, wget
 
-#   Copyright 2016-2023 Steven Hoff (aka "lectrode")
+#   Copyright 2016-2024 Steven Hoff (aka "lectrode")
 
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
@@ -998,6 +998,12 @@ if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_manu
     #Details on required changes:
     #https://github.com/lectrode/xs-update-manjaro#supported-automatic-repair-and-manual-changes
 
+    #install pacman-contrib if previously provided by pacman
+    if get_pkgqix "pacman" "Provides"|grep -F "pacman-contrib" >/dev/null && chk_remoterepo "pacman-contrib"; then
+        trblm "pacman-contrib will be installed with updates"
+        maninstDep+=" pacman pacman-contrib"
+    fi
+
     #removed from depends of kvmantum-manjaro 2022/02/23
     if chk_pkginstx "kvantum-manjaro" && [[ "$(chk_pkgvsndiff "kvantum-manjaro" "0.13.5+1+g333aa00-1")" -lt 0 ]]; then
         for t in adapta-black-breath-theme adapta-black-maia-theme adapta-breath-theme adapta-gtk-theme adapta-maia-theme arc-themes-maia \
@@ -1011,15 +1017,18 @@ if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_manu
     if chk_pkginstx "phonon-qt4" && [[ "$(chk_pkgvsndiff "phonon-qt4" "4.11.0")" -lt 0 ]]; then
         for t in phonon-qt4-gstreamer phonon-qt4-vlc phonon-qt4-mplayer-git; do manualDepend "$t"; done; fi
 
+    manualRemoval "vlc-plugin-fluidsynth-bin" "1:3.0.20.1-1" #2024/01/20:aur: incorporated into official vlc package (conflicts)
     if chk_pkginstx "jdk-openjdk"; then manualRemoval "jre-openjdk" "21.u35-3"; manualRemoval "jre-openjdk-headless" "21.u35-3"; fi
     chk_pkginstx "jre-openjdk" && manualRemoval "jre-openjdk-headless" "21.u35-3" #2023/11/02: java 21 packages now conflict; keep most functional
-    chk_remoterepo "libgedit-amtk" && manualRemoval "amtk" "5.6.1-2" #2023/09/28: Replaced with libgedit-amtk #revisit per https://bugs.archlinux.org/task/79851
+    #chk_remoterepo "libgedit-amtk" && manualRemoval "amtk" "5.6.1-2" #2023/09/28: Replaced with libgedit-amtk #not needed per https://bugs.archlinux.org/task/79851
+    if chk_pkginst "plasma-desktop"; then manualRemoval "systray-x-git" "0.9.2-0" "systray-x-kde"
+    else manualRemoval "systray-x-git" "0.9.2-0" "systray-x-common"; fi #2023/04/17:aur: now packaged in official repos (requires legacy knotifications)
     manualRemoval "gnome-shell-extension-desktop-icons-ng" "47-1" #2022/12/16: Replaced with gnome-shell-extension-gtk4-desktop-icons-ng
     manualRemoval "libxfce4ui-nocsd" "4.17.0-1" #2022/12/23: Removed from repos
     manualRemoval "lib32-db" "5.3.28-5" #2022/12/21: Removed from arch repos
     manualRemoval "kjsembed" "5.100.0-1" #2022/12/20: removed from repos
     manualRemoval "glib2-static" "2.72.3-1" #2022-09-07: Merged into glib2
-    #manualRemoval "pcre-static" "8.45-1" #2022-09-07: Merged into pcre
+    #manualRemoval "pcre-static" "8.45-1" #2022-09-07: Merged into pcre (not needed per https://bugs.archlinux.org/task/75839)
     manualRemoval "wxgtk2" "3.0.5.1-3" #2022-07-14: Removed from arch repos
     manualRemoval "manjaro-gdm-theme" "20210528-1"; #2022/04/23: Removed from repos (conflicts with gnome>=40)
     manualRemoval "libkipi" "22.04.0-1"; #2022/04/22: Moved to aur
@@ -1042,7 +1051,8 @@ if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_manu
     manualRemoval "engrampa-thunar-plugin" "1.0-2" #Xfce 17.1.10 and earlier
 
     if chk_pkginstx "glibc-locales" && [[ "$(chk_pkgvsndiff "glibc-locales" "2.38-5")" -le 0 ]]; then
-        if ! $pcmbin -Sdd --noconfirm --overwrite='*' glibc-locales $sf_ignore; then err[repo]=1; err_crit="repo"; break; fi; fi #2023/10/01: split package (glibc) conflicts with old
+        # shellcheck disable=SC2086
+        if ! $pcmbin -Sdd --noconfirm --overwrite='*' glibc-locales glibc $sf_ignore; then err[repo]=1; err_crit="repo"; break; fi; fi #2023/10/01: split package (glibc) conflicts with old
 
     if ! test_online; then err[repo]=1; err_crit="repo"; break; fi
     manualRemoval "dbus-x11" "1.14.4-1" "dbus" #2022/12: Removed from repos
@@ -1076,7 +1086,7 @@ if [[ ${err[sys]} -ne 0 ]]; then trbl "$co_y system packages failed to update - 
 
 sync; trbl "Updating packages from main repos..."
 # shellcheck disable=SC2086
-$pcmbin -Su$pacdown --needed --noconfirm $pacignore 2>&1|trbl_t
+$pcmbin -Su$pacdown --needed --noconfirm $maninstDep $pacignore 2>&1|trbl_t
 err[repo]=${PIPESTATUS[0]}; if [[ ${err[repo]} -ne 0 ]]; then trbl "$co_r pacman exited with code ${err[repo]}"; err_crit="repo"; break; fi
 
 # Post-update manual changes
@@ -1100,6 +1110,11 @@ if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_manu
         trbl "Post-update install: $p"
         $pcmbin -S --needed --noconfirm "$p" 2>&1|trbl_t
     done <<< "$(echo "$installLater"|sed -r 's/\s+/\n/g'|grep -E "\w")"; fi
+    
+    if [[ ! "${#maninstDep[@]}" = "0" ]]; then while read -r p; do
+        trbl "Post-update mark as dep: $p"
+        manualDepend "$p"
+    done <<< "$(echo "$maninstDep"|sed -r 's/\s+/\n/g'|grep -E "\w")"; fi
 fi
 
 #No AUR if updated critical packages
