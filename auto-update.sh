@@ -1,6 +1,6 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.9.10-rc7"; vsndsp="$vsn 2024-01-29"
+vsn="v3.9.10-rc8"; vsndsp="$vsn 2024-01-30"
 #-Downloads and Installs new updates
 #-Depends: coreutils, grep, pacman, pacman-mirrors, iputils
 #-Optional Depends: flatpak, notify-desktop, pikaur, rebuild-detector, wget
@@ -1022,6 +1022,7 @@ if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_manu
     if chk_pkginstx "jdk-openjdk"; then manualRemoval "jre-openjdk" "21.u35-3"; manualRemoval "jre-openjdk-headless" "21.u35-3"; fi
     chk_pkginstx "jre-openjdk" && manualRemoval "jre-openjdk-headless" "21.u35-3" #2023/11/02: java 21 packages now conflict; keep most functional
     #chk_remoterepo "libgedit-amtk" && manualRemoval "amtk" "5.6.1-2" #2023/09/28: Replaced with libgedit-amtk #not needed per https://bugs.archlinux.org/task/79851
+    manualRemoval "networkmanager-fortisslvpn" "1.4.0-3" #2023/09/10: Removed from arch repos
     if chk_pkginst "plasma-desktop"; then manualRemoval "systray-x-git" "0.9.2-0" "systray-x-kde"
     else manualRemoval "systray-x-git" "0.9.5-0" "systray-x-common"; fi #2023/04/17:aur: now packaged in official repos (requires legacy knotifications)
     manualRemoval "gnome-shell-extension-desktop-icons-ng" "47-1" #2022/12/16: Replaced with gnome-shell-extension-gtk4-desktop-icons-ng
