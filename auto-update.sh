@@ -1,6 +1,6 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.9.11"; vsndsp="$vsn 2024-01-30"
+vsn="v3.9.12-hf1"; vsndsp="$vsn 2024-08-08"
 #-Downloads and Installs new updates
 #-Depends: coreutils, grep, pacman, pacman-mirrors, iputils
 #-Optional Depends: flatpak, notify-desktop, pikaur, rebuild-detector, wget
@@ -186,7 +186,7 @@ chk_pkgexplicit "$1" && return 1 || return 0
 manualRemoval(){
 #$1=(pkgs)|$2=vsn (or older) to remove|[$3=new pkgs][$4="now"]
 local mr_pkgo mr_expl; IFS=" " read -ra mr_pkgo <<< "$1"
-if chk_pkginstx "${mr_pkgo[0]}" && [[ "$(chk_pkgvsndiff "${mr_pkgo[0]}" "$2")" -le 0 ]]; then
+if chk_pkginstx "${mr_pkgo[0]}" && { [[ "$2" = "" ]] || [[ "$(chk_pkgvsndiff "${mr_pkgo[0]}" "$2")" -le 0 ]]; }; then
     trbl "attempting manual package removal/replacement of $1..."
     if [[ ! "$3" = "" ]]; then
         mr_expl=$false; chk_pkgexplicit "${mr_pkgo[0]}" && mr_expl=$true
@@ -998,33 +998,41 @@ if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_manu
     #Details on required changes:
     #https://github.com/lectrode/xs-update-manjaro#supported-automatic-repair-and-manual-changes
 
-    #install pacman-contrib if previously provided by pacman
+    #package install
     if get_pkgqix "pacman" "Provides"|grep -F "pacman-contrib" >/dev/null && chk_remoterepo "pacman-contrib"; then
         trblm "pacman-contrib will be installed with updates"
         manInstDep+=" pacman-contrib"
-    fi
+    fi #install pacman-contrib if previously provided by pacman
+    if ! chk_pkginstx "kvantum-qt5" && chk_pkginstx "kvantum" && chk_pkginstx "qt5-base" && [[ "$(chk_pkgvsndiff "kvantum" "1.1.0-1")" -le 0 ]] && chk_remoterepo "kvantum-qt5"; then
+        installLaterDep+=" kvantum-qt5"; fi #2024/02/26: split out as opt dep with 1.0.10-3
 
-    #removed from depends of kvmantum-manjaro 2022/02/23
+    #conflict overwrite
+    if chk_pkginstx "glibc-locales" && \
+        { [[ "$(chk_pkgvsndiff "glibc-locales" "2.38-5")" -le 0 ]] || [[ "$(chk_pkgvsndiff "glibc" "2.38-5")" -le 0 ]] ; }; then
+        trblm "contents of /usr/lib/locale will be overwritten with glibc/locales update"
+        manOvWrt+=" --overwrite=/usr/lib/locale/*"; fi #2023/10/01: split package (glibc) conflicts with old
+
+    #mark packages as explicitely installed
     if chk_pkginstx "kvantum-manjaro" && [[ "$(chk_pkgvsndiff "kvantum-manjaro" "0.13.5+1+g333aa00-1")" -lt 0 ]]; then
         for t in adapta-black-breath-theme adapta-black-maia-theme adapta-breath-theme adapta-gtk-theme adapta-maia-theme arc-themes-maia \
-            arc-themes-breath matcha-gtk-theme; do manualExplicit "$t"; done; fi
-
-    #removed from depends of manjaro-xfce-settings 2020/01/09
+            arc-themes-breath matcha-gtk-theme; do manualExplicit "$t"; done; fi #removed from depends of kvmantum-manjaro 2022/02/23
     if chk_pkginstx "manjaro-xfce-settings" && [[ "$(chk_pkgvsndiff "manjaro-xfce-settings" "20200109-1")" -lt 0 ]]; then
-        for t in vertex-maia-icon-theme breath-wallpaper; do manualExplicit "$t"; done; fi
+        for t in vertex-maia-icon-theme breath-wallpaper; do manualExplicit "$t"; done; fi #removed from depends of manjaro-xfce-settings 2020/01/09
 
-    #these should be depends of phonon-qt4, moved to AUR 2019/05
+    #mark packages as depends
     if chk_pkginstx "phonon-qt4" && [[ "$(chk_pkgvsndiff "phonon-qt4" "4.11.0")" -lt 0 ]]; then
-        for t in phonon-qt4-gstreamer phonon-qt4-vlc phonon-qt4-mplayer-git; do manualDepend "$t"; done; fi
+        for t in phonon-qt4-gstreamer phonon-qt4-vlc phonon-qt4-mplayer-git; do manualDepend "$t"; done; fi #these should be depends of phonon-qt4, moved to AUR 2019/05
 
-    manualRemoval "vlc-plugin-fluidsynth-bin" "1:3.0.20.1-1" #2024/01/20:aur: incorporated into official vlc package (conflicts)
+    #package removal
+    manualRemoval "vlc-plugin-fluidsynth-bin" "1:3.0.20.1-1"; manualRemoval "vlc-plugin-fluidsynth" "3.0.8-1" #2024/01/20:aur: incorporated into official vlc package (conflicts)
     #manualRemoval "manjaro-hotfixes" "2024.1-2" #2024/01/18: pkg replaced with dummy pkg https://gitlab.manjaro.org/packages/core/manjaro-hotfixes/-/commit/5c7f38e0fcfc582e5ba3a64f1527ab9e0ec952d8
     if chk_pkginstx "jdk-openjdk"; then manualRemoval "jre-openjdk" "21.u35-3"; manualRemoval "jre-openjdk-headless" "21.u35-3"; fi
     chk_pkginstx "jre-openjdk" && manualRemoval "jre-openjdk-headless" "21.u35-3" #2023/11/02: java 21 packages now conflict; keep most functional
     #chk_remoterepo "libgedit-amtk" && manualRemoval "amtk" "5.6.1-2" #2023/09/28: Replaced with libgedit-amtk #not needed per https://bugs.archlinux.org/task/79851
     manualRemoval "networkmanager-fortisslvpn" "1.4.0-3" #2023/09/10: Removed from arch repos
-    if chk_pkginst "plasma-desktop"; then manualRemoval "systray-x-git" "0.9.5-0" "systray-x-kde"
-    else manualRemoval "systray-x-git" "0.9.5-0" "systray-x-common"; fi #2023/04/17:aur: now packaged in official repos (requires legacy knotifications)
+    manualRemoval "qgpgme" "1.20.0-2" #2023/05/04: Split into qgpgme-qt5 and qgpgme-qt6
+    manualRemoval "adwaita-maia" "20210426-2" #2023/02/01: removed from repos
+    manualRemoval "firefox-gnome-theme-maia" "20220404-1" #2023/02/01: removed from repos
     manualRemoval "gnome-shell-extension-desktop-icons-ng" "47-1" #2022/12/16: Replaced with gnome-shell-extension-gtk4-desktop-icons-ng
     manualRemoval "libxfce4ui-nocsd" "4.17.0-1" #2022/12/23: Removed from repos
     manualRemoval "lib32-db" "5.3.28-5" #2022/12/21: Removed from arch repos
@@ -1034,13 +1042,13 @@ if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_manu
     manualRemoval "wxgtk2" "3.0.5.1-3" #2022-07-14: Removed from arch repos
     manualRemoval "manjaro-gdm-theme" "20210528-1"; #2022/04/23: Removed from repos (conflicts with gnome>=40)
     manualRemoval "libkipi" "22.04.0-1"; #2022/04/22: Moved to aur
-    manualRemoval "kvantum-qt5" "0.20.2-2" #2022/01/02: Removed from repos
     manualRemoval "user-manager" "5.19.5-1"; #2020/11/04: Removed from repos
     manualRemoval "kvantum-theme-matchama" "20191118-1"; #2022/02/14: Removed from repos, 2023/10/11: re-added/renamed
     manualRemoval "libcanberra-gstreamer" "0.30+2+gc0620e4-3"; manualRemoval "lib32-libcanberra-gstreamer" "0.30+2+gc0620e4-3" #2021/06: consolidated with lib32-/libcanberra-pulse
     manualRemoval "python2-dbus" "1.2.16-3" #2021/03: Removed from dbus-python
     manualRemoval "knetattach" "5.20.5-1" #2021/01/09: Merged into plasma-desktop
     manualRemoval "ms-office-online" "20.1.0-1" #2020/06: Moved to aur
+    manualRemoval "manjaro-gnome-assets-19.0" "20200215-1" #2020/02/25: removed from repos
     manualRemoval "libxxf86misc"  "1.0.4-1"; manualRemoval "libdmx" "1.1.4-1" #2019/12/20: Moved to aur
     chk_builtbefore "libxxf86dga" "20190317" && manualRemoval "libxxf86dga" "1.1.5-1" #2019/12/20: Moved to aur
     manualRemoval "pyqt5-common" "5.13.2-1" #2019/12: Removed from repos
@@ -1052,19 +1060,26 @@ if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_manu
     manualRemoval "kuiserver" "5.12.5-3" #2018/06/12: removed from repos
     manualRemoval "engrampa-thunar-plugin" "1.0-2" #Xfce 17.1.10 and earlier
 
-    if chk_pkginstx "glibc-locales" && \
-        { [[ "$(chk_pkgvsndiff "glibc-locales" "2.38-5")" -le 0 ]] || [[ "$(chk_pkgvsndiff "glibc" "2.38-5")" -le 0 ]] ; }; then
-        trblm "contents of /usr/lib/locale will be overwritten with glibc/locales update"
-        manOvWrt+=" --overwrite=/usr/lib/locale/*"; fi #2023/10/01: split package (glibc) conflicts with old
-
     if ! test_online; then err[repo]=1; err_crit="repo"; break; fi
+
+    #package replacement
+    [[ "$(chk_pkgvsndiff "python-steam" "1.4.4-4")" -le 0 ]] && chk_remoterepo "python-steam-solstice" && manualRemoval "python-steam" "1.4.4-4" "python-steam-solstice" #2024/08/04: replaced with upstream fork
+    [[ "$(chk_pkgvsndiff "python-vdf" "3.4-4")" -le 0 ]] && chk_remoterepo "python-vdf-solstice" && manualRemoval "python-vdf" "3.4-4" "python-vdf-solstice" #2024/08/04: replaced with upstream fork
+    if chk_pkginst "pipewire-pulse" && [[ "$(chk_pkgvsndiff "pipewire-pulse" "1:1.2.2")" -lt 0 ]]; then
+        manualRemoval "pa-applet" "1.0.2-3" "xfce4-pulseaudio-plugin"
+        manualRemoval "pulseaudio-ctl" "1.70-1"
+        manualRemoval "pulseaudio-equalizer-ladspa" "3.0.2-9"
+    fi #2024/07/17: pipewire-pulse 1:1.2.2 no longer provides pulseaudio
+    if chk_pkginst "plasma-desktop"; then manualRemoval "systray-x-git" "0.9.7" "systray-x-kde"
+        else manualRemoval "systray-x-git" "0.9.7" "systray-x-common"; fi #2023/04/17:aur: now packaged in official repos (requires legacy knotifications-renamed 2023/09/30, 0.9.6.x latest git)
     manualRemoval "dbus-x11" "1.14.4-1" "dbus" #2022/12: Removed from repos
     manualRemoval "jack" "0.125.0-10" "jack2"; manualRemoval "lib32-jack" "0.125.0-10" "lib32-jack2" #2021/07/26: moved to aur
     manualRemoval "kpeoplevcard" "0.1-1" "kpeoplevcard" #Requires reinstall to avoid conflicts
     manualRemoval "pamac" "7.9" "pamac" #Requires reinstall to update pacman
     manualRemoval "gtk3-classic" "3.24.24-1" "gtk3"; manualRemoval "lib32-gtk3-classic" "3.24.24-1" "lib32-gtk3" #Replaced around 18.0.4
-    #manualRemoval "pipewire-media-session" "1:0.4.1-1" "wireplumber" #2022-05-10: Replaced with wireplumber (rolled back)
-    manualRemoval "manjaro-kde-settings-19.0 breath2-icon-themes plasma5-themes-breath2" "20200426-1" "plasma5-themes-breath manjaro-kde-settings" #2021/11: manjaro kde cleanup
+    #manualRemoval "pipewire-media-session" "1:0.4.1-1" "wireplumber" #2022-05-10: replaced (rolled back)
+    manualRemoval "manjaro-kde-settings-19.0 breath2-icon-themes plasma5-themes-breath2" "20200426-1" "plasma6-themes-breath manjaro-kde-settings" #2021/11: manjaro kde cleanup
+    manualRemoval "manjaro-gnome-settings-19.0" "20200404-2" "manjaro-gnome-settings" #2020/04/25: replaced
 
     #transition packages from 'electron' to 'electronXX' when required
     if chk_pkginstx "electron" && $pcmbin -Sl|grep -E "[^ ]+ electron "|grep "installed:" >/dev/null; then
@@ -1101,6 +1116,7 @@ if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_manu
     if ! chk_pkginstx "base-devel"; then
         $pcmbin -Qg|grep "base-devel" >/dev/null && $pcmbin -S --noconfirm "base-devel" 2>&1|trbl_t; fi
 
+    manualRemoval "gnome-calendar-mobile" "45.1-2" "gnome-calendar" "now" #2024/04/24: Replaced with gnome-calendar https://forum.manjaro.org/t/arm-testing-update-2024-04-24-plasma-kde-gear-kde-frameworks-firefox-pipewire/160451/5
     chk_builtbefore "qpdfview" "20200914" && manualRemoval "qpdfview" "0.4.18-2" "evince" "now" #2022-04-01: Moved to AUR
     manualRemoval "galculator-gtk2" "2.1.4-5" "galculator" "now" #2021/11/13: Replaced with galculator
     manualRemoval "gksu-polkit" "0.0.3-2" "zensu" "now" #2020/10: Removed from manjaro repos

@@ -70,7 +70,7 @@ Status Notifications are currently supported on the following Desktop Environmen
 * Xfce
 * KDE (requires [notify-desktop-git](https://aur.archlinux.org/packages/notify-desktop-git) for full notification support)
 * Gnome ([permanent notifications extension](https://extensions.gnome.org/extension/41/permanent-notifications/ "") is recommended)
-.
+
 
 ## Suggested Usage and Disclaimer:
 Please do not use this script blindly. You should have a firm understanding of how to manually update your computer before using this. 
@@ -313,8 +313,9 @@ Every once in a while, updating Manjaro requires manual package changes to allow
 
 * Package installation:
 <table>
-  <tr><td><code>pacman-static</code></td><td>required if <code>pacman</code><5.2</td></tr>
+  <tr><td><code>kvantum-qt5</code> (dependency)</td><td><a href="https://gitlab.archlinux.org/archlinux/packaging/packages/kvantum/-/commit/a624b4687a2473e17d9ee7d7a16bb30748d037be">split out</a> from <code>kvantum</code> package but still needed for qt5 apps</td></tr>
   <tr><td><code>pacman-contrib</code> (dependency)</td><td><a href="https://gitlab.manjaro.org/packages/core/pacman/-/commit/69072048bcdc4c32e0200558476e7a1385ca587a">split out</a> from <code>pacman</code> package but still needed</td></tr>
+  <tr><td><code>pacman-static</code></td><td>required if <code>pacman</code><5.2</td></tr>
 </table>
 
 * Mark packages as explicitely installed:
@@ -342,10 +343,14 @@ Every once in a while, updating Manjaro requires manual package changes to allow
 
 * Package removal:
 <table>
-  <tr><td>aur:<code>vlc-plugin-fluidsynth-bin</code></td><td><=1:3.0.20.1-1</td><td>2024/01/20: <a href="https://gitlab.archlinux.org/archlinux/packaging/packages/vlc/-/commit/98512bacda8d4b0ecd800701e57cfcde5f0f207b">incorporated</a> into main vlc package</td></tr>
+  <tr><td><code>pulseaudio-ctl</code><br /><code>pulseaudio-equalizer-ladspa</code></td><td><=1.70-1<br /><=3.0.2-9</td><td>2024/07/17: pipewire-pulse <a href="https://gitlab.archlinux.org/archlinux/packaging/packages/pipewire/-/commit/21e2129fedcf35521dc220fb06b391c283726c49">no longer</a> provides pulseaudio. only removed if pipewire-pulse is installed</td></tr>
+  <tr><td><code>vlc-plugin-fluidsynth[-bin]</code></td><td><=1:3.0.20.1-1</td><td>2024/01/20: <a href="https://gitlab.archlinux.org/archlinux/packaging/packages/vlc/-/commit/98512bacda8d4b0ecd800701e57cfcde5f0f207b">incorporated</a> into main vlc package</td></tr>
   <tr><td><code>jre-openjdk</code><br /><code>jre-openjdk-headless</code></td><td><=21.u35-3</td><td>2023/11/02: java 21 packages now <a href="https://archlinux.org/news/incoming-changes-in-jdk-jre-21-packages-may-require-manual-intervention">conflict</a>. of the ones installed, the most functional package is kept</td></tr>
   <!--<tr><td><code>amtk</code></td><td><=5.6.1-2</td><td>2023/09/28: <a href="https://gitlab.archlinux.org/archlinux/packaging/packages/libgedit-amtk/-/commit/a14c055b4aad2503da0b1b43b6d4353ef1ccaecf">replaced</a> with libgedit-amtk (automatically handled by package per https://bugs.archlinux.org/task/79851)</td></tr>-->
   <tr><td><code>networkmanager-fortisslvpn</code></td><td><=1.4.0-3</td><td>2023/09/10: Removed <a href="https://forum.garudalinux.org/t/manual-intervention-required-ppp-2-5-0-1-breaks-dependency-ppp-2-4-9-required-by-networkmanager-fortisslvpn/30829">from</a> arch <a href="https://archive.archlinux.org/packages/n/networkmanager-fortisslvpn">repos</a></td></tr>
+  <tr><td><code>qgpgme</code></td><td><=1.20.0-2</td><td>2023/05/04: <a href="https://gitlab.archlinux.org/archlinux/packaging/packages/gpgme/-/commit/ef7dc243e3107f174e81a99d87b3430a42b2af2e">split</a> into qgpgme-qt5 and qgpgme-qt6</td></tr>
+  <tr><td><code>adwaita-maia</code></td><td><=20210426-2</td><td>2023/02/01: <a href="https://gitlab.manjaro.org/-/snippets/846/raw">removed</a> from repos</td></tr>
+  <tr><td><code>firefox-gnome-theme-maia</code></td><td><=20220404-1</td><td>2023/02/01: <a href="https://gitlab.manjaro.org/-/snippets/846/raw">removed</a> from repos</td></tr>
   <tr><td><code>gnome-shell-extension-desktop-icons-ng</code></td><td><=47-1</td><td>2022/12/16: <a href="https://gitlab.manjaro.org/-/snippets/825">replaced</a> with gnome-shell-extension-gtk4-desktop-icons-ng</td></tr>
   <tr><td><code>libxfce4ui-nocsd</code></td><td><=4.17.0-1</td><td>2022/12/23: <a href="https://github.com/Xfce-Classic/libxfce4ui-nocsd/issues/15">removed</a> from repos</td></tr>
   <tr><td><code>lib32-db</code></td><td><=5.3.28-5</td><td>2022/12/21: <a href="https://aur.archlinux.org/cgit/aur.git/commit/?h=lib32-db&id=a59ffdc29595db8ab0a683a374969ee79f76e231">moved</a> to aur</td></tr>
@@ -354,13 +359,14 @@ Every once in a while, updating Manjaro requires manual package changes to allow
   <tr><td><code>wxgtk2</code></td><td><=3.0.5.1-3</td><td>2022/07/14: removed from arch repos</td></tr>
   <tr><td><code>manjaro-gdm-theme</code></td><td><=20210528-1</td><td>2022/04/23: removed from repos</td></tr>
   <tr><td><code>libkipi</code></td><td><=22.04.0-1</td><td>2022/04/22: <a href="https://aur.archlinux.org/cgit/aur.git/commit/?h=libkipi&id=64b23b22f3225642a3d8821ca8cdf1db3293edfe">moved</a> to AUR</td></tr>
-  <tr><td><code>kvantum-qt5</code></td><td><=0.20.2-2</td><td>2022/01/02: <a href="https://gitlab.manjaro.org/-/snippets/717">removed</a> from repos</td></tr>
+  <!--<tr><td><code>kvantum-qt5</code></td><td><=0.20.2-2</td><td>2022/01/02: <a href="https://gitlab.manjaro.org/-/snippets/717">removed</a> from repos</td></tr>-->
   <tr><td><code>user-manager</code></td><td><=5.19.5-1</td><td>2020/11/04: <a href="https://gitlab.manjaro.org/-/snippets/550">removed</a> from repos</td></tr>
   <tr><td><code>kvantum-theme-matchama</code></td><td><=20191118-1</td><td>2022/02/14: <a href="https://gitlab.manjaro.org/-/snippets/728">removed</a> from repos, 2023/10/11: <a href="https://gitlab.manjaro.org/packages/community/xfce/manjaro-xfce-settings/-/commit/982a16bfa85abdf9deb03c30c48f2ccb6f6a5370">re-added</a> (renamed)</td></tr>
   <tr><td><code>[lib32-]libcanberra-gstreamer</code></td><td><=0.30+2+gc0620e4-3</td><td>2021/06: merged into <code>lib32-/libcanberra-pulse</code></td></tr>
   <tr><td><code>python2-dbus</code></td><td><=1.2.16-3</td><td>2021/03: removed from <code>dbus-python</code></td></tr>
   <tr><td><code>knetattach</code></td><td><=5.20.5-1</td><td>2021/01/09: merged into <code>plasma-desktop</code></td></tr>
   <tr><td><code>ms-office-online</code></td><td><=20.1.0-1</td><td>2020/06: former default pkg moved to AUR</td></tr>
+================  <tr><td><code>manjaro-gnome-assets-19.0</code></td><td><=20200215-1</td><td>2020/02/25: <a href="https://gitlab.manjaro.org/-/snippets/472/raw">removed</a> from repos</td></tr>
   <tr><td><code>libxxf86dga</code><br /><code>libdmx</code><br /><code>libxxf86misc</code></td>
     <td><=1.1.5-1<br /><=1.1.4-1<br /><=1.0.4-1</td><td>2019/12/20: <a href="https://archlinux.org/news/xorg-cleanup-requires-manual-intervention/">moved</a> to AUR</td></tr>
   <tr><td><code>pyqt5-common</code></td><td><=5.13.2-1</td><td>2019/12: removed from repos</td></tr>
@@ -376,6 +382,9 @@ Every once in a while, updating Manjaro requires manual package changes to allow
 
 * Package replacement:
 <table>
+  <tr><td><code>python-steam</code></td><td><=1.4.4-4</td><td>2024/08/04: <a href="https://gitlab.manjaro.org/packages/extra/python-steam-solstice/-/commit/375f896d91f30d8f0e9e2dcab346c0f7346d70ab">replaced</a> with <code>python-steam-stolstice</code> (upstream fork)</td></tr>
+  <tr><td><code>python-vdf</code></td><td><=3.4-4</td><td>2024/08/04: <a href="https://gitlab.manjaro.org/packages/extra/python-vdf-solstice/-/commit/3c82cc303b268b098a09fe3513ffdd73bced9002">replaced</a> with <code>python-vdf-stolstice</code> (upstream fork)</td></tr>
+  <tr><td><code>pa-applet</code></td><td><=1.0.2-3</td><td>2024/07/17: <a href="https://gitlab.archlinux.org/archlinux/packaging/packages/pipewire/-/commit/21e2129fedcf35521dc220fb06b391c283726c49">conflicts</a> with pipewire-pulse; replace with <code>xfce4-pulseaudio-plugin</code></td></tr>
   <tr><td>aur:<code>systray-x-git</code></td><td><=0.9.2-0</td><td>2023/04/17: <a href="https://gitlab.archlinux.org/archlinux/packaging/packages/systray-x/-/commit/46310cac31517ae0b8be921d7c606196ba9020cf">packaged</a> in official repos. Replaced with <code>systray-x-kde</code> if using KDE desktop, or <code>systray-x-common</code> otherwise</td></tr>
   <tr><td><code>dbus-x11</code></td><td><=1.14.4-1</td><td>2022/12/16: <a href="https://gitlab.manjaro.org/-/snippets/824/raw/">dropped</a> in favor of <code>dbus</code></td></tr>
   <!--<tr><td><code>pipewire-media-session</code></td><td><=1:0.4.1-1</td><td>2022/05/10: replaced with <code>wireplumber</code></td></tr>-->
@@ -384,6 +393,7 @@ Every once in a while, updating Manjaro requires manual package changes to allow
   <tr><td><code>manjaro-kde-settings-19.0</code>,<code>breath2-icon-themes</code>,<code>plasma5-themes-breath2</code></td><td><=20200426-1</td><td>2021/11: replaced with <code>manjaro-kde-settings</code>,<code>plasma5-themes-breath</code></td></tr>
   <tr><td><code>[lib32-]jack</code></td><td><=0.125.0-10</td><td>2021/07/26: replaced with <code>[lib32-]jack2</code></td></tr>
   <tr><td><code>gksu-polkit</code></td><td><=0.0.3-2</td><td>2020/10: replaced with <code>zensu</code></td></tr>
+  <tr><td><code>manjaro-gnome-settings-19.0</code></td><td><=20200404-2</td><td>2020/04/25: <a href="https://gitlab.manjaro.org/-/snippets/495/raw">replaced</a> with <code>manjaro-gnome-settings</code></td></tr>
 </table>
 
 * Package overwrite:
