@@ -348,7 +348,8 @@ Every once in a while, updating Manjaro requires manual package changes to allow
   <tr><td><code>jre-openjdk</code><br /><code>jre-openjdk-headless</code></td><td><=21.u35-3</td><td>2023/11/02: java 21 packages now <a href="https://archlinux.org/news/incoming-changes-in-jdk-jre-21-packages-may-require-manual-intervention">conflict</a>. of the ones installed, the most functional package is kept</td></tr>
   <!--<tr><td><code>amtk</code></td><td><=5.6.1-2</td><td>2023/09/28: <a href="https://gitlab.archlinux.org/archlinux/packaging/packages/libgedit-amtk/-/commit/a14c055b4aad2503da0b1b43b6d4353ef1ccaecf">replaced</a> with libgedit-amtk (automatically handled by package per https://bugs.archlinux.org/task/79851)</td></tr>-->
   <tr><td><code>networkmanager-fortisslvpn</code></td><td><=1.4.0-3</td><td>2023/09/10: Removed <a href="https://forum.garudalinux.org/t/manual-intervention-required-ppp-2-5-0-1-breaks-dependency-ppp-2-4-9-required-by-networkmanager-fortisslvpn/30829">from</a> arch <a href="https://archive.archlinux.org/packages/n/networkmanager-fortisslvpn">repos</a></td></tr>
-  <tr><td><code>qgpgme</code></td><td><=1.20.0-2</td><td>2023/05/04: <a href="https://gitlab.archlinux.org/archlinux/packaging/packages/gpgme/-/commit/ef7dc243e3107f174e81a99d87b3430a42b2af2e">split</a> into qgpgme-qt5 and qgpgme-qt6</td></tr>
+  <tr><td><code>microsoft-office-web-jak</code></td><td><=1:2.1.2-1</td><td>2023/06/15: <a href="https://gitlab.manjaro.org/-/snippets/895/raw">removed</a> from repos</td></tr>
+  <tr><td><code>qgpgme</code></td><td><=1.20.0-2</td><td>2023/05/04: <a href="https://gitlab.archlinux.org/archlinux/packaging/packages/gpgme/-/commit/ef7dc243e3107f174e81a99d87b3430a42b2af2e">split</a> into <code>qgpgme-qt5</code> and <code>qgpgme-qt6</code></td></tr>
   <tr><td><code>adwaita-maia</code></td><td><=20210426-2</td><td>2023/02/01: <a href="https://gitlab.manjaro.org/-/snippets/846/raw">removed</a> from repos</td></tr>
   <tr><td><code>firefox-gnome-theme-maia</code></td><td><=20220404-1</td><td>2023/02/01: <a href="https://gitlab.manjaro.org/-/snippets/846/raw">removed</a> from repos</td></tr>
   <tr><td><code>gnome-shell-extension-desktop-icons-ng</code></td><td><=47-1</td><td>2022/12/16: <a href="https://gitlab.manjaro.org/-/snippets/825">replaced</a> with gnome-shell-extension-gtk4-desktop-icons-ng</td></tr>
@@ -366,7 +367,8 @@ Every once in a while, updating Manjaro requires manual package changes to allow
   <tr><td><code>python2-dbus</code></td><td><=1.2.16-3</td><td>2021/03: removed from <code>dbus-python</code></td></tr>
   <tr><td><code>knetattach</code></td><td><=5.20.5-1</td><td>2021/01/09: merged into <code>plasma-desktop</code></td></tr>
   <tr><td><code>ms-office-online</code></td><td><=20.1.0-1</td><td>2020/06: former default pkg moved to AUR</td></tr>
-================  <tr><td><code>manjaro-gnome-assets-19.0</code></td><td><=20200215-1</td><td>2020/02/25: <a href="https://gitlab.manjaro.org/-/snippets/472/raw">removed</a> from repos</td></tr>
+  <tr><td><code>microsoft-office-online-jak</code></td><td><=1:2.0.6-1</td><td>2020/05/31: <a href="https://gitlab.manjaro.org/-/snippets/505/raw">removed</a> from repos</td></tr>
+  <tr><td><code>manjaro-gnome-assets-19.0</code></td><td><=20200215-1</td><td>2020/02/25: <a href="https://gitlab.manjaro.org/-/snippets/472/raw">removed</a> from repos</td></tr>
   <tr><td><code>libxxf86dga</code><br /><code>libdmx</code><br /><code>libxxf86misc</code></td>
     <td><=1.1.5-1<br /><=1.1.4-1<br /><=1.0.4-1</td><td>2019/12/20: <a href="https://archlinux.org/news/xorg-cleanup-requires-manual-intervention/">moved</a> to AUR</td></tr>
   <tr><td><code>pyqt5-common</code></td><td><=5.13.2-1</td><td>2019/12: removed from repos</td></tr>
@@ -384,8 +386,8 @@ Every once in a while, updating Manjaro requires manual package changes to allow
 <table>
   <tr><td><code>python-steam</code></td><td><=1.4.4-4</td><td>2024/08/04: <a href="https://gitlab.manjaro.org/packages/extra/python-steam-solstice/-/commit/375f896d91f30d8f0e9e2dcab346c0f7346d70ab">replaced</a> with <code>python-steam-stolstice</code> (upstream fork)</td></tr>
   <tr><td><code>python-vdf</code></td><td><=3.4-4</td><td>2024/08/04: <a href="https://gitlab.manjaro.org/packages/extra/python-vdf-solstice/-/commit/3c82cc303b268b098a09fe3513ffdd73bced9002">replaced</a> with <code>python-vdf-stolstice</code> (upstream fork)</td></tr>
-  <tr><td><code>pa-applet</code></td><td><=1.0.2-3</td><td>2024/07/17: <a href="https://gitlab.archlinux.org/archlinux/packaging/packages/pipewire/-/commit/21e2129fedcf35521dc220fb06b391c283726c49">conflicts</a> with pipewire-pulse; replace with <code>xfce4-pulseaudio-plugin</code></td></tr>
-  <tr><td>aur:<code>systray-x-git</code></td><td><=0.9.2-0</td><td>2023/04/17: <a href="https://gitlab.archlinux.org/archlinux/packaging/packages/systray-x/-/commit/46310cac31517ae0b8be921d7c606196ba9020cf">packaged</a> in official repos. Replaced with <code>systray-x-kde</code> if using KDE desktop, or <code>systray-x-common</code> otherwise</td></tr>
+  <tr><td><code>pa-applet</code></td><td><=20181009-1</td><td>2024/07/17: <a href="https://gitlab.archlinux.org/archlinux/packaging/packages/pipewire/-/commit/21e2129fedcf35521dc220fb06b391c283726c49">conflicts</a> with pipewire-pulse; <a href="https://gitlab.manjaro.org/-/snippets/472/raw">replaced</a> with <code>xfce4-pulseaudio-plugin</code></td></tr>
+  <tr><td><code>gnome-calendar-mobile</code></td><td><=45.1-2</td><td>2024/04/24: <a href="https://forum.manjaro.org/t/arm-testing-update-2024-04-24-plasma-kde-gear-kde-frameworks-firefox-pipewire/160451/5">replaced</a> with gnome-calendar</td></tr>
   <tr><td><code>dbus-x11</code></td><td><=1.14.4-1</td><td>2022/12/16: <a href="https://gitlab.manjaro.org/-/snippets/824/raw/">dropped</a> in favor of <code>dbus</code></td></tr>
   <!--<tr><td><code>pipewire-media-session</code></td><td><=1:0.4.1-1</td><td>2022/05/10: replaced with <code>wireplumber</code></td></tr>-->
   <tr><td><code>qpdfview</code></td><td><=0.4.18-1</td><td>2022/04/01: former default pkg moved to AUR, replaced with <code>evince</code></td></tr>

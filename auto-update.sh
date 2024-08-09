@@ -1,6 +1,6 @@
 #!/bin/bash
 #Auto Update For Manjaro by Lectrode
-vsn="v3.9.12-hf1"; vsndsp="$vsn 2024-08-08"
+vsn="v3.9.12-hf2"; vsndsp="$vsn 2024-08-09"
 #-Downloads and Installs new updates
 #-Depends: coreutils, grep, pacman, pacman-mirrors, iputils
 #-Optional Depends: flatpak, notify-desktop, pikaur, rebuild-detector, wget
@@ -1028,37 +1028,39 @@ if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_manu
     #manualRemoval "manjaro-hotfixes" "2024.1-2" #2024/01/18: pkg replaced with dummy pkg https://gitlab.manjaro.org/packages/core/manjaro-hotfixes/-/commit/5c7f38e0fcfc582e5ba3a64f1527ab9e0ec952d8
     if chk_pkginstx "jdk-openjdk"; then manualRemoval "jre-openjdk" "21.u35-3"; manualRemoval "jre-openjdk-headless" "21.u35-3"; fi
     chk_pkginstx "jre-openjdk" && manualRemoval "jre-openjdk-headless" "21.u35-3" #2023/11/02: java 21 packages now conflict; keep most functional
-    #chk_remoterepo "libgedit-amtk" && manualRemoval "amtk" "5.6.1-2" #2023/09/28: Replaced with libgedit-amtk #not needed per https://bugs.archlinux.org/task/79851
-    manualRemoval "networkmanager-fortisslvpn" "1.4.0-3" #2023/09/10: Removed from arch repos
-    manualRemoval "qgpgme" "1.20.0-2" #2023/05/04: Split into qgpgme-qt5 and qgpgme-qt6
+    #chk_remoterepo "libgedit-amtk" && manualRemoval "amtk" "5.6.1-2" #2023/09/28: replaced with libgedit-amtk #not needed per https://bugs.archlinux.org/task/79851
+    manualRemoval "networkmanager-fortisslvpn" "1.4.0-3" #2023/09/10: removed from arch repos
+    manualRemoval "microsoft-office-web-jak" "1:2.1.2-1" #2023/06/15: removed from repos
+    manualRemoval "qgpgme" "1.20.0-2" #2023/05/04: split into qgpgme-qt5 and qgpgme-qt6
     manualRemoval "adwaita-maia" "20210426-2" #2023/02/01: removed from repos
     manualRemoval "firefox-gnome-theme-maia" "20220404-1" #2023/02/01: removed from repos
-    manualRemoval "gnome-shell-extension-desktop-icons-ng" "47-1" #2022/12/16: Replaced with gnome-shell-extension-gtk4-desktop-icons-ng
-    manualRemoval "libxfce4ui-nocsd" "4.17.0-1" #2022/12/23: Removed from repos
-    manualRemoval "lib32-db" "5.3.28-5" #2022/12/21: Removed from arch repos
+    manualRemoval "gnome-shell-extension-desktop-icons-ng" "47-1" #2022/12/16: replaced with gnome-shell-extension-gtk4-desktop-icons-ng
+    manualRemoval "libxfce4ui-nocsd" "4.17.0-1" #2022/12/23: removed from repos
+    manualRemoval "lib32-db" "5.3.28-5" #2022/12/21: removed from arch repos
     manualRemoval "kjsembed" "5.100.0-1" #2022/12/20: removed from repos
-    manualRemoval "glib2-static" "2.72.3-1" #2022-09-07: Merged into glib2
-    #manualRemoval "pcre-static" "8.45-1" #2022-09-07: Merged into pcre (not needed per https://bugs.archlinux.org/task/75839)
-    manualRemoval "wxgtk2" "3.0.5.1-3" #2022-07-14: Removed from arch repos
-    manualRemoval "manjaro-gdm-theme" "20210528-1"; #2022/04/23: Removed from repos (conflicts with gnome>=40)
-    manualRemoval "libkipi" "22.04.0-1"; #2022/04/22: Moved to aur
-    manualRemoval "user-manager" "5.19.5-1"; #2020/11/04: Removed from repos
-    manualRemoval "kvantum-theme-matchama" "20191118-1"; #2022/02/14: Removed from repos, 2023/10/11: re-added/renamed
+    manualRemoval "glib2-static" "2.72.3-1" #2022-09-07: merged into glib2
+    #manualRemoval "pcre-static" "8.45-1" #2022-09-07: merged into pcre (not needed per https://bugs.archlinux.org/task/75839)
+    manualRemoval "wxgtk2" "3.0.5.1-3" #2022-07-14: removed from arch repos
+    manualRemoval "manjaro-gdm-theme" "20210528-1"; #2022/04/23: removed from repos (conflicts with gnome>=40)
+    manualRemoval "libkipi" "22.04.0-1"; #2022/04/22: moved to aur
+    manualRemoval "user-manager" "5.19.5-1"; #2020/11/04: removed from repos
+    manualRemoval "kvantum-theme-matchama" "20191118-1"; #2022/02/14: removed from repos, 2023/10/11: re-added/renamed
     manualRemoval "libcanberra-gstreamer" "0.30+2+gc0620e4-3"; manualRemoval "lib32-libcanberra-gstreamer" "0.30+2+gc0620e4-3" #2021/06: consolidated with lib32-/libcanberra-pulse
-    manualRemoval "python2-dbus" "1.2.16-3" #2021/03: Removed from dbus-python
-    manualRemoval "knetattach" "5.20.5-1" #2021/01/09: Merged into plasma-desktop
-    manualRemoval "ms-office-online" "20.1.0-1" #2020/06: Moved to aur
+    manualRemoval "python2-dbus" "1.2.16-3" #2021/03: removed from dbus-python
+    manualRemoval "knetattach" "5.20.5-1" #2021/01/09: merged into plasma-desktop
+    manualRemoval "microsoft-office-online-jak" "1:2.0.6-1" #2020/05/31: removed from repos
+    manualRemoval "ms-office-online" "20.1.0-1" #2020/06: moved to aur
     manualRemoval "manjaro-gnome-assets-19.0" "20200215-1" #2020/02/25: removed from repos
-    manualRemoval "libxxf86misc"  "1.0.4-1"; manualRemoval "libdmx" "1.1.4-1" #2019/12/20: Moved to aur
-    chk_builtbefore "libxxf86dga" "20190317" && manualRemoval "libxxf86dga" "1.1.5-1" #2019/12/20: Moved to aur
-    manualRemoval "pyqt5-common" "5.13.2-1" #2019/12: Removed from repos
-    manualRemoval "ilmbase" "2.3.0-1" #2019/10: Merged into openexr
+    manualRemoval "libxxf86misc"  "1.0.4-1"; manualRemoval "libdmx" "1.1.4-1" #2019/12/20: moved to aur
+    chk_builtbefore "libxxf86dga" "20190317" && manualRemoval "libxxf86dga" "1.1.5-1" #2019/12/20: moved to aur
+    manualRemoval "pyqt5-common" "5.13.2-1" #2019/12: removed from repos
+    manualRemoval "ilmbase" "2.3.0-1" #2019/10: merged into openexr
     manualRemoval "breeze-kde4" "5.13.4-1"; manualRemoval "oxygen-kde4" "5.13.4-1"; manualRemoval "sni-qt" "0.2.6-5" #2019/05: removed from repos
-    manualRemoval "libmagick" "7.0.8.41-1" #2019/04: Merged into imagemagick
-    manualRemoval "colord" "1.4.4-1" #2019/??: Conflicts with libcolord
-    #manualRemoval "libsystemd" "240.95-1" #2019/02/12: Renamed to systemd-libs https://gitlab.archlinux.org/archlinux/packaging/packages/systemd/-/commit/8440896bd848b1bcb37d83575fbdb988e2a2f688
+    manualRemoval "libmagick" "7.0.8.41-1" #2019/04: merged into imagemagick
+    manualRemoval "colord" "1.4.4-1" #2019/??: conflicts with libcolord
+    #manualRemoval "libsystemd" "240.95-1" #2019/02/12: renamed to systemd-libs https://gitlab.archlinux.org/archlinux/packaging/packages/systemd/-/commit/8440896bd848b1bcb37d83575fbdb988e2a2f688
     manualRemoval "kuiserver" "5.12.5-3" #2018/06/12: removed from repos
-    manualRemoval "engrampa-thunar-plugin" "1.0-2" #Xfce 17.1.10 and earlier
+    manualRemoval "engrampa-thunar-plugin" "1.0-2" #xfce 17.1.10 and earlier
 
     if ! test_online; then err[repo]=1; err_crit="repo"; break; fi
 
@@ -1066,17 +1068,18 @@ if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_manu
     [[ "$(chk_pkgvsndiff "python-steam" "1.4.4-4")" -le 0 ]] && chk_remoterepo "python-steam-solstice" && manualRemoval "python-steam" "1.4.4-4" "python-steam-solstice" #2024/08/04: replaced with upstream fork
     [[ "$(chk_pkgvsndiff "python-vdf" "3.4-4")" -le 0 ]] && chk_remoterepo "python-vdf-solstice" && manualRemoval "python-vdf" "3.4-4" "python-vdf-solstice" #2024/08/04: replaced with upstream fork
     if chk_pkginst "pipewire-pulse" && [[ "$(chk_pkgvsndiff "pipewire-pulse" "1:1.2.2")" -lt 0 ]]; then
-        manualRemoval "pa-applet" "1.0.2-3" "xfce4-pulseaudio-plugin"
+        if chk_pkginst "xfce4-panel"; then manualRemoval "pa-applet" "20181009-1" "xfce4-pulseaudio-plugin"
+            else manualRemoval "pa-applet" "20181009-1"; fi
         manualRemoval "pulseaudio-ctl" "1.70-1"
         manualRemoval "pulseaudio-equalizer-ladspa" "3.0.2-9"
     fi #2024/07/17: pipewire-pulse 1:1.2.2 no longer provides pulseaudio
     if chk_pkginst "plasma-desktop"; then manualRemoval "systray-x-git" "0.9.7" "systray-x-kde"
         else manualRemoval "systray-x-git" "0.9.7" "systray-x-common"; fi #2023/04/17:aur: now packaged in official repos (requires legacy knotifications-renamed 2023/09/30, 0.9.6.x latest git)
-    manualRemoval "dbus-x11" "1.14.4-1" "dbus" #2022/12: Removed from repos
+    manualRemoval "dbus-x11" "1.14.4-1" "dbus" #2022/12: removed from repos
     manualRemoval "jack" "0.125.0-10" "jack2"; manualRemoval "lib32-jack" "0.125.0-10" "lib32-jack2" #2021/07/26: moved to aur
-    manualRemoval "kpeoplevcard" "0.1-1" "kpeoplevcard" #Requires reinstall to avoid conflicts
-    manualRemoval "pamac" "7.9" "pamac" #Requires reinstall to update pacman
-    manualRemoval "gtk3-classic" "3.24.24-1" "gtk3"; manualRemoval "lib32-gtk3-classic" "3.24.24-1" "lib32-gtk3" #Replaced around 18.0.4
+    manualRemoval "kpeoplevcard" "0.1-1" "kpeoplevcard" #requires reinstall to avoid conflicts
+    manualRemoval "pamac" "7.9" "pamac" #requires reinstall to update pacman
+    manualRemoval "gtk3-classic" "3.24.24-1" "gtk3"; manualRemoval "lib32-gtk3-classic" "3.24.24-1" "lib32-gtk3" #replaced around 18.0.4
     #manualRemoval "pipewire-media-session" "1:0.4.1-1" "wireplumber" #2022-05-10: replaced (rolled back)
     manualRemoval "manjaro-kde-settings-19.0 breath2-icon-themes plasma5-themes-breath2" "20200426-1" "plasma6-themes-breath manjaro-kde-settings" #2021/11: manjaro kde cleanup
     manualRemoval "manjaro-gnome-settings-19.0" "20200404-2" "manjaro-gnome-settings" #2020/04/25: replaced
@@ -1116,7 +1119,7 @@ if [[ "${conf_a[repair_1enable_bool]}" = "$ctrue" ]] && [[ "${conf_a[repair_manu
     if ! chk_pkginstx "base-devel"; then
         $pcmbin -Qg|grep "base-devel" >/dev/null && $pcmbin -S --noconfirm "base-devel" 2>&1|trbl_t; fi
 
-    manualRemoval "gnome-calendar-mobile" "45.1-2" "gnome-calendar" "now" #2024/04/24: Replaced with gnome-calendar https://forum.manjaro.org/t/arm-testing-update-2024-04-24-plasma-kde-gear-kde-frameworks-firefox-pipewire/160451/5
+    manualRemoval "gnome-calendar-mobile" "45.1-2" "gnome-calendar" "now" #2024/04/24: Replaced with gnome-calendar
     chk_builtbefore "qpdfview" "20200914" && manualRemoval "qpdfview" "0.4.18-2" "evince" "now" #2022-04-01: Moved to AUR
     manualRemoval "galculator-gtk2" "2.1.4-5" "galculator" "now" #2021/11/13: Replaced with galculator
     manualRemoval "gksu-polkit" "0.0.3-2" "zensu" "now" #2020/10: Removed from manjaro repos
